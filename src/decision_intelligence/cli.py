@@ -9,6 +9,7 @@ Commands:
 """
 
 import sys
+from pathlib import Path
 from typing import Optional
 
 try:
@@ -30,6 +31,7 @@ from decision_intelligence.contracts import (
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.export import export_csv, export_json, generate_report
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
@@ -160,6 +162,7 @@ def cmd_run(
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
     mode: str = typer.Option("recommendation", "--mode", "-m", help="Execution mode: explain, scenario_analysis, recommendation"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
+    output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
 ):
     """Run an optimization for a domain and print structured results."""
     if domain not in _DOMAIN_INFO:
@@ -210,6 +213,7 @@ def cmd_run(
         result = orch.run(req)
 
     _print_result(domain, result, verbose)
+    _write_output(output, result, req)
 
 
 def _print_result(domain: str, result, verbose: bool):
@@ -328,6 +332,36 @@ def _print_result(domain: str, result, verbose: bool):
         console.print(table)
 
     console.print()
+
+
+def _write_output(output: str | None, result, request) -> None:
+    if not output:
+        return
+
+    path = Path(output)
+    ext = path.suffix.lower()
+
+    try:
+        if ext == ".json":
+            export_json(result, path)
+            console.print(f"[dim]JSON →[/dim] [cyan]{path}[/cyan]")
+
+        elif ext == ".csv":
+            export_csv(result, path)
+            console.print(f"[dim]CSV  →[/dim] [cyan]{path}[/cyan]")
+
+        elif ext in (".html", ".htm"):
+            generate_report(result, request, path)
+            console.print(f"[dim]HTML →[/dim] [cyan]{path}[/cyan]")
+
+        else:
+            console.print(
+                f"[yellow]Unknown extension '{ext}'. "
+                "Use .json, .csv, or .html[/yellow]"
+            )
+    except Exception as exc:
+        console.print(f"[red]Export failed: {exc}[/red]")
+        raise typer.Exit(1)
 
 
 def main():
