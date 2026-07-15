@@ -268,6 +268,58 @@ Produces natural-language rationale.
 
 ------------------------------------------------------------------------
 
+# 9a. LLM Provider Abstraction — ⚠️ HIGH PRIORITY
+
+**Status:** Not yet implemented. The current POC's PDF intake agent
+(`ingestion/pdf_ingest.py`) is hard-wired to the Anthropic SDK
+(`claude-opus-4-8`) for its LLM backend. This must become
+**provider-agnostic and fully configurable** before the natural-language /
+agent layer is built out, because every LLM-driven agent above (Intent,
+Planning, Constraint, Scenario, Validation, Explanation) will otherwise
+inherit a single-vendor lock-in.
+
+**Requirement.** The platform must let each deployment choose whatever LLM
+it has available, configured — not coded. No agent should import a specific
+vendor SDK directly; all model access goes through one thin `LLMProvider`
+interface.
+
+Providers to support (selected by config, e.g. `LLM_PROVIDER` env var or a
+`providers.yaml`):
+
+-   **Anthropic** (Claude) — current default
+-   **OpenAI** / Azure OpenAI
+-   **Google** (Gemini / Vertex)
+-   **AWS Bedrock** (multi-model)
+-   **Local / offline models** — e.g. Ollama, llama.cpp, vLLM, or any
+    OpenAI-compatible endpoint. This is a first-class requirement, not an
+    afterthought: many deployments (regulated desks, air-gapped
+    environments) cannot send documents or positions to a hosted API and
+    must run a model entirely on-prem.
+
+**Design constraints:**
+
+-   A single `LLMProvider` protocol with two capabilities: (1) structured
+    extraction against a Pydantic schema, and (2) free-text generation
+    (for explanations). Providers implement these; agents depend only on
+    the protocol.
+-   Structured-output parity: where a provider lacks native schema-
+    constrained decoding, the abstraction falls back to
+    tool/function-calling or JSON-mode + validation, so callers always get
+    a validated object.
+-   Config-driven selection with per-agent overrides (e.g. a cheap local
+    model for intent classification, a stronger hosted model for
+    explanation) and graceful capability detection.
+-   The existing deterministic `heuristic` (no-LLM) path must remain as the
+    always-available offline fallback, independent of any provider.
+-   Keys/endpoints via environment/secret config only; never hard-coded.
+
+**Why high priority:** it de-risks vendor lock-in, unblocks on-prem /
+air-gapped adoption, controls cost, and is far cheaper to introduce now
+(one call site: the PDF intake agent) than after six agents each embed a
+vendor SDK.
+
+------------------------------------------------------------------------
+
 # 10. Sequential Optimization
 
 ``` text
@@ -366,6 +418,9 @@ decision-intelligence-platform/
 ## Phase 3
 
 -   Natural-language interface
+-   **LLM provider abstraction (HIGH PRIORITY)** — provider-agnostic,
+    configurable model access incl. offline/on-prem models (see §9a).
+    Land this before expanding the multi-agent layer.
 
 ## Phase 4
 
@@ -394,6 +449,8 @@ decision-intelligence-platform/
 8.  Scenario engine
 9.  Validation engine
 10. Explanation engine
+11. **LLMProvider abstraction (HIGH PRIORITY)** — vendor-agnostic,
+    config-driven, offline-capable model access (see §9a)
 
 ------------------------------------------------------------------------
 

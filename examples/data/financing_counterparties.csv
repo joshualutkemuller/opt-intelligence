@@ -1,0 +1,11 @@
+counterparty_id,name,instrument,spread_bps,capacity,min_tenor_days,max_tenor_days,capital_usage_pct,eligible_collateral
+CP_000,Bank Alpha,sec_lending,38.44,91068229.0,1,30,1.097,equity;corp_bond
+CP_001,Bank Beta,revolver,34.71,97848501.0,1,180,7.458,
+CP_002,Prime Broker A,repo,2.49,245140558.0,1,90,0.605,cash
+CP_003,Prime Broker B,repo,12.75,105710883.0,1,90,0.835,govt_bond;equity;corp_bond
+CP_004,Hedge Fund X,repo,14.69,70962206.0,1,90,1.788,cash;govt_bond
+CP_005,Insurance Co Y,revolver,35.89,63560228.0,1,180,6.897,
+CP_006,Pension Fund Z,repo,3.34,307041976.0,1,90,0.782,govt_bond
+CP_007,Bank Gamma,revolver,32.98,50744839.0,1,180,6.082,
+CP_008,Bank Delta,term_loan,127.72,51904168.0,30,365,14.234,
+CP_009,Custodian A,sec_lending,18.99,162988307.0,1,30,2.398,equity;corp_bond

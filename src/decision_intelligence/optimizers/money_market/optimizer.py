@@ -31,7 +31,7 @@ from scipy.optimize import linprog
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.optimization.base import OptimizationCapability
 
-from .data import CashPosition, MoneyMarketFund, simulate_universe
+from .data import CashPosition, MoneyMarketFund
 
 _MAX_PRIME_FRACTION = 0.40   # ≤ 40% in prime funds
 _MAX_WAM_DAYS = 60
@@ -55,11 +55,9 @@ class MoneyMarketOptimizer(OptimizationCapability):
         return errors
 
     def prepare_problem(self, request: OptimizationRequest) -> dict[str, Any]:
-        funds, position = simulate_universe(
-            n_funds=request.context.get("n_funds", 8),
-            seed=request.context.get("seed", 42),
-            context_overrides=request.context,
-        )
+        from decision_intelligence.data import load_money_market
+
+        funds, position = load_money_market(request)
 
         # Filter out funds below minimum investment
         min_alloc = request.context.get("min_investment_threshold", 250_000)

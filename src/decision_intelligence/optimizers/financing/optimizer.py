@@ -31,7 +31,7 @@ from scipy.optimize import linprog
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.optimization.base import OptimizationCapability
 
-from .data import FinancingCounterparty, FundingNeed, simulate_financing_universe
+from .data import FinancingCounterparty, FundingNeed
 
 _MAX_CP_CONCENTRATION = 0.40   # max 40% of total funding from any single counterparty
 _CAPITAL_BUDGET_PCT = 5.0      # max 5% RWA cost as % of total funding
@@ -54,11 +54,9 @@ class FinancingOptimizer(OptimizationCapability):
         return errors
 
     def prepare_problem(self, request: OptimizationRequest) -> dict[str, Any]:
-        counterparties, needs = simulate_financing_universe(
-            n_counterparties=request.context.get("n_counterparties", 10),
-            seed=request.context.get("seed", 42),
-            context_overrides=request.context,
-        )
+        from decision_intelligence.data import load_financing
+
+        counterparties, needs = load_financing(request)
 
         n = len(counterparties)   # counterparties
         m = len(needs)            # funding needs

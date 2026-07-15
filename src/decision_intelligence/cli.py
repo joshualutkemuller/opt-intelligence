@@ -9,6 +9,7 @@ Commands:
   di ingest <file.pdf>                Parse a PDF brief into a request and solve
 """
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -164,6 +165,10 @@ def cmd_run(
     mode: str = typer.Option("recommendation", "--mode", "-m", help="Execution mode: explain, scenario_analysis, recommendation"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
     output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+    data: Optional[str] = typer.Option(
+        None, "--data", "-d",
+        help="JSON file with a 'data_source' config to load real data (CSV) instead of simulated",
+    ),
 ):
     """Run an optimization for a domain and print structured results."""
     if domain not in _DOMAIN_INFO:
@@ -174,6 +179,9 @@ def cmd_run(
     metric = objective or info["objective"]
     direction = info["direction"]
     ctx = {**info["default_context"], "seed": seed}
+
+    if data:
+        ctx = {**ctx, **_load_data_source(data)}
 
     # Build scenario list
     scenarios = []
@@ -446,6 +454,35 @@ def _print_result(domain: str, result, verbose: bool):
         console.print(table)
 
     console.print()
+
+
+def _load_data_source(data: str) -> dict:
+    """Load a JSON file describing the data source into a context fragment.
+
+    The file may be either the bare data_source dict
+    (``{"type": "csv", "funds": "..."}``) or a wrapper
+    (``{"data_source": {...}, "total_cash": ...}``). Returns a dict to merge
+    into request.context.
+    """
+    path = Path(data)
+    if not path.exists():
+        console.print(f"[red]Data config not found: {path}[/red]")
+        raise typer.Exit(1)
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        console.print(f"[red]Invalid JSON in {path}: {exc}[/red]")
+        raise typer.Exit(1)
+
+    if "data_source" in payload:
+        return payload  # already a context fragment
+    if "type" in payload:
+        return {"data_source": payload}
+    console.print(
+        f"[red]{path} must contain a 'data_source' object or a bare "
+        "source dict with a 'type' key.[/red]"
+    )
+    raise typer.Exit(1)
 
 
 def _write_output(output: str | None, result, request) -> None:

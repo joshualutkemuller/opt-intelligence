@@ -29,7 +29,7 @@ from scipy.optimize import linprog
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.optimization.base import OptimizationCapability
 
-from .data import CollateralAsset, CollateralObligation, simulate_inventory
+from .data import CollateralAsset, CollateralObligation
 
 _CONCENTRATION_LIMIT = 0.60   # max 60% from any single asset class per obligation
 
@@ -51,11 +51,9 @@ class CollateralOptimizer(OptimizationCapability):
         return errors
 
     def prepare_problem(self, request: OptimizationRequest) -> dict[str, Any]:
-        assets, obligations = simulate_inventory(
-            n_assets=request.context.get("n_assets", 20),
-            seed=request.context.get("seed", 42),
-            context_overrides=request.context,
-        )
+        from decision_intelligence.data import load_collateral
+
+        assets, obligations = load_collateral(request)
 
         # Filter ineligible assets
         eligible = [a for a in assets if a.eligible]

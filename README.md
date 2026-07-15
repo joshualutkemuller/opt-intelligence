@@ -114,11 +114,50 @@ request.
 
 ---
 
+## Real Data (Configurable Data Sources)
+
+Optimizers get their inputs through a **data-provider layer**
+(`data/loaders.py`), selected per request via `context["data_source"]`. The
+default is reproducible simulated data; point it at CSV files to run on real
+data — no change to the LP formulation or optimizer code.
+
+```bash
+# generate sample CSVs from the simulator, then run on them
+di run money_market --data examples/data/money_market_source.json
+```
+
+`--data` takes a JSON file describing the source:
+
+```json
+{
+  "data_source": {
+    "type": "csv",
+    "funds": "examples/data/mmf_universe.csv",
+    "position": "examples/data/cash_position.csv"
+  }
+}
+```
+
+Per domain, the CSV columns map 1:1 to the dataclass fields in each optimizer's
+`data.py` (list fields like `eligible_asset_classes` are `;`-separated):
+
+| Domain | Required CSVs (keys) |
+|---|---|
+| `collateral` | `assets`, `obligations` |
+| `money_market` | `funds` (+ optional `position`) |
+| `financing` | `counterparties`, `needs` |
+
+`{"type": "simulated"}` (or omitting `data_source`) keeps the built-in
+generator. Adding a new backend (Parquet, SQL, a REST feed) means implementing
+one loader that returns the same dataclass tuple — the optimizers are unchanged.
+
+---
+
 ## Extension Points
 
 | What to extend | Where |
 |---|---|
-| Real data | Replace `data.py` in each optimizer package |
+| Real data | Add a loader in `data/loaders.py` returning the same dataclass tuple; select via `context["data_source"]` (CSV built in) |
 | New optimizer domain | Subclass `OptimizationCapability`, register in `OptimizerRegistry` |
 | Production solver | Replace `scipy.optimize.linprog` calls in `optimizer.py` per domain |
 | LLM / document intake | `ingestion/` — swap rules or the extraction schema; both backends produce `OptimizationRequest` objects |
@@ -143,7 +182,8 @@ src/decision_intelligence/
 │   ├── mapper.py       #   loose extraction → strict validated request
 │   └── pdf_ingest.py   #   llm (Claude native PDF) + heuristic backends
 ├── export/             # JSON / CSV / self-contained HTML report
-└── data/               # Data layer stubs
+└── data/               # Configurable data-provider layer
+    └── loaders.py      #   simulated (default) + CSV; returns optimizer dataclasses
 tests/
 examples/run_demo.py
 examples/make_sample_pdf.py   # generates a sample brief PDF

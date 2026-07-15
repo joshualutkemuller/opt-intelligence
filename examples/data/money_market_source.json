@@ -1,0 +1,7 @@
+{
+  "data_source": {
+    "type": "csv",
+    "funds": "examples/data/mmf_universe.csv",
+    "position": "examples/data/cash_position.csv"
+  }
+}
