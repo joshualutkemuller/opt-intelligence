@@ -6,6 +6,7 @@ Commands:
   di info <domain>                    Describe a domain's capabilities
   di run <domain> [OPTIONS]           Run an optimization
   di run <domain> --scenario stress   Run with scenario analysis
+  di ingest <file.pdf>                Parse a PDF brief into a request and solve
 """
 
 import sys
@@ -214,6 +215,111 @@ def cmd_run(
 
     _print_result(domain, result, verbose)
     _write_output(output, result, req)
+
+
+@app.command("ingest")
+def cmd_ingest(
+    pdf: str = typer.Argument(..., help="Path to a PDF brief describing the optimization"),
+    backend: str = typer.Option(
+        "auto", "--backend", "-b",
+        help="Extraction backend: auto | llm | heuristic (auto uses LLM when ANTHROPIC_API_KEY is set)",
+    ),
+    seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
+    show_extraction: bool = typer.Option(
+        True, "--show-extraction/--no-show-extraction",
+        help="Print what the intake agent understood before solving",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Only parse the PDF into a request; do not solve",
+    ),
+    output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+):
+    """Ingest a PDF brief into an OptimizationRequest and route it through the orchestrator."""
+    from decision_intelligence.ingestion import IngestionError, ingest_pdf, llm_available
+
+    path = Path(pdf)
+    if not path.exists():
+        console.print(f"[red]PDF not found: {path}[/red]")
+        raise typer.Exit(1)
+
+    if backend not in ("auto", "llm", "heuristic"):
+        console.print(f"[red]Unknown backend '{backend}'. Valid: auto, llm, heuristic[/red]")
+        raise typer.Exit(1)
+
+    chosen = backend
+    if chosen == "auto":
+        chosen = "llm" if llm_available() else "heuristic"
+
+    label = {
+        "llm": "Claude (native PDF, claude-opus-4-8)",
+        "heuristic": "offline heuristic (pypdf + rules)",
+    }[chosen]
+
+    console.print()
+    console.print(Panel(
+        f"[bold blue]PDF INGESTION[/bold blue]\n\n"
+        f"[dim]Source:[/dim]  {path.name}\n"
+        f"[dim]Backend:[/dim] {label}",
+        border_style="blue",
+        padding=(1, 2),
+    ))
+
+    try:
+        with console.status(f"[dim]Reading {path.name}…[/dim]", spinner="dots"):
+            req, extracted = ingest_pdf(path, backend=chosen, seed=seed)
+    except IngestionError as exc:
+        console.print(f"[red]Ingestion failed: {exc}[/red]")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Ingestion error: {exc}[/red]")
+        raise typer.Exit(1)
+
+    if show_extraction:
+        _print_extraction(req, extracted)
+
+    if dry_run:
+        console.print("[dim]--dry-run: parsed request only, not solving.[/dim]\n")
+        return
+
+    orch, audit = _build_registry()
+    with console.status(f"[dim]Solving {req.domain}…[/dim]", spinner="dots"):
+        result = orch.run(req)
+
+    _print_result(req.domain, result, verbose)
+    _write_output(output, result, req)
+
+
+def _print_extraction(req, extracted):
+    """Show what the intake agent recovered from the document."""
+    console.print("[bold blue]  INTAKE AGENT — EXTRACTED REQUEST[/bold blue]")
+    console.print(
+        f"  [dim]domain[/dim]       [cyan]{req.domain}[/cyan]   "
+        f"[dim]portfolio[/dim] {req.portfolio_id}   "
+        f"[dim]requestor[/dim] {req.requestor}"
+    )
+    console.print(
+        f"  [dim]objective[/dim]    {req.objective.direction.value} "
+        f"[yellow]{req.objective.metric}[/yellow]   "
+        f"[dim]mode[/dim] {req.execution_mode.value}"
+    )
+
+    if req.constraints:
+        table = Table(box=box.SIMPLE, show_header=True, header_style="blue")
+        table.add_column("Constraint", style="white")
+        table.add_column("Type", style="dim")
+        table.add_column("Parameters", style="magenta")
+        for c in req.constraints:
+            params = ", ".join(f"{k}={v}" for k, v in c.parameters.items()) or "—"
+            table.add_row(c.name, c.constraint_type.value, params)
+        console.print(table)
+
+    if req.scenarios:
+        console.print("[bold blue]  SCENARIOS DETECTED[/bold blue]")
+        for s in req.scenarios:
+            ov = ", ".join(f"{k}={v}" for k, v in s.parameter_overrides.items()) or "—"
+            console.print(f"  [white]{s.name}[/white] [dim]({s.scenario_type.value})[/dim]  [magenta]{ov}[/magenta]")
+        console.print()
 
 
 def _print_result(domain: str, result, verbose: bool):
