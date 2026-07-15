@@ -250,6 +250,14 @@ def cmd_ingest(
     chosen = backend
     if chosen == "auto":
         chosen = "llm" if llm_available() else "heuristic"
+    elif chosen == "llm" and not llm_available():
+        console.print(
+            "[red]LLM backend requested but unavailable.[/red] "
+            "Set [bold]ANTHROPIC_API_KEY[/bold] and install the extra "
+            "([bold]pip install -e '.[ingest]'[/bold]), or use "
+            "[bold]--backend heuristic[/bold] for the offline parser."
+        )
+        raise typer.Exit(1)
 
     label = {
         "llm": "Claude (native PDF, claude-opus-4-8)",
