@@ -153,6 +153,47 @@ one loader that returns the same dataclass tuple — the optimizers are unchange
 
 ---
 
+## Execution Modes & Approval Governance
+
+Every request carries an **execution mode** that maps to a human-approval tier.
+The optimization math runs identically in all modes; what the governance layer
+enforces is whether the *action* the mode implies may proceed.
+
+| Tier | Mode | Action | Gated? |
+|---|---|---|---|
+| 0 | `explain` | analysis | auto-allowed |
+| 1 | `scenario_analysis` | what-if analysis | auto-allowed |
+| 2 | `recommendation` | produce a recommendation | auto-allowed |
+| 3 | `stage` | stage a transaction | **approval required** |
+| 4 | `execute` | execute a transaction | **approval required** |
+
+Advisory tiers (0–2) are auto-allowed. State-changing tiers (3–4) are
+**withheld** (`pending`) until an authorized approver grants them — then the
+action is performed (`approved`) or refused (`rejected`). Every transition is
+written to the append-only audit log.
+
+```bash
+# gated — the recommendation is computed but the action is withheld
+di run financing --mode execute
+#   ⏳ GOVERNANCE  mode execute (tier 4)  → APPROVAL REQUIRED
+
+# approve in one shot
+di run financing --mode execute --approve-as jane.doe --reason "within limits"
+#   ✓ GOVERNANCE  → APPROVED   (transaction_executed recorded in audit log)
+
+# reject
+di run financing --mode stage --approve-as risk.officer --reject --reason "over limit"
+#   ✗ GOVERNANCE  → REJECTED
+```
+
+Programmatically, an `OptimizationOrchestrator` is gated by passing a
+`GovernanceController`; results then carry a `governance` `ApprovalRecord`. A
+two-phase flow (`controller.submit_decision(request, decision)` then re-run) is
+supported for API-style approvals, and the policy accepts an approver allowlist.
+An orchestrator built without a controller is ungoverned (backward compatible).
+
+---
+
 ## Extension Points
 
 | What to extend | Where |
@@ -162,7 +203,7 @@ one loader that returns the same dataclass tuple — the optimizers are unchange
 | Production solver | Replace `scipy.optimize.linprog` calls in `optimizer.py` per domain |
 | LLM / document intake | `ingestion/` — swap rules or the extraction schema; both backends produce `OptimizationRequest` objects |
 | REST API | Wire `OptimizationOrchestrator` into FastAPI routes in `api/` |
-| Approval workflow | Extend `AuditLog` and add approval state in `governance/` |
+| Approval workflow | Implemented in `governance/approvals.py` (policy, store, controller) — extend the policy for notional/PnL thresholds or real approver identity |
 
 ---
 
@@ -176,7 +217,8 @@ src/decision_intelligence/
 │   ├── collateral/     # LP: minimize funding cost
 │   ├── money_market/   # LP: maximize yield
 │   └── financing/      # LP: minimize spread
-├── governance/         # AuditLog
+├── governance/         # AuditLog + execution-mode approval enforcement
+│   └── approvals.py    #   ApprovalPolicy / ApprovalStore / GovernanceController
 ├── ingestion/          # PDF → OptimizationRequest (intake agent)
 │   ├── schema.py       #   loose LLM-friendly extraction schema
 │   ├── mapper.py       #   loose extraction → strict validated request

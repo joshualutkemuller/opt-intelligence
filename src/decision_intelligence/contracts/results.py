@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .approvals import ApprovalRecord
+
 
 class SolveStatus(str, Enum):
     OPTIMAL = "optimal"
@@ -50,6 +52,7 @@ class OptimizationResult(BaseModel):
         default_factory=lambda: ValidationResult(passed=True)
     )
     explanation: str = ""
+    governance: ApprovalRecord | None = None
     scenario_results: dict[str, "OptimizationResult"] = Field(default_factory=dict)
     solver_metadata: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

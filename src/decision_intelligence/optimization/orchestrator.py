@@ -14,6 +14,7 @@ from typing import Any
 from decision_intelligence.contracts import OptimizationRequest, OptimizationResult
 from decision_intelligence.contracts.results import SolveStatus, ValidationResult
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.governance.approvals import ApprovalDecision, GovernanceController
 from decision_intelligence.governance.audit import AuditLog
 
 from .registry import OptimizerRegistry
@@ -27,11 +28,22 @@ class OptimizationOrchestrator:
     lifecycle (including scenario analysis if requested), and returns a result.
     """
 
-    def __init__(self, registry: OptimizerRegistry, audit: AuditLog | None = None) -> None:
+    def __init__(
+        self,
+        registry: OptimizerRegistry,
+        audit: AuditLog | None = None,
+        governance: GovernanceController | None = None,
+    ) -> None:
         self.registry = registry
         self.audit = audit or AuditLog()
+        # When set, execution-mode approval is enforced and recorded on results.
+        self.governance = governance
 
-    def run(self, request: OptimizationRequest) -> OptimizationResult:
+    def run(
+        self,
+        request: OptimizationRequest,
+        approval: ApprovalDecision | None = None,
+    ) -> OptimizationResult:
         logger.info(
             "Orchestrator received request %s domain=%s mode=%s",
             request.request_id,
@@ -77,6 +89,11 @@ class OptimizationOrchestrator:
 
         if request.scenarios and result.status == SolveStatus.OPTIMAL:
             result = self._run_scenarios(request, result, optimizer)
+
+        # Execution-mode governance: gate state-changing tiers behind approval.
+        if self.governance is not None and result.status == SolveStatus.OPTIMAL:
+            record = self.governance.evaluate(request, approval)
+            result = result.model_copy(update={"governance": record})
 
         logger.info(
             "Request %s complete: status=%s improvement=%.2f%%",

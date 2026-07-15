@@ -34,6 +34,13 @@ from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.export import export_csv, export_json, generate_report
+from decision_intelligence.contracts.approvals import ApprovalStatus
+from decision_intelligence.governance import (
+    ApprovalDecision,
+    ApprovalPolicy,
+    ApprovalStore,
+    GovernanceController,
+)
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
@@ -105,7 +112,8 @@ def _build_registry() -> tuple[OptimizationOrchestrator, AuditLog]:
     reg.register(CollateralOptimizer())
     reg.register(MoneyMarketOptimizer())
     reg.register(FinancingOptimizer())
-    return OptimizationOrchestrator(reg, audit), audit
+    governance = GovernanceController(ApprovalPolicy(), ApprovalStore(), audit)
+    return OptimizationOrchestrator(reg, audit, governance), audit
 
 
 def _bar(frac: float, width: int = 24) -> str:
@@ -169,6 +177,14 @@ def cmd_run(
         None, "--data", "-d",
         help="JSON file with a 'data_source' config to load real data (CSV) instead of simulated",
     ),
+    approve_as: Optional[str] = typer.Option(
+        None, "--approve-as",
+        help="Approver name — grants approval for gated modes (stage, execute) in one shot",
+    ),
+    reject: bool = typer.Option(
+        False, "--reject", help="Reject the gated action (use with --approve-as as the approver)",
+    ),
+    reason: str = typer.Option("", "--reason", help="Reason recorded with an approve/reject decision"),
 ):
     """Run an optimization for a domain and print structured results."""
     if domain not in _DOMAIN_INFO:
@@ -218,8 +234,12 @@ def cmd_run(
 
     orch, audit = _build_registry()
 
+    approval = None
+    if approve_as:
+        approval = ApprovalDecision(approver=approve_as, granted=not reject, reason=reason)
+
     with console.status(f"[dim]Solving {domain}…[/dim]", spinner="dots"):
-        result = orch.run(req)
+        result = orch.run(req, approval=approval)
 
     _print_result(domain, result, verbose)
     _write_output(output, result, req)
@@ -338,6 +358,51 @@ def _print_extraction(req, extracted):
         console.print()
 
 
+_GOV_STYLE = {
+    ApprovalStatus.NOT_REQUIRED: ("green", "✓", "auto-allowed"),
+    ApprovalStatus.PENDING: ("yellow", "⏳", "APPROVAL REQUIRED"),
+    ApprovalStatus.APPROVED: ("green", "✓", "APPROVED"),
+    ApprovalStatus.REJECTED: ("red", "✗", "REJECTED"),
+}
+
+
+def _print_governance(gov):
+    """Render the execution-mode governance decision, if present."""
+    if gov is None:
+        return
+
+    color, glyph, label = _GOV_STYLE.get(gov.status, ("white", "•", gov.status.value))
+    line = (
+        f"[{color}]{glyph} GOVERNANCE[/{color}]  "
+        f"mode [cyan]{gov.execution_mode}[/cyan] (tier {gov.tier})  "
+        f"action [white]{gov.action}[/white]  "
+        f"→ [{color}]{label}[/{color}]"
+    )
+    console.print(f"  {line}")
+
+    if gov.status == ApprovalStatus.PENDING:
+        console.print(
+            f"  [dim]Action withheld. Approve with[/dim] "
+            f"[bold]--approve-as <name>[/bold]  "
+            f"[dim](approval_id: {gov.approval_id})[/dim]"
+        )
+    elif gov.status == ApprovalStatus.APPROVED:
+        performed = "performed" if gov.action_performed else "not performed"
+        console.print(
+            f"  [dim]{gov.action.capitalize()} {performed} · "
+            f"approver: {gov.approver}"
+            + (f" · {gov.reason}" if gov.reason else "")
+            + "[/dim]"
+        )
+    elif gov.status == ApprovalStatus.REJECTED:
+        console.print(
+            f"  [dim]Action withheld · approver: {gov.approver}"
+            + (f" · {gov.reason}" if gov.reason else "")
+            + "[/dim]"
+        )
+    console.print()
+
+
 def _print_result(domain: str, result, verbose: bool):
     console.print()
 
@@ -359,6 +424,8 @@ def _print_result(domain: str, result, verbose: bool):
     if result.status != SolveStatus.OPTIMAL:
         console.print(f"[red]{result.explanation}[/red]")
         return
+
+    _print_governance(result.governance)
 
     # ── Progress bar ──
     frac = min(1.0, result.improvement_pct / 100)

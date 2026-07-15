@@ -353,14 +353,28 @@ Recommendation
 
 # 12. Human Approval Levels
 
-  Tier   Capability
-  ------ -------------------------------
-  0      Explain
-  1      Scenario analysis
-  2      Recommendation
-  3      Stage transaction
-  4      Execute
-  5      Change production constraints
+  Tier   Capability                        Status
+  ------ ------------------------------- ---------------
+  0      Explain                          ✅ enforced
+  1      Scenario analysis                ✅ enforced
+  2      Recommendation                   ✅ enforced
+  3      Stage transaction                ✅ enforced (approval-gated)
+  4      Execute                          ✅ enforced (approval-gated)
+  5      Change production constraints    ⬜ not yet
+
+**Implemented (POC):** `governance/approvals.py` provides an `ApprovalPolicy`
+(which tiers are gated + approver allowlist), an `ApprovalStore` (decisions
+keyed by a stable action fingerprint), and a `GovernanceController` that the
+orchestrator uses to enforce the tiers. Tiers 0–2 are auto-allowed; tiers 3–4
+run the optimization but withhold the action until an authorized approver grants
+it, at which point it is performed (`approved`) or refused (`rejected`). Every
+transition is recorded in the append-only audit log, and each result carries an
+immutable `ApprovalRecord`. Approvals can be supplied inline (one-shot) or via a
+two-phase submit-then-rerun flow.
+
+**Next:** tier 5 (production-constraint changes), notional/PnL-threshold policies
+that escalate approval level by transaction size, and real approver identity /
+SSO instead of a name string.
 
 ------------------------------------------------------------------------
 
