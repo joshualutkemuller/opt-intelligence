@@ -4,10 +4,11 @@ validated :class:`OptimizationRequest`.
 
 Two extraction backends are provided:
 
-* **llm** (default when ``ANTHROPIC_API_KEY`` is set and the ``anthropic`` SDK
-  is installed): Claude reads the PDF natively via a base64 document block and
-  returns a structured :class:`ExtractedRequest` using the Messages ``parse``
-  helper (schema-validated structured output).
+* **llm** (used when an LLM provider is configured — see
+  :mod:`decision_intelligence.llm`): a provider-agnostic extractor. Any vendor
+  (Anthropic, OpenAI/Azure, or a local OpenAI-compatible model) reads the
+  document and returns a schema-validated :class:`ExtractedRequest`. Selected by
+  configuration, never hard-wired to one SDK.
 
 * **heuristic** (offline fallback): the PDF text is extracted with ``pypdf`` and
   parsed with regexes / keyword rules. No network, no API key — this keeps the
@@ -20,20 +21,19 @@ returns an ``(OptimizationRequest, ExtractedRequest)`` pair.
 
 from __future__ import annotations
 
-import base64
-import os
 import re
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from decision_intelligence.contracts import OptimizationRequest
 
 from .mapper import IngestionError, to_optimization_request
 from .schema import ExtractedConstraint, ExtractedRequest, ExtractedScenario
 
-Backend = Literal["auto", "llm", "heuristic"]
+if TYPE_CHECKING:
+    from decision_intelligence.llm import LLMProvider
 
-_MODEL = "claude-opus-4-8"
+Backend = Literal["auto", "llm", "heuristic"]
 
 _SYSTEM_PROMPT = (
     "You are the intake agent for a financial optimization platform. You read a "
@@ -50,62 +50,60 @@ _SYSTEM_PROMPT = (
 )
 
 
+_EXTRACT_INSTRUCTION = (
+    "Extract the optimization request described in this document into the "
+    "structured schema."
+)
+
+
 # --------------------------------------------------------------------------- #
 # Backend availability
 # --------------------------------------------------------------------------- #
 def llm_available() -> bool:
-    """True when the Anthropic path can be used."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return False
+    """True when *some* LLM provider is configured (any vendor, incl. local)."""
+    from decision_intelligence.llm import provider_available
+
+    return provider_available()
+
+
+# --------------------------------------------------------------------------- #
+# LLM backend (provider-agnostic)
+# --------------------------------------------------------------------------- #
+def extract_with_llm(
+    pdf_path: Path,
+    *,
+    provider: "LLMProvider | None" = None,
+    model: str | None = None,
+) -> ExtractedRequest:
+    """Extract via a configured LLM provider (schema-validated output).
+
+    The provider is resolved from configuration (``DI_LLM_PROVIDER`` etc.) unless
+    one is passed explicitly. When an LLM backend is explicitly requested but no
+    provider is configured, this defaults to Anthropic (Claude) for backward
+    compatibility. Native-PDF providers read the document directly; others use
+    extracted text — either way the return type is identical.
+    """
+    from decision_intelligence.llm import LLMError
+
+    resolved = provider or _default_provider(model)
+
     try:
-        import anthropic  # noqa: F401
-    except ImportError:
-        return False
-    return True
+        return resolved.extract(
+            ExtractedRequest,
+            instruction=_EXTRACT_INSTRUCTION,
+            system=_SYSTEM_PROMPT,
+            pdf_path=pdf_path if resolved.supports_native_pdf else None,
+            text=None if resolved.supports_native_pdf else resolved.pdf_to_text(pdf_path),
+        )
+    except LLMError as exc:
+        raise IngestionError(str(exc)) from exc
 
 
-# --------------------------------------------------------------------------- #
-# LLM backend
-# --------------------------------------------------------------------------- #
-def extract_with_llm(pdf_path: Path, *, model: str = _MODEL) -> ExtractedRequest:
-    """Extract via Claude reading the PDF natively (schema-validated output)."""
-    import anthropic
+def _default_provider(model: str | None) -> "LLMProvider":
+    """Resolve a provider for an explicit LLM request (Anthropic fallback)."""
+    from decision_intelligence.llm import AnthropicProvider, resolve_provider
 
-    data = base64.standard_b64encode(pdf_path.read_bytes()).decode("ascii")
-    client = anthropic.Anthropic()
-
-    message = client.messages.parse(
-        model=model,
-        max_tokens=4096,
-        system=_SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "Extract the optimization request described in this "
-                            "document into the structured schema."
-                        ),
-                    },
-                ],
-            }
-        ],
-        output_format=ExtractedRequest,
-    )
-    parsed = message.parsed_output
-    if parsed is None:
-        raise IngestionError("LLM returned no structured extraction.")
-    return parsed
+    return resolve_provider(model=model) or AnthropicProvider(model)
 
 
 # --------------------------------------------------------------------------- #
@@ -264,10 +262,15 @@ def ingest_pdf(
     *,
     backend: Backend = "auto",
     seed: int | None = None,
-    model: str = _MODEL,
+    model: str | None = None,
+    provider: "LLMProvider | None" = None,
 ) -> tuple[OptimizationRequest, ExtractedRequest]:
     """
     Ingest a PDF into a validated OptimizationRequest.
+
+    ``backend='auto'`` uses an LLM provider when one is configured, else the
+    offline heuristic. Pass an explicit ``provider`` (any vendor / local model)
+    or a ``model`` id to override configuration.
 
     Returns ``(request, extracted)`` so callers can inspect the intermediate
     extraction (useful for showing "what the intake agent understood").
@@ -278,10 +281,10 @@ def ingest_pdf(
 
     chosen = backend
     if chosen == "auto":
-        chosen = "llm" if llm_available() else "heuristic"
+        chosen = "llm" if (provider is not None or llm_available()) else "heuristic"
 
     if chosen == "llm":
-        extracted = extract_with_llm(path, model=model)
+        extracted = extract_with_llm(path, provider=provider, model=model)
     elif chosen == "heuristic":
         extracted = extract_heuristic(path)
     else:  # pragma: no cover

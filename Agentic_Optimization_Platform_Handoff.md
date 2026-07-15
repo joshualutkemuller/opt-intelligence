@@ -268,14 +268,25 @@ Produces natural-language rationale.
 
 ------------------------------------------------------------------------
 
-# 9a. LLM Provider Abstraction — ⚠️ HIGH PRIORITY
+# 9a. LLM Provider Abstraction — ✅ IMPLEMENTED (POC)
 
-**Status:** Not yet implemented. The current POC's PDF intake agent
-(`ingestion/pdf_ingest.py`) is hard-wired to the Anthropic SDK
-(`claude-opus-4-8`) for its LLM backend. This must become
+**Status:** Implemented in `decision_intelligence/llm/`. The PDF intake agent
+no longer imports a vendor SDK directly — all model access goes through a single
+`LLMProvider` interface selected by configuration (`DI_LLM_PROVIDER`,
+`DI_LLM_MODEL`, `DI_LLM_BASE_URL`, `DI_LLM_API_KEY`). Shipped providers:
+`AnthropicProvider` (Claude, native PDF) and `OpenAIProvider` (OpenAI / Azure /
+any OpenAI-compatible endpoint, **including local/offline models via
+`DI_LLM_BASE_URL`** — Ollama, vLLM, llama.cpp). `register_provider()` allows
+in-house/offline providers at runtime; with none configured, ingestion falls
+back to the deterministic offline `heuristic` backend. Structured-output parity
+is handled per provider (native schema decoding, else JSON-mode + Pydantic
+validation). This is the single seam every future LLM agent (Intent, Planning,
+Constraint, Scenario, Validation, Explanation) must reuse — none may import a
+vendor SDK directly.
+
+**Original rationale (retained):** the LLM layer had to become
 **provider-agnostic and fully configurable** before the natural-language /
-agent layer is built out, because every LLM-driven agent above (Intent,
-Planning, Constraint, Scenario, Validation, Explanation) will otherwise
+agent layer is built out, because every LLM-driven agent would otherwise
 inherit a single-vendor lock-in.
 
 **Requirement.** The platform must let each deployment choose whatever LLM
@@ -432,9 +443,9 @@ decision-intelligence-platform/
 ## Phase 3
 
 -   Natural-language interface
--   **LLM provider abstraction (HIGH PRIORITY)** — provider-agnostic,
-    configurable model access incl. offline/on-prem models (see §9a).
-    Land this before expanding the multi-agent layer.
+-   ✅ **LLM provider abstraction** — provider-agnostic, configurable model
+    access incl. offline/on-prem models (see §9a). Implemented; reuse this
+    seam as the multi-agent layer expands.
 
 ## Phase 4
 
@@ -463,8 +474,8 @@ decision-intelligence-platform/
 8.  Scenario engine
 9.  Validation engine
 10. Explanation engine
-11. **LLMProvider abstraction (HIGH PRIORITY)** — vendor-agnostic,
-    config-driven, offline-capable model access (see §9a)
+11. ✅ **LLMProvider abstraction** — vendor-agnostic, config-driven,
+    offline-capable model access (see §9a) — implemented
 
 ------------------------------------------------------------------------
 

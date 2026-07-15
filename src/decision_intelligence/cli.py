@@ -250,7 +250,14 @@ def cmd_ingest(
     pdf: str = typer.Argument(..., help="Path to a PDF brief describing the optimization"),
     backend: str = typer.Option(
         "auto", "--backend", "-b",
-        help="Extraction backend: auto | llm | heuristic (auto uses LLM when ANTHROPIC_API_KEY is set)",
+        help="Extraction backend: auto | llm | heuristic (auto uses an LLM provider when configured)",
+    ),
+    provider: Optional[str] = typer.Option(
+        None, "--provider",
+        help="LLM provider: anthropic | openai | <registered> (default: DI_LLM_PROVIDER / auto-detect)",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", help="Model id override (default: DI_LLM_MODEL / provider default)",
     ),
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
@@ -265,6 +272,7 @@ def cmd_ingest(
 ):
     """Ingest a PDF brief into an OptimizationRequest and route it through the orchestrator."""
     from decision_intelligence.ingestion import IngestionError, ingest_pdf, llm_available
+    from decision_intelligence.llm import LLMConfigError, resolve_provider
 
     path = Path(pdf)
     if not path.exists():
@@ -275,22 +283,34 @@ def cmd_ingest(
         console.print(f"[red]Unknown backend '{backend}'. Valid: auto, llm, heuristic[/red]")
         raise typer.Exit(1)
 
+    # Resolve an LLM provider if one is requested / configured.
+    llm_provider = None
+    want_llm = backend == "llm" or (backend == "auto" and (provider or llm_available()))
+    if want_llm:
+        try:
+            llm_provider = resolve_provider(provider, model=model)
+        except LLMConfigError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1)
+
     chosen = backend
     if chosen == "auto":
-        chosen = "llm" if llm_available() else "heuristic"
-    elif chosen == "llm" and not llm_available():
+        chosen = "llm" if llm_provider is not None else "heuristic"
+    elif chosen == "llm" and llm_provider is None:
         console.print(
-            "[red]LLM backend requested but unavailable.[/red] "
-            "Set [bold]ANTHROPIC_API_KEY[/bold] and install the extra "
+            "[red]LLM backend requested but no provider is configured.[/red] "
+            "Set [bold]DI_LLM_PROVIDER[/bold] (+ credentials / [bold]DI_LLM_BASE_URL[/bold] "
+            "for local models) and install the extra "
             "([bold]pip install -e '.[ingest]'[/bold]), or use "
             "[bold]--backend heuristic[/bold] for the offline parser."
         )
         raise typer.Exit(1)
 
-    label = {
-        "llm": "Claude (native PDF, claude-opus-4-8)",
-        "heuristic": "offline heuristic (pypdf + rules)",
-    }[chosen]
+    if chosen == "llm":
+        native = "native PDF" if llm_provider.supports_native_pdf else "text"
+        label = f"LLM · {llm_provider.name} ({llm_provider.model}, {native})"
+    else:
+        label = "offline heuristic (pypdf + rules)"
 
     console.print()
     console.print(Panel(
@@ -303,7 +323,7 @@ def cmd_ingest(
 
     try:
         with console.status(f"[dim]Reading {path.name}…[/dim]", spinner="dots"):
-            req, extracted = ingest_pdf(path, backend=chosen, seed=seed)
+            req, extracted = ingest_pdf(path, backend=chosen, seed=seed, provider=llm_provider)
     except IngestionError as exc:
         console.print(f"[red]Ingestion failed: {exc}[/red]")
         raise typer.Exit(1)

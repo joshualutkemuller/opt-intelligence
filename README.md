@@ -89,7 +89,7 @@ brief) and turn it into a validated `OptimizationRequest` that flows through the
 same orchestrator → optimizer pipeline as any other request.
 
 ```bash
-pip install -e ".[ingest]"          # pypdf + anthropic + reportlab
+pip install -e ".[ingest]"          # pypdf + reportlab (backends below add SDKs)
 
 python examples/make_sample_pdf.py  # writes examples/sample_brief.pdf
 di ingest examples/sample_brief.pdf
@@ -99,18 +99,54 @@ Two extraction backends:
 
 | Backend | When used | How it works |
 |---|---|---|
-| `llm` | `ANTHROPIC_API_KEY` is set | Claude (`claude-opus-4-8`) reads the PDF natively and returns a schema-validated extraction via structured outputs |
-| `heuristic` | offline fallback (default when no key) | `pypdf` text extraction + regex/keyword rules — deterministic, no network |
+| `llm` | an LLM provider is configured | A **provider-agnostic** extractor (see below) returns a schema-validated extraction |
+| `heuristic` | offline fallback (default when no provider) | `pypdf` text extraction + regex/keyword rules — deterministic, no network |
 
 `di ingest` auto-selects the backend (`--backend llm|heuristic|auto`), prints
 what the intake agent understood (domain, objective, constraints, scenarios),
-then solves. Useful flags: `--dry-run` (parse only), `--no-show-extraction`,
-`--output result.json|allocs.csv|report.html`.
+then solves. Useful flags: `--provider`, `--model`, `--dry-run` (parse only),
+`--no-show-extraction`, `--output result.json|allocs.csv|report.html`.
 
 The pipeline is: **PDF → `ExtractedRequest` (loose) → mapper → `OptimizationRequest` (strict) → orchestrator**.
 Keeping the loose extraction schema separate from the strict contract lets the
 parse step be best-effort while the optimizer still receives a fully-validated
 request.
+
+### LLM provider (vendor-agnostic, configurable, offline-capable)
+
+The intake agent never imports a vendor SDK directly — all model access goes
+through one `LLMProvider` interface (`decision_intelligence.llm`), selected by
+configuration. This is the single seam every future LLM agent will reuse.
+
+```bash
+pip install -e ".[llm-anthropic]"   # Claude (native PDF)
+pip install -e ".[llm-openai]"      # OpenAI / Azure / any OpenAI-compatible endpoint
+```
+
+Selection is by environment or flags:
+
+| Variable | Purpose |
+|---|---|
+| `DI_LLM_PROVIDER` | `anthropic` \| `openai` \| a registered name (else auto-detected) |
+| `DI_LLM_MODEL` | model id (provider default otherwise) |
+| `DI_LLM_BASE_URL` | OpenAI-compatible endpoint — **local models**: Ollama / vLLM / llama.cpp |
+| `DI_LLM_API_KEY` | generic key (falls back to `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) |
+
+```bash
+# hosted Claude
+ANTHROPIC_API_KEY=sk-… di ingest examples/sample_brief.pdf --provider anthropic
+
+# fully offline — a local model, no data leaves the host
+DI_LLM_PROVIDER=openai DI_LLM_BASE_URL=http://localhost:11434/v1 \
+  DI_LLM_MODEL=llama3.1 di ingest examples/sample_brief.pdf
+```
+
+Native-PDF providers (Anthropic) read the document directly; others receive
+extracted text — the return type is identical either way. Structured-output
+parity is handled per-provider (native schema decoding, else JSON-mode +
+Pydantic validation). Register in-house/offline providers at runtime with
+`decision_intelligence.llm.register_provider(...)`. With no provider configured,
+ingestion falls back to the deterministic `heuristic` backend.
 
 ---
 
@@ -202,6 +238,7 @@ An orchestrator built without a controller is ungoverned (backward compatible).
 | New optimizer domain | Subclass `OptimizationCapability`, register in `OptimizerRegistry` |
 | Production solver | Replace `scipy.optimize.linprog` calls in `optimizer.py` per domain |
 | LLM / document intake | `ingestion/` — swap rules or the extraction schema; both backends produce `OptimizationRequest` objects |
+| LLM provider | `llm/` — add a provider or `register_provider(...)`; selected via `DI_LLM_*` config (hosted or local/offline) |
 | REST API | Wire `OptimizationOrchestrator` into FastAPI routes in `api/` |
 | Approval workflow | Implemented in `governance/approvals.py` (policy, store, controller) — extend the policy for notional/PnL thresholds or real approver identity |
 
@@ -222,7 +259,12 @@ src/decision_intelligence/
 ├── ingestion/          # PDF → OptimizationRequest (intake agent)
 │   ├── schema.py       #   loose LLM-friendly extraction schema
 │   ├── mapper.py       #   loose extraction → strict validated request
-│   └── pdf_ingest.py   #   llm (Claude native PDF) + heuristic backends
+│   └── pdf_ingest.py   #   provider-agnostic llm + heuristic backends
+├── llm/                # Vendor-agnostic LLM layer (config-driven)
+│   ├── base.py         #   LLMProvider protocol (extract / generate)
+│   ├── anthropic_provider.py  # Claude (native PDF)
+│   ├── openai_provider.py     # OpenAI / Azure / local (Ollama, vLLM, llama.cpp)
+│   └── config.py       #   resolve_provider / register_provider
 ├── export/             # JSON / CSV / self-contained HTML report
 └── data/               # Configurable data-provider layer
     └── loaders.py      #   simulated (default) + CSV; returns optimizer dataclasses
