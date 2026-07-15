@@ -26,14 +26,18 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
-# PDF ingestion. 'pypdf' powers the offline heuristic backend; 'anthropic'
-# enables the LLM backend (Claude reads the PDF natively). 'reportlab' is only
-# needed to regenerate the sample brief.
+# PDF ingestion. 'pypdf' powers the offline heuristic backend and the text
+# fallback for non-native providers. 'reportlab' regenerates the sample brief.
+# LLM providers are optional and pluggable — install whichever you use:
+#   anthropic  → Claude (native PDF)
+#   openai     → OpenAI / Azure / any OpenAI-compatible endpoint (incl. local
+#                Ollama / vLLM / llama.cpp via DI_LLM_BASE_URL)
 ingest = [
     "pypdf>=4.0",
-    "anthropic>=0.40",
     "reportlab>=4.0",
 ]
+llm-anthropic = ["anthropic>=0.40"]
+llm-openai = ["openai>=1.40"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

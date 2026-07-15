@@ -1,0 +1,4 @@
+obligation_id,counterparty,required_value,eligible_asset_classes
+OBL_001,Counterparty A,50000000.0,govt_bond;corp_bond;cash
+OBL_002,Counterparty B,30000000.0,govt_bond;cash
+OBL_003,Counterparty C,20000000.0,govt_bond;corp_bond;equity;cash

@@ -1,0 +1,9 @@
+fund_id,label,provider,yield_7day,expense_ratio_bps,wam_days,daily_liquidity_pct,weekly_liquidity_pct,min_investment,credit_quality,switching_cost_bps
+MMF_000,Vanguard Prime Fund 1,Goldman,5.0758,29.2,65,0.6953,0.8109,100000,prime,1.8645560947146533
+MMF_001,BlackRock Government Fund 2,Goldman,5.0667,5.4,43,0.8336,0.962,100000,government,1.9211745510612313
+MMF_002,Fidelity Treasury Fund 3,BlackRock,4.7375,7.7,38,0.9586,1.0,1000000,treasury,1.7877026885730194
+MMF_003,Fidelity Prime Fund 4,BlackRock,5.2952,21.3,74,0.5353,0.8463,1000000,prime,1.3568065871176884
+MMF_004,JPMorgan Government Fund 5,BNY Mellon,5.0604,8.7,47,0.8924,0.9782,1000000,government,1.1413884585041043
+MMF_005,Fidelity Prime Fund 6,BlackRock,4.97,22.0,69,0.6085,0.8373,1000000,prime,0.950373677818438
+MMF_006,Goldman Prime Fund 7,JPMorgan,4.8553,28.1,86,0.6347,0.8913,100000,prime,1.635711394347874
+MMF_007,Goldman Government Fund 8,Vanguard,5.0625,14.3,43,0.7578,0.9834,500000,government,1.542943049410489

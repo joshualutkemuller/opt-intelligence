@@ -9,6 +9,7 @@ Commands:
   di ingest <file.pdf>                Parse a PDF brief into a request and solve
 """
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -33,6 +34,13 @@ from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.export import export_csv, export_json, generate_report
+from decision_intelligence.contracts.approvals import ApprovalStatus
+from decision_intelligence.governance import (
+    ApprovalDecision,
+    ApprovalPolicy,
+    ApprovalStore,
+    GovernanceController,
+)
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
@@ -104,7 +112,8 @@ def _build_registry() -> tuple[OptimizationOrchestrator, AuditLog]:
     reg.register(CollateralOptimizer())
     reg.register(MoneyMarketOptimizer())
     reg.register(FinancingOptimizer())
-    return OptimizationOrchestrator(reg, audit), audit
+    governance = GovernanceController(ApprovalPolicy(), ApprovalStore(), audit)
+    return OptimizationOrchestrator(reg, audit, governance), audit
 
 
 def _bar(frac: float, width: int = 24) -> str:
@@ -164,6 +173,18 @@ def cmd_run(
     mode: str = typer.Option("recommendation", "--mode", "-m", help="Execution mode: explain, scenario_analysis, recommendation"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
     output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+    data: Optional[str] = typer.Option(
+        None, "--data", "-d",
+        help="JSON file with a 'data_source' config to load real data (CSV) instead of simulated",
+    ),
+    approve_as: Optional[str] = typer.Option(
+        None, "--approve-as",
+        help="Approver name — grants approval for gated modes (stage, execute) in one shot",
+    ),
+    reject: bool = typer.Option(
+        False, "--reject", help="Reject the gated action (use with --approve-as as the approver)",
+    ),
+    reason: str = typer.Option("", "--reason", help="Reason recorded with an approve/reject decision"),
 ):
     """Run an optimization for a domain and print structured results."""
     if domain not in _DOMAIN_INFO:
@@ -174,6 +195,9 @@ def cmd_run(
     metric = objective or info["objective"]
     direction = info["direction"]
     ctx = {**info["default_context"], "seed": seed}
+
+    if data:
+        ctx = {**ctx, **_load_data_source(data)}
 
     # Build scenario list
     scenarios = []
@@ -210,8 +234,12 @@ def cmd_run(
 
     orch, audit = _build_registry()
 
+    approval = None
+    if approve_as:
+        approval = ApprovalDecision(approver=approve_as, granted=not reject, reason=reason)
+
     with console.status(f"[dim]Solving {domain}…[/dim]", spinner="dots"):
-        result = orch.run(req)
+        result = orch.run(req, approval=approval)
 
     _print_result(domain, result, verbose)
     _write_output(output, result, req)
@@ -222,7 +250,14 @@ def cmd_ingest(
     pdf: str = typer.Argument(..., help="Path to a PDF brief describing the optimization"),
     backend: str = typer.Option(
         "auto", "--backend", "-b",
-        help="Extraction backend: auto | llm | heuristic (auto uses LLM when ANTHROPIC_API_KEY is set)",
+        help="Extraction backend: auto | llm | heuristic (auto uses an LLM provider when configured)",
+    ),
+    provider: Optional[str] = typer.Option(
+        None, "--provider",
+        help="LLM provider: anthropic | openai | <registered> (default: DI_LLM_PROVIDER / auto-detect)",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", help="Model id override (default: DI_LLM_MODEL / provider default)",
     ),
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
@@ -237,6 +272,7 @@ def cmd_ingest(
 ):
     """Ingest a PDF brief into an OptimizationRequest and route it through the orchestrator."""
     from decision_intelligence.ingestion import IngestionError, ingest_pdf, llm_available
+    from decision_intelligence.llm import LLMConfigError, resolve_provider
 
     path = Path(pdf)
     if not path.exists():
@@ -247,22 +283,34 @@ def cmd_ingest(
         console.print(f"[red]Unknown backend '{backend}'. Valid: auto, llm, heuristic[/red]")
         raise typer.Exit(1)
 
+    # Resolve an LLM provider if one is requested / configured.
+    llm_provider = None
+    want_llm = backend == "llm" or (backend == "auto" and (provider or llm_available()))
+    if want_llm:
+        try:
+            llm_provider = resolve_provider(provider, model=model)
+        except LLMConfigError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1)
+
     chosen = backend
     if chosen == "auto":
-        chosen = "llm" if llm_available() else "heuristic"
-    elif chosen == "llm" and not llm_available():
+        chosen = "llm" if llm_provider is not None else "heuristic"
+    elif chosen == "llm" and llm_provider is None:
         console.print(
-            "[red]LLM backend requested but unavailable.[/red] "
-            "Set [bold]ANTHROPIC_API_KEY[/bold] and install the extra "
+            "[red]LLM backend requested but no provider is configured.[/red] "
+            "Set [bold]DI_LLM_PROVIDER[/bold] (+ credentials / [bold]DI_LLM_BASE_URL[/bold] "
+            "for local models) and install the extra "
             "([bold]pip install -e '.[ingest]'[/bold]), or use "
             "[bold]--backend heuristic[/bold] for the offline parser."
         )
         raise typer.Exit(1)
 
-    label = {
-        "llm": "Claude (native PDF, claude-opus-4-8)",
-        "heuristic": "offline heuristic (pypdf + rules)",
-    }[chosen]
+    if chosen == "llm":
+        native = "native PDF" if llm_provider.supports_native_pdf else "text"
+        label = f"LLM · {llm_provider.name} ({llm_provider.model}, {native})"
+    else:
+        label = "offline heuristic (pypdf + rules)"
 
     console.print()
     console.print(Panel(
@@ -275,7 +323,7 @@ def cmd_ingest(
 
     try:
         with console.status(f"[dim]Reading {path.name}…[/dim]", spinner="dots"):
-            req, extracted = ingest_pdf(path, backend=chosen, seed=seed)
+            req, extracted = ingest_pdf(path, backend=chosen, seed=seed, provider=llm_provider)
     except IngestionError as exc:
         console.print(f"[red]Ingestion failed: {exc}[/red]")
         raise typer.Exit(1)
@@ -330,6 +378,51 @@ def _print_extraction(req, extracted):
         console.print()
 
 
+_GOV_STYLE = {
+    ApprovalStatus.NOT_REQUIRED: ("green", "✓", "auto-allowed"),
+    ApprovalStatus.PENDING: ("yellow", "⏳", "APPROVAL REQUIRED"),
+    ApprovalStatus.APPROVED: ("green", "✓", "APPROVED"),
+    ApprovalStatus.REJECTED: ("red", "✗", "REJECTED"),
+}
+
+
+def _print_governance(gov):
+    """Render the execution-mode governance decision, if present."""
+    if gov is None:
+        return
+
+    color, glyph, label = _GOV_STYLE.get(gov.status, ("white", "•", gov.status.value))
+    line = (
+        f"[{color}]{glyph} GOVERNANCE[/{color}]  "
+        f"mode [cyan]{gov.execution_mode}[/cyan] (tier {gov.tier})  "
+        f"action [white]{gov.action}[/white]  "
+        f"→ [{color}]{label}[/{color}]"
+    )
+    console.print(f"  {line}")
+
+    if gov.status == ApprovalStatus.PENDING:
+        console.print(
+            f"  [dim]Action withheld. Approve with[/dim] "
+            f"[bold]--approve-as <name>[/bold]  "
+            f"[dim](approval_id: {gov.approval_id})[/dim]"
+        )
+    elif gov.status == ApprovalStatus.APPROVED:
+        performed = "performed" if gov.action_performed else "not performed"
+        console.print(
+            f"  [dim]{gov.action.capitalize()} {performed} · "
+            f"approver: {gov.approver}"
+            + (f" · {gov.reason}" if gov.reason else "")
+            + "[/dim]"
+        )
+    elif gov.status == ApprovalStatus.REJECTED:
+        console.print(
+            f"  [dim]Action withheld · approver: {gov.approver}"
+            + (f" · {gov.reason}" if gov.reason else "")
+            + "[/dim]"
+        )
+    console.print()
+
+
 def _print_result(domain: str, result, verbose: bool):
     console.print()
 
@@ -351,6 +444,8 @@ def _print_result(domain: str, result, verbose: bool):
     if result.status != SolveStatus.OPTIMAL:
         console.print(f"[red]{result.explanation}[/red]")
         return
+
+    _print_governance(result.governance)
 
     # ── Progress bar ──
     frac = min(1.0, result.improvement_pct / 100)
@@ -446,6 +541,35 @@ def _print_result(domain: str, result, verbose: bool):
         console.print(table)
 
     console.print()
+
+
+def _load_data_source(data: str) -> dict:
+    """Load a JSON file describing the data source into a context fragment.
+
+    The file may be either the bare data_source dict
+    (``{"type": "csv", "funds": "..."}``) or a wrapper
+    (``{"data_source": {...}, "total_cash": ...}``). Returns a dict to merge
+    into request.context.
+    """
+    path = Path(data)
+    if not path.exists():
+        console.print(f"[red]Data config not found: {path}[/red]")
+        raise typer.Exit(1)
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        console.print(f"[red]Invalid JSON in {path}: {exc}[/red]")
+        raise typer.Exit(1)
+
+    if "data_source" in payload:
+        return payload  # already a context fragment
+    if "type" in payload:
+        return {"data_source": payload}
+    console.print(
+        f"[red]{path} must contain a 'data_source' object or a bare "
+        "source dict with a 'type' key.[/red]"
+    )
+    raise typer.Exit(1)
 
 
 def _write_output(output: str | None, result, request) -> None:
