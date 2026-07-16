@@ -82,6 +82,23 @@ def test_direct_optimization_endpoint():
     assert body["request"]["portfolio_id"] == "PORT_204"
 
 
+def test_workflow_catalog_endpoint_lists_registered_workflows():
+    response = client.get("/api/workflows")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["workflow_id"] for item in body["workflows"]] == [
+        "collateral_liquidity_review",
+        "funding_capacity_shock",
+        "liquidity_stress_funding_workflow"
+    ]
+    assert body["workflows"][-1]["domains"] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
+
+
 def test_workflow_endpoint_runs_liquidity_stress_workflow():
     response = client.post(
         "/api/workflows/run",
@@ -111,6 +128,16 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["dependency_summary"]["total_effects"] == 4
     assert body["result"]["step_results"][-1]["dependency_effects"]
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
+
+
+def test_unknown_workflow_returns_400():
+    response = client.post(
+        "/api/workflows/run",
+        json={"workflow": "missing_workflow"},
+    )
+
+    assert response.status_code == 400
+    assert "Unknown workflow" in response.json()["detail"]
 
 
 def test_unknown_chat_session_returns_404():

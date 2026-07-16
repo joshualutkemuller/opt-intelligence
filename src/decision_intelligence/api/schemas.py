@@ -39,10 +39,21 @@ class OptimizationResponse(BaseModel):
     request: dict[str, Any]
 
 
+class WorkflowCatalogItem(BaseModel):
+    workflow_id: str
+    name: str
+    description: str
+    domains: list[str]
+    tags: list[str] = Field(default_factory=list)
+    default_context: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowCatalogResponse(BaseModel):
+    workflows: list[WorkflowCatalogItem]
+
+
 class WorkflowRunRequest(BaseModel):
-    workflow: Literal["liquidity_stress_funding_workflow"] = (
-        "liquidity_stress_funding_workflow"
-    )
+    workflow: str = "liquidity_stress_funding_workflow"
     portfolio_id: str = "PORT_001"
     seed: int = 42
     context: dict[str, Any] = Field(default_factory=dict)

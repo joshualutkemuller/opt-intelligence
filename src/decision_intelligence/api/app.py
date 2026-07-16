@@ -27,9 +27,8 @@ from decision_intelligence.optimizers import (
     MoneyMarketOptimizer,
 )
 from decision_intelligence.workflows import (
-    LIQUIDITY_STRESS_WORKFLOW_ID,
+    DEFAULT_WORKFLOW_REGISTRY,
     SequentialWorkflowRunner,
-    build_liquidity_stress_funding_workflow,
 )
 
 from .schemas import (
@@ -38,6 +37,7 @@ from .schemas import (
     CreateChatSessionRequest,
     DirectOptimizationRequest,
     OptimizationResponse,
+    WorkflowCatalogResponse,
     WorkflowRunRequest,
     WorkflowRunResponse,
 )
@@ -118,16 +118,23 @@ def run_optimization(payload: DirectOptimizationRequest) -> OptimizationResponse
     return OptimizationResponse(result=_json(result), request=_json(request))
 
 
+@app.get("/api/workflows", response_model=WorkflowCatalogResponse)
+def list_workflows() -> WorkflowCatalogResponse:
+    return WorkflowCatalogResponse(workflows=DEFAULT_WORKFLOW_REGISTRY.list_catalog())
+
+
 @app.post("/api/workflows/run", response_model=WorkflowRunResponse)
 def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
-    if payload.workflow != LIQUIDITY_STRESS_WORKFLOW_ID:
-        raise HTTPException(status_code=400, detail=f"Unknown workflow: {payload.workflow}")
+    try:
+        plan = DEFAULT_WORKFLOW_REGISTRY.build(
+            payload.workflow,
+            portfolio_id=payload.portfolio_id,
+            seed=payload.seed,
+            context=payload.context,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    plan = build_liquidity_stress_funding_workflow(
-        portfolio_id=payload.portfolio_id,
-        seed=payload.seed,
-        context=payload.context,
-    )
     orchestrator, _audit = _build_orchestrator()
     result = SequentialWorkflowRunner(orchestrator).run(plan)
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))

@@ -202,6 +202,19 @@ type WorkflowRunApiResponse = {
   result: WorkflowRunResult;
 };
 
+type WorkflowCatalogItem = {
+  workflow_id: string;
+  name: string;
+  description: string;
+  domains: string[];
+  tags: string[];
+  default_context: Record<string, unknown>;
+};
+
+type WorkflowCatalogApiResponse = {
+  workflows: WorkflowCatalogItem[];
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -219,6 +232,36 @@ const defaultMessages: Message[] = [
   },
 ];
 
+const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
+  {
+    workflow_id: "collateral_liquidity_review",
+    name: "Collateral Liquidity Review",
+    description:
+      "Runs collateral coverage first, then adjusts money-market liquidity requirements.",
+    domains: ["collateral", "money_market"],
+    tags: ["collateral", "liquidity", "review", "demo"],
+    default_context: {},
+  },
+  {
+    workflow_id: "funding_capacity_shock",
+    name: "Funding Capacity Shock",
+    description:
+      "Runs stressed financing capacity first, then adjusts money-market reserves.",
+    domains: ["financing", "money_market"],
+    tags: ["funding", "capacity", "stress", "demo"],
+    default_context: {},
+  },
+  {
+    workflow_id: "liquidity_stress_funding_workflow",
+    name: "Liquidity Stress Funding Workflow",
+    description:
+      "Runs financing, collateral, and money-market optimizers under a shared liquidity stress context.",
+    domains: ["financing", "collateral", "money_market"],
+    tags: ["liquidity", "stress", "funding", "demo"],
+    default_context: {},
+  },
+];
+
 function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
@@ -227,6 +270,11 @@ function App() {
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
+  const [workflowCatalog, setWorkflowCatalog] =
+    useState<WorkflowCatalogItem[]>(fallbackWorkflowCatalog);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(
+    "liquidity_stress_funding_workflow",
+  );
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
@@ -238,6 +286,7 @@ function App() {
     if (didCreateSession.current) return;
     didCreateSession.current = true;
     void createSession();
+    void loadWorkflowCatalog();
   }, []);
 
   useEffect(() => {
@@ -276,6 +325,28 @@ function App() {
             "API server not detected. Start uvicorn to use real optimizer results.",
         },
       ]);
+    }
+  }
+
+  async function loadWorkflowCatalog() {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows`,
+        { method: "GET" },
+        5000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowCatalogApiResponse;
+      if (body.workflows.length) {
+        setWorkflowCatalog(body.workflows);
+        setSelectedWorkflowId((current) =>
+          body.workflows.some((item) => item.workflow_id === current)
+            ? current
+            : body.workflows[0].workflow_id,
+        );
+      }
+    } catch {
+      setWorkflowCatalog(fallbackWorkflowCatalog);
     }
   }
 
@@ -355,13 +426,16 @@ function App() {
 
   async function runSequentialWorkflow() {
     if (isWorkflowRunning) return;
+    const selectedWorkflow = workflowCatalog.find(
+      (item) => item.workflow_id === selectedWorkflowId,
+    ) || fallbackWorkflowCatalog[0];
     setIsWorkflowRunning(true);
     setMessages((items) => [
       ...items,
-      { role: "user", content: "Run the liquidity stress funding workflow." },
+      { role: "user", content: `Run ${selectedWorkflow.name}.` },
       {
         role: "assistant",
-        content: "Running financing, collateral, and money-market optimizers in sequence...",
+        content: `Running ${selectedWorkflow.name} in sequence...`,
         pending: true,
       },
     ]);
@@ -372,7 +446,13 @@ function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildWorkflowPayload(workflow?.collected || {}, solverProfiles[solver])),
+          body: JSON.stringify(
+            buildWorkflowPayload(
+              selectedWorkflow.workflow_id,
+              workflow?.collected || {},
+              solverProfiles[solver],
+            ),
+          ),
         },
         20000,
       );
@@ -407,6 +487,9 @@ function App() {
   const display = useMemo(() => buildDisplayState(collected), [collected]);
   const solverProfile = solverProfiles[solver];
   const dashboard = result || mockResult;
+  const selectedWorkflow = workflowCatalog.find(
+    (item) => item.workflow_id === selectedWorkflowId,
+  ) || fallbackWorkflowCatalog[0];
   const latestAssistantPrompt =
     [...messages].reverse().find((message) => message.role === "assistant")?.content || "";
 
@@ -446,6 +529,13 @@ function App() {
               <StateRow label="Governance" value="Recommendation" />
             </dl>
           </section>
+
+          <WorkflowSelector
+            workflows={workflowCatalog}
+            selectedWorkflowId={selectedWorkflowId}
+            onChange={setSelectedWorkflowId}
+            disabled={isWorkflowRunning}
+          />
 
           <PlanPanel workflow={workflow} />
 
@@ -556,7 +646,10 @@ function App() {
             <ConstraintPanel result={dashboard} />
           </section>
 
-          <WorkflowTimelinePanel workflowRun={workflowRun} />
+          <WorkflowTimelinePanel
+            workflowRun={workflowRun}
+            selectedWorkflow={selectedWorkflow}
+          />
 
           <ValidationPanel result={dashboard} />
 
@@ -598,11 +691,12 @@ async function fetchWithTimeout(
 }
 
 function buildWorkflowPayload(
+  workflowId: string,
   collected: Record<string, unknown>,
   solverProfile: { backend: string; problem: string; method: string },
 ) {
   return {
-    workflow: "liquidity_stress_funding_workflow",
+    workflow: workflowId,
     portfolio_id: String(collected.portfolio_id || "PORT_204"),
     seed: Number(collected.seed || 42),
     context: {
@@ -617,6 +711,51 @@ function buildWorkflowPayload(
       },
     },
   };
+}
+
+function WorkflowSelector({
+  workflows,
+  selectedWorkflowId,
+  onChange,
+  disabled,
+}: {
+  workflows: WorkflowCatalogItem[];
+  selectedWorkflowId: string;
+  onChange: (workflowId: string) => void;
+  disabled: boolean;
+}) {
+  const selected = workflows.find((item) => item.workflow_id === selectedWorkflowId) || workflows[0];
+  return (
+    <section className="panel compact workflow-selector">
+      <div className="panel-heading">
+        <span className="eyebrow">Workflow Template</span>
+        <span className="status-pill">{workflows.length}</span>
+      </div>
+      <select
+        className="select-input"
+        value={selectedWorkflowId}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        aria-label="Workflow template"
+      >
+        {workflows.map((item) => (
+          <option value={item.workflow_id} key={item.workflow_id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+      {selected ? (
+        <>
+          <p>{selected.description}</p>
+          <div className="workflow-domain-tags" aria-label="Workflow domains">
+            {selected.domains.map((domain) => (
+              <span key={domain}>{titleCase(domain.replaceAll("_", " "))}</span>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
 }
 
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
@@ -668,8 +807,10 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
 
 function WorkflowTimelinePanel({
   workflowRun,
+  selectedWorkflow,
 }: {
   workflowRun: WorkflowRunResult | null;
+  selectedWorkflow: WorkflowCatalogItem;
 }) {
   const summary = workflowRun?.validation_summary;
   return (
@@ -677,7 +818,7 @@ function WorkflowTimelinePanel({
       <div className="section-header tight">
         <div>
           <span className="eyebrow">Sequential Workflow</span>
-          <h2>{workflowRun?.name || "Liquidity stress funding workflow"}</h2>
+          <h2>{workflowRun?.name || selectedWorkflow.name}</h2>
         </div>
         <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
           {workflowRun ? titleCase(workflowRun.status) : "Not run"}
@@ -687,7 +828,7 @@ function WorkflowTimelinePanel({
       <div className="workflow-validation-strip">
         <Metric
           label="Steps"
-          value={String(summary?.total_steps ?? 3)}
+          value={String(summary?.total_steps ?? selectedWorkflow.domains.length)}
           note={workflowRun ? "Completed" : "Planned"}
         />
         <Metric
@@ -785,8 +926,8 @@ function WorkflowTimelinePanel({
         </>
       ) : (
         <p className="workflow-empty">
-          Run the workflow action to execute financing, collateral, and money-market
-          optimizers as one sequential demo.
+          Run the workflow action to execute {selectedWorkflow.name} as one
+          sequential demo.
         </p>
       )}
     </section>

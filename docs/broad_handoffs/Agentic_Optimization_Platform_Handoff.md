@@ -527,9 +527,14 @@ decision-intelligence-platform/
 -   ✅ **Cross-Step Dependency Engine (POC)** — upstream financing and
     collateral pressure now deterministically adjust downstream money-market
     liquidity requirements, with auditable `DependencyEffect` records.
--   Next: add configurable workflow templates, a workflow registry/list API,
-    and top-level workflow explanations that summarize why upstream results
-    changed downstream recommendations.
+-   ✅ **Workflow Registry (POC)** — workflow templates are now discoverable
+    through a central registry and browser-facing `GET /api/workflows` catalog.
+-   ✅ **Workflow Templates + Selector (POC)** — added Funding Capacity Shock
+    and Collateral Liquidity Review templates, surfaced through the browser
+    workflow selector.
+-   Next: add externally configurable workflow templates and top-level workflow
+    explanations that summarize why upstream results changed downstream
+    recommendations.
 
 ## Phase 6
 

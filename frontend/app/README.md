@@ -68,8 +68,15 @@ yes
 The app should update the workflow sidebar as fields are collected and render
 the allocation dashboard after confirmation.
 
-To demo the sequential workflow engine, click **Workflow** in the chat header.
-That calls:
+To demo the sequential workflow engine, choose a template in the
+**Workflow Template** selector, then click **Workflow** in the chat header.
+Registered workflows can be listed with:
+
+```text
+GET /api/workflows
+```
+
+The run action calls:
 
 ```text
 POST /api/workflows/run
@@ -79,6 +86,12 @@ The UI renders the returned `step_results`, `trace`, and `validation_summary`
 as a progress timeline for the financing → collateral → money-market workflow.
 It also displays dependency effects, such as upstream funding or collateral
 pressure increasing downstream money-market liquidity requirements.
+
+Registered demo templates:
+
+- Liquidity Stress Funding Workflow
+- Funding Capacity Shock
+- Collateral Liquidity Review
 
 ## Build Check
 
