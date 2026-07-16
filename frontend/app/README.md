@@ -68,6 +68,16 @@ yes
 The app should update the workflow sidebar as fields are collected and render
 the allocation dashboard after confirmation.
 
+To demo the sequential workflow engine, click **Workflow** in the chat header.
+That calls:
+
+```text
+POST /api/workflows/run
+```
+
+The UI renders the returned `step_results`, `trace`, and `validation_summary`
+as a progress timeline for the financing → collateral → money-market workflow.
+
 ## Build Check
 
 ```bash

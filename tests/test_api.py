@@ -82,6 +82,35 @@ def test_direct_optimization_endpoint():
     assert body["request"]["portfolio_id"] == "PORT_204"
 
 
+def test_workflow_endpoint_runs_liquidity_stress_workflow():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "liquidity_stress_funding_workflow",
+            "portfolio_id": "PORT_204",
+            "seed": 7,
+            "context": {
+                "money_market": {
+                    "total_cash": 250_000_000,
+                    "weekly_liquidity_req": 0.65,
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plan"]["workflow_id"] == "liquidity_stress_funding_workflow"
+    assert body["result"]["status"] == "complete"
+    assert [step["domain"] for step in body["result"]["step_results"]] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
+    assert body["result"]["validation_summary"]["passed"] is True
+    assert body["result"]["trace"][-1]["event"] == "workflow_completed"
+
+
 def test_unknown_chat_session_returns_404():
     response = client.post("/api/chat/sessions/missing/messages", json={"message": "hello"})
     assert response.status_code == 404

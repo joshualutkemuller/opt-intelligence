@@ -112,6 +112,77 @@ type OptimizationResult = {
   agent_trace?: AgentTraceEvent[];
 };
 
+type WorkflowSummary = {
+  status: string;
+  objective_value: number;
+  baseline_value: number;
+  improvement: number;
+  improvement_pct: number;
+  allocation_count: number;
+  validation_recommendation: string | null;
+  validation_passed: boolean;
+  warning_count: number;
+  violation_count: number;
+};
+
+type WorkflowStepResult = {
+  step_id: string;
+  domain: string;
+  name: string;
+  status: string;
+  request: Record<string, unknown>;
+  result: OptimizationResult;
+  inputs_from: string[];
+  summary: WorkflowSummary;
+};
+
+type WorkflowTraceEvent = {
+  event: string;
+  message: string;
+  step_id: string | null;
+  domain: string | null;
+  details: Record<string, unknown>;
+  timestamp: string;
+};
+
+type WorkflowValidationSummary = {
+  passed: boolean;
+  total_steps: number;
+  total_checks: number;
+  warning_count: number;
+  violation_count: number;
+  warnings: string[];
+  violations: string[];
+  recommendations: Record<string, string>;
+};
+
+type WorkflowRunResult = {
+  workflow_id: string;
+  name: string;
+  status: "complete" | "partial" | "error";
+  step_results: WorkflowStepResult[];
+  validation_summary: WorkflowValidationSummary;
+  explanation: string;
+  trace: WorkflowTraceEvent[];
+  timestamp: string;
+};
+
+type WorkflowRunApiResponse = {
+  plan: {
+    workflow_id: string;
+    name: string;
+    description: string;
+    steps: Array<{
+      step_id: string;
+      domain: string;
+      name: string;
+      description: string;
+      depends_on: string[];
+    }>;
+  };
+  result: WorkflowRunResult;
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -136,9 +207,11 @@ function App() {
   const [input, setInput] = useState("");
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const didCreateSession = useRef(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
@@ -243,6 +316,7 @@ function App() {
 
   function resetSession() {
     setResult(null);
+    setWorkflowRun(null);
     setLatestPayload(null);
     void createSession();
   }
@@ -258,6 +332,56 @@ function App() {
     link.download = "decision-intelligence-result.json";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function runSequentialWorkflow() {
+    if (isWorkflowRunning) return;
+    setIsWorkflowRunning(true);
+    setMessages((items) => [
+      ...items,
+      { role: "user", content: "Run the liquidity stress funding workflow." },
+      {
+        role: "assistant",
+        content: "Running financing, collateral, and money-market optimizers in sequence...",
+        pending: true,
+      },
+    ]);
+
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows/run`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildWorkflowPayload(workflow?.collected || {}, solverProfiles[solver])),
+        },
+        20000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowRunApiResponse;
+      const finalStep = [...body.result.step_results].reverse()[0];
+      setWorkflowRun(body.result);
+      if (finalStep?.result) {
+        setResult(finalStep.result);
+      }
+      setLatestPayload(body);
+      setMessages((items) =>
+        replacePendingMessage(
+          items,
+          `Sequential workflow complete. ${body.result.step_results.length} optimizer steps ran with aggregate validation ${body.result.validation_summary.passed ? "passing" : "requiring review"}.`,
+        ),
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) =>
+        replacePendingMessage(
+          items,
+          `The sequential workflow did not complete (${detail}). Check the API server and try again.`,
+        ),
+      );
+    } finally {
+      setIsWorkflowRunning(false);
+    }
   }
 
   const collected = workflow?.collected || {};
@@ -368,6 +492,14 @@ function App() {
                 >
                   PDF
                 </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={runSequentialWorkflow}
+                  disabled={isWorkflowRunning}
+                >
+                  {isWorkflowRunning ? "Running" : "Workflow"}
+                </button>
               </div>
             </div>
 
@@ -404,6 +536,8 @@ function App() {
             <ResultPanel result={dashboard} />
             <ConstraintPanel result={dashboard} />
           </section>
+
+          <WorkflowTimelinePanel workflowRun={workflowRun} />
 
           <ValidationPanel result={dashboard} />
 
@@ -442,6 +576,28 @@ async function fetchWithTimeout(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+function buildWorkflowPayload(
+  collected: Record<string, unknown>,
+  solverProfile: { backend: string; problem: string; method: string },
+) {
+  return {
+    workflow: "liquidity_stress_funding_workflow",
+    portfolio_id: String(collected.portfolio_id || "PORT_204"),
+    seed: Number(collected.seed || 42),
+    context: {
+      solver_backend: solverProfile.backend,
+      problem_type: solverProfile.problem,
+      money_market: {
+        total_cash: Number(collected.total_cash || 500_000_000),
+        daily_liquidity_req: Number(collected.daily_liquidity_req || 0.4),
+        weekly_liquidity_req: Number(collected.weekly_liquidity_req || 0.7),
+        max_prime_fraction: Number(collected.max_prime_fraction || 0.4),
+        max_wam_days: Number(collected.max_wam_days || 60),
+      },
+    },
+  };
 }
 
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
@@ -491,6 +647,117 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
   );
 }
 
+function WorkflowTimelinePanel({
+  workflowRun,
+}: {
+  workflowRun: WorkflowRunResult | null;
+}) {
+  const summary = workflowRun?.validation_summary;
+  return (
+    <section className="panel workflow-run-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Sequential Workflow</span>
+          <h2>{workflowRun?.name || "Liquidity stress funding workflow"}</h2>
+        </div>
+        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
+          {workflowRun ? titleCase(workflowRun.status) : "Not run"}
+        </span>
+      </div>
+
+      <div className="workflow-validation-strip">
+        <Metric
+          label="Steps"
+          value={String(summary?.total_steps ?? 3)}
+          note={workflowRun ? "Completed" : "Planned"}
+        />
+        <Metric
+          label="Checks"
+          value={String(summary?.total_checks ?? 0)}
+          note="Validation checks"
+        />
+        <Metric
+          label="Warnings"
+          value={String(summary?.warning_count ?? 0)}
+          note="Aggregate"
+        />
+        <Metric
+          label="Violations"
+          value={String(summary?.violation_count ?? 0)}
+          note="Blocking"
+        />
+      </div>
+
+      {workflowRun ? (
+        <>
+          <div className="workflow-timeline" aria-label="Sequential workflow progress">
+            {workflowRun.step_results.map((step, index) => (
+              <div className={`workflow-step ${step.status}`} key={step.step_id}>
+                <div className="workflow-step-marker" aria-hidden="true">
+                  <span>{index + 1}</span>
+                </div>
+                <div className="workflow-step-body">
+                  <div className="workflow-step-heading">
+                    <div>
+                      <strong>{step.name}</strong>
+                      <span>{titleCase(step.domain.replaceAll("_", " "))}</span>
+                    </div>
+                    <span className={`status-pill ${stepStatusClass(step.status)}`}>
+                      {titleCase(step.status)}
+                    </span>
+                  </div>
+                  <div className="workflow-step-metrics">
+                    <span>Objective {formatNumber(step.summary.objective_value)}</span>
+                    <span>Improvement {step.summary.improvement_pct.toFixed(2)}%</span>
+                    <span>{step.summary.allocation_count} allocations</span>
+                    <span>{titleCase(step.summary.validation_recommendation || "ready")}</span>
+                  </div>
+                  {step.inputs_from.length ? (
+                    <p>Inputs carried from {step.inputs_from.join(", ")}.</p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="workflow-trace-grid">
+            <div>
+              <h3>Trace</h3>
+              <ol>
+                {workflowRun.trace.slice(-6).map((event, index) => (
+                  <li key={`${event.event}-${index}`}>
+                    <strong>{titleCase(event.event.replaceAll("_", " "))}</strong>
+                    <span>{event.message}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div>
+              <h3>Validation Summary</h3>
+              <ul>
+                <li>{summary?.passed ? "All aggregate checks passed." : "Review required."}</li>
+                {(summary?.warnings || []).slice(0, 3).map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+                {(summary?.violations || []).slice(0, 3).map((violation) => (
+                  <li key={violation}>{violation}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <p className="workflow-explanation">{workflowRun.explanation}</p>
+        </>
+      ) : (
+        <p className="workflow-empty">
+          Run the workflow action to execute financing, collateral, and money-market
+          optimizers as one sequential demo.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function TracePanel({
   workflow,
   result,
@@ -519,6 +786,21 @@ function TracePanel({
       )}
     </section>
   );
+}
+
+function workflowStatusClass(status: WorkflowRunResult["status"] | undefined) {
+  if (status === "error") return "status-error";
+  if (status === "partial") return "status-ready";
+  if (status === "complete") return "status-optimal";
+  return "";
+}
+
+function stepStatusClass(status: string) {
+  if (status === "optimal") return "status-optimal";
+  if (status === "error" || status === "infeasible" || status === "unbounded") {
+    return "status-error";
+  }
+  return "status-ready";
 }
 
 function ValidationPanel({ result }: { result: OptimizationResult }) {
@@ -827,6 +1109,13 @@ function formatMaybePercent(value: unknown) {
   const number = Number(value);
   if (Number.isNaN(number)) return "-";
   return `${number.toFixed(2)}%`;
+}
+
+function formatNumber(value: unknown) {
+  const number = Number(value);
+  if (Number.isNaN(number)) return String(value || "-");
+  if (Math.abs(number) >= 1_000_000) return number.toExponential(2);
+  return number.toFixed(4);
 }
 
 function formatScenarioList(value: unknown) {

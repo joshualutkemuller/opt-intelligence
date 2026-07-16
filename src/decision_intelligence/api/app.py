@@ -26,6 +26,11 @@ from decision_intelligence.optimizers import (
     FinancingOptimizer,
     MoneyMarketOptimizer,
 )
+from decision_intelligence.workflows import (
+    LIQUIDITY_STRESS_WORKFLOW_ID,
+    SequentialWorkflowRunner,
+    build_liquidity_stress_funding_workflow,
+)
 
 from .schemas import (
     ChatMessageRequest,
@@ -33,6 +38,8 @@ from .schemas import (
     CreateChatSessionRequest,
     DirectOptimizationRequest,
     OptimizationResponse,
+    WorkflowRunRequest,
+    WorkflowRunResponse,
 )
 
 app = FastAPI(
@@ -109,6 +116,21 @@ def run_optimization(payload: DirectOptimizationRequest) -> OptimizationResponse
     request = _build_direct_request(payload)
     result = _run_request(request)
     return OptimizationResponse(result=_json(result), request=_json(request))
+
+
+@app.post("/api/workflows/run", response_model=WorkflowRunResponse)
+def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
+    if payload.workflow != LIQUIDITY_STRESS_WORKFLOW_ID:
+        raise HTTPException(status_code=400, detail=f"Unknown workflow: {payload.workflow}")
+
+    plan = build_liquidity_stress_funding_workflow(
+        portfolio_id=payload.portfolio_id,
+        seed=payload.seed,
+        context=payload.context,
+    )
+    orchestrator, _audit = _build_orchestrator()
+    result = SequentialWorkflowRunner(orchestrator).run(plan)
+    return WorkflowRunResponse(plan=_json(plan), result=_json(result))
 
 
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:

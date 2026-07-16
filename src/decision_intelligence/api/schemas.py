@@ -37,3 +37,17 @@ class DirectOptimizationRequest(BaseModel):
 class OptimizationResponse(BaseModel):
     result: dict[str, Any]
     request: dict[str, Any]
+
+
+class WorkflowRunRequest(BaseModel):
+    workflow: Literal["liquidity_stress_funding_workflow"] = (
+        "liquidity_stress_funding_workflow"
+    )
+    portfolio_id: str = "PORT_001"
+    seed: int = 42
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowRunResponse(BaseModel):
+    plan: dict[str, Any]
+    result: dict[str, Any]

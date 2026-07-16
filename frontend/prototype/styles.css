@@ -699,6 +699,170 @@ h2 {
   margin-top: 4px;
 }
 
+.workflow-run-panel {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-validation-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workflow-timeline {
+  display: grid;
+  gap: 0;
+}
+
+.workflow-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  position: relative;
+}
+
+.workflow-step + .workflow-step {
+  margin-top: 12px;
+}
+
+.workflow-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 34px;
+  bottom: -14px;
+  width: 2px;
+  background: var(--line);
+}
+
+.workflow-step-marker {
+  position: relative;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-strong);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.workflow-step.optimal .workflow-step-marker {
+  color: #ffffff;
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.workflow-step.error .workflow-step-marker,
+.workflow-step.infeasible .workflow-step-marker,
+.workflow-step.unbounded .workflow-step-marker {
+  color: #ffffff;
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.workflow-step-body {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.workflow-step-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-step-heading strong,
+.workflow-step-heading span {
+  display: block;
+}
+
+.workflow-step-heading strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.workflow-step-heading div > span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.workflow-step-metrics {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workflow-step-metrics span {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.workflow-step-body p,
+.workflow-empty,
+.workflow-explanation {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.workflow-step-body p {
+  margin-top: 10px;
+}
+
+.workflow-empty {
+  max-width: 720px;
+}
+
+.workflow-explanation {
+  padding-top: 2px;
+}
+
+.workflow-trace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 14px;
+}
+
+.workflow-trace-grid h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.workflow-trace-grid ol,
+.workflow-trace-grid ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.workflow-trace-grid strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
 .explanation-panel {
   display: grid;
   gap: 14px;
@@ -819,6 +983,9 @@ tbody tr:hover {
   .sidebar,
   .dashboard-grid,
   .validation-summary,
+  .workflow-validation-strip,
+  .workflow-step-metrics,
+  .workflow-trace-grid,
   .validation-checks,
   .explanation-grid,
   .table-grid,

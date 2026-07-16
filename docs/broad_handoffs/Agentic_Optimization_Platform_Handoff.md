@@ -518,7 +518,15 @@ decision-intelligence-platform/
 
 ## Phase 5
 
--   Multi-optimizer workflows
+-   ✅ **Sequential Workflow Engine (POC)** — deterministic
+    `WorkflowPlan`/`WorkflowStep` contracts, ordered execution through the
+    existing orchestrator, workflow trace, aggregate validation summary, and a
+    browser-facing `/api/workflows/run` endpoint.
+-   ✅ **Liquidity Stress Funding Workflow (POC)** — chains financing,
+    collateral, and money-market optimizers under a shared stress context.
+-   Next: promote workflow outputs into the front-end progress UI, add
+    configurable workflow templates, and add cross-step data dependencies that
+    alter downstream optimizer inputs rather than only carrying summaries.
 
 ## Phase 6
 
