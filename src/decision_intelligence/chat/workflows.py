@@ -143,6 +143,20 @@ WORKFLOWS: dict[str, WorkflowSpec] = {
                 0.50,
                 label="single-fund limit",
             ),
+            FieldSpec(
+                "max_funds",
+                "Maximum number of funds if using MILP fund selection?",
+                parse_int,
+                4,
+                label="max selected funds",
+            ),
+            FieldSpec(
+                "min_allocation_fraction",
+                "Minimum allocation per selected fund if using MILP? (for example 5%)",
+                parse_fraction,
+                0.05,
+                label="minimum selected allocation",
+            ),
             *SOLVER_FIELDS,
             FieldSpec(
                 "scenario_names",

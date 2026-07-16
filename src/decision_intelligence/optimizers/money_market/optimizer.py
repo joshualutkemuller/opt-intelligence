@@ -19,6 +19,11 @@ LP formulation (relaxed — minimum investment handled via threshold filtering):
     (4) Σ_i [i∈prime] × w[i]  ≤  max_prime_fraction
     (5) Σ_i WAM[i] × w[i]  ≤  max_wam
     (6) 0 ≤ w[i] ≤ max_single_fund (concentration)
+
+MILP formulation adds binary fund-selection variables z[i]:
+    (7) w[i] ≤ max_single_fund × z[i]
+    (8) w[i] ≥ min_allocation_fraction × z[i]
+    (9) Σ_i z[i] ≤ max_funds
 """
 
 from __future__ import annotations
@@ -42,6 +47,8 @@ from .data import CashPosition, MoneyMarketFund
 _MAX_PRIME_FRACTION = 0.40   # ≤ 40% in prime funds
 _MAX_WAM_DAYS = 60
 _MAX_SINGLE_FUND = 0.50      # ≤ 50% in any single fund
+_MIN_ALLOCATION_FRACTION = 0.05
+_MAX_FUNDS = 4
 
 
 class MoneyMarketOptimizer(OptimizationCapability):
@@ -84,6 +91,8 @@ class MoneyMarketOptimizer(OptimizationCapability):
         max_prime = ctx.get("max_prime_fraction", _MAX_PRIME_FRACTION)
         max_wam = ctx.get("max_wam_days", _MAX_WAM_DAYS)
         max_single = ctx.get("max_single_fund", _MAX_SINGLE_FUND)
+        min_allocation = ctx.get("min_allocation_fraction", _MIN_ALLOCATION_FRACTION)
+        max_funds = ctx.get("max_funds", _MAX_FUNDS)
         daily_req = ctx.get("daily_liquidity_req", position.daily_liquidity_requirement)
         weekly_req = ctx.get("weekly_liquidity_req", position.weekly_liquidity_requirement)
 
@@ -137,6 +146,9 @@ class MoneyMarketOptimizer(OptimizationCapability):
             "weekly_req": weekly_req,
             "max_wam": max_wam,
             "max_prime": max_prime,
+            "max_single": max_single,
+            "min_allocation_fraction": min_allocation,
+            "max_funds": max_funds,
             "baseline_value": baseline_yield,
             "total_cash": position.total_cash,
             "solver_spec": SolverSpec.from_context(request.context),
@@ -145,25 +157,23 @@ class MoneyMarketOptimizer(OptimizationCapability):
     def solve(self, problem: dict[str, Any]) -> dict[str, Any]:
         from decision_intelligence.contracts.results import SolveStatus
 
-        lp = LinearProblem(
-            c=problem["c"],
-            A_ub=problem["A_ub"],
-            b_ub=problem["b_ub"],
-            A_eq=problem["A_eq"],
-            b_eq=problem["b_eq"],
-            bounds=problem["bounds"],
-        )
+        solver_spec = problem["solver_spec"]
+        lp = _build_solver_problem(problem)
 
         try:
-            solver_result = solve_linear_problem(lp, problem["solver_spec"])
+            solver_result = solve_linear_problem(lp, solver_spec)
         except SolverConfigError as exc:
             return {"status": SolveStatus.ERROR, "message": str(exc)}
 
         if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
-            w = solver_result.x
+            w = solver_result.x[: problem["n"]]
             funds = problem["funds"]
             total_cash = problem["total_cash"]
-            yields = problem["yields"]
+            selected = (
+                solver_result.x[problem["n"]:]
+                if len(solver_result.x) > problem["n"]
+                else None
+            )
 
             allocations = []
             for i, fund in enumerate(funds):
@@ -181,6 +191,7 @@ class MoneyMarketOptimizer(OptimizationCapability):
                             "daily_liquidity_pct": fund.daily_liquidity_pct,
                             "credit_quality": fund.credit_quality,
                             "contribution_to_yield_bps": round(w[i] * fund.yield_7day * 100, 2),
+                            "selected": bool(selected is not None and selected[i] > 0.5),
                         },
                     })
 
@@ -196,6 +207,8 @@ class MoneyMarketOptimizer(OptimizationCapability):
                 "metadata": {
                     **solver_result.metadata,
                     "n_funds_used": int((w > 1e-6).sum()),
+                    "max_funds": problem["max_funds"],
+                    "min_allocation_fraction": problem["min_allocation_fraction"],
                 },
             }
 
@@ -220,11 +233,20 @@ class MoneyMarketOptimizer(OptimizationCapability):
 
         wl = float(problem["weekly_liq"] @ w)
         if wl < problem["weekly_req"] - tol:
-            violations.append(f"Weekly liquidity {wl:.3f} < requirement {problem['weekly_req']:.3f}")
+            violations.append(
+                f"Weekly liquidity {wl:.3f} < requirement {problem['weekly_req']:.3f}"
+            )
 
         return violations
 
-    def run_sensitivity(self, problem: dict[str, Any], solution: dict[str, Any]) -> list[dict[str, Any]]:
+    def run_sensitivity(
+        self,
+        problem: dict[str, Any],
+        solution: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        if problem["solver_spec"].problem_type == "milp":
+            return []
+
         base_obj = solution["objective_value"]
         sensitivities = []
 
@@ -296,6 +318,70 @@ class MoneyMarketOptimizer(OptimizationCapability):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _build_solver_problem(problem: dict[str, Any]) -> LinearProblem:
+    if problem["solver_spec"].problem_type == "milp":
+        return _build_milp_problem(problem)
+
+    return LinearProblem(
+        c=problem["c"],
+        A_ub=problem["A_ub"],
+        b_ub=problem["b_ub"],
+        A_eq=problem["A_eq"],
+        b_eq=problem["b_eq"],
+        bounds=problem["bounds"],
+    )
+
+
+def _build_milp_problem(problem: dict[str, Any]) -> LinearProblem:
+    n = problem["n"]
+    max_single = problem["max_single"]
+    min_allocation = problem["min_allocation_fraction"]
+    max_funds = problem["max_funds"]
+
+    # Variables: [w_0..w_n, z_0..z_n], where z_i is binary selected/not-selected.
+    c = np.concatenate([problem["c"], np.zeros(n)])
+
+    base_ub = np.hstack([problem["A_ub"], np.zeros((problem["A_ub"].shape[0], n))])
+    rows = [base_ub]
+    rhs = [problem["b_ub"]]
+
+    # If fund i is not selected, w_i must be zero: w_i - max_single*z_i <= 0.
+    link_upper = np.zeros((n, 2 * n))
+    for i in range(n):
+        link_upper[i, i] = 1.0
+        link_upper[i, n + i] = -max_single
+    rows.append(link_upper)
+    rhs.append(np.zeros(n))
+
+    # If selected, enforce a minimum allocation: -w_i + min_allocation*z_i <= 0.
+    link_lower = np.zeros((n, 2 * n))
+    for i in range(n):
+        link_lower[i, i] = -1.0
+        link_lower[i, n + i] = min_allocation
+    rows.append(link_lower)
+    rhs.append(np.zeros(n))
+
+    # Limit number of selected funds.
+    max_funds_row = np.zeros((1, 2 * n))
+    max_funds_row[0, n:] = 1.0
+    rows.append(max_funds_row)
+    rhs.append(np.array([max_funds]))
+
+    a_eq = np.hstack([problem["A_eq"], np.zeros((problem["A_eq"].shape[0], n))])
+    bounds = [*problem["bounds"], *[(0.0, 1.0) for _ in range(n)]]
+    integrality = np.concatenate([np.zeros(n, dtype=int), np.ones(n, dtype=int)])
+
+    return LinearProblem(
+        c=c,
+        A_ub=np.vstack(rows),
+        b_ub=np.concatenate(rhs),
+        A_eq=a_eq,
+        b_eq=problem["b_eq"],
+        bounds=bounds,
+        integrality=integrality,
+    )
+
 
 def _compute_current_yield(funds: list[MoneyMarketFund], position: CashPosition) -> float:
     total = position.total_cash

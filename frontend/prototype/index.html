@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Decision Intelligence Demo Workspace</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">DI</div>
+          <div>
+            <h1>Decision Intelligence</h1>
+            <p>Optimization demo workspace</p>
+          </div>
+        </div>
+        <div class="topbar-controls" aria-label="Workspace controls">
+          <button class="icon-button" id="resetButton" type="button" title="Reset session">Reset</button>
+          <button class="primary-button" id="exportButton" type="button">Export JSON</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar" aria-label="Workflow state">
+          <section class="panel compact">
+            <div class="panel-heading">
+              <span class="eyebrow">Workflow</span>
+              <span class="status-pill status-ready" id="workflowStatus">Collecting</span>
+            </div>
+            <dl class="state-list">
+              <div>
+                <dt>Domain</dt>
+                <dd id="stateDomain">Money market</dd>
+              </div>
+              <div>
+                <dt>Portfolio</dt>
+                <dd id="statePortfolio">PORT_204</dd>
+              </div>
+              <div>
+                <dt>Scenario</dt>
+                <dd id="stateScenario">Stress</dd>
+              </div>
+              <div>
+                <dt>Governance</dt>
+                <dd>Recommendation</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-heading">
+              <span class="eyebrow">Solver</span>
+            </div>
+            <div class="segmented" role="group" aria-label="Solver selection">
+              <button class="segmented-button active" type="button" data-solver="scipy-lp">SciPy LP</button>
+              <button class="segmented-button" type="button" data-solver="scipy-milp">SciPy MILP</button>
+              <button class="segmented-button" type="button" data-solver="cvxpy-lp">CVXPY LP</button>
+            </div>
+            <dl class="state-list solver-meta">
+              <div>
+                <dt>Backend</dt>
+                <dd id="solverBackend">scipy</dd>
+              </div>
+              <div>
+                <dt>Problem</dt>
+                <dd id="solverProblem">lp</dd>
+              </div>
+              <div>
+                <dt>Method</dt>
+                <dd id="solverMethod">HiGHS</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-heading">
+              <span class="eyebrow">Request Summary</span>
+            </div>
+            <ul class="summary-list" id="requestSummary">
+              <li><span>Total cash</span><strong>$500M</strong></li>
+              <li><span>Daily liquidity</span><strong>30%</strong></li>
+              <li><span>Weekly liquidity</span><strong>60%</strong></li>
+              <li><span>Prime limit</span><strong>40%</strong></li>
+              <li><span>Max WAM</span><strong>60 days</strong></li>
+              <li><span>Single fund</span><strong>50%</strong></li>
+            </ul>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-heading">
+              <span class="eyebrow">PDF Intake</span>
+              <span class="status-pill">Sample</span>
+            </div>
+            <div class="pdf-card">
+              <div>
+                <strong>sample_brief.pdf</strong>
+                <span>PORT_204 - Treasury Liquidity Desk</span>
+              </div>
+              <button class="secondary-button" id="parsePdfButton" type="button">Parse</button>
+            </div>
+          </section>
+        </aside>
+
+        <section class="main-stage" aria-label="Demo workspace">
+          <section class="chat-panel panel">
+            <div class="section-header">
+              <div>
+                <span class="eyebrow">Guided Chat</span>
+                <h2>Money market allocation</h2>
+              </div>
+              <div class="quick-actions">
+                <button class="secondary-button" data-fill="I want to optimize money market cash" type="button">
+                  Start
+                </button>
+                <button class="secondary-button" data-fill="ingest examples/sample_brief.pdf and solve" type="button">
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            <div class="messages" id="messages" aria-live="polite">
+              <article class="message assistant">
+                <span class="message-label">Assistant</span>
+                <p>I will guide a money market allocation workflow.</p>
+                <p>What portfolio ID should I use? <span class="hint">default: PORT_001</span></p>
+              </article>
+            </div>
+
+            <form class="chat-input" id="chatForm">
+              <input
+                id="chatInput"
+                autocomplete="off"
+                placeholder="Type an answer or business request"
+                aria-label="Chat input"
+              />
+              <button class="primary-button" type="submit">Send</button>
+            </form>
+          </section>
+
+          <section class="dashboard-grid">
+            <section class="panel result-panel">
+              <div class="section-header">
+                <div>
+                  <span class="eyebrow">Recommendation</span>
+                  <h2>Optimization result</h2>
+                </div>
+                <span class="status-pill status-optimal" id="resultStatus">Optimal</span>
+              </div>
+
+              <div class="metric-grid">
+                <div class="metric">
+                  <span>Optimized yield</span>
+                  <strong id="metricObjective">5.2284%</strong>
+                  <small>Net annualized</small>
+                </div>
+                <div class="metric">
+                  <span>Baseline yield</span>
+                  <strong id="metricBaseline">5.0291%</strong>
+                  <small>Current allocation</small>
+                </div>
+                <div class="metric accent">
+                  <span>Improvement</span>
+                  <strong id="metricImprovement">+19.93 bps</strong>
+                  <small>+3.96%</small>
+                </div>
+              </div>
+
+              <div class="allocation-bars" aria-label="Allocation chart">
+                <div class="bar-row">
+                  <span>BNY Mellon Government Fund 3</span>
+                  <div class="bar-track"><div class="bar-fill" style="width: 50%"></div></div>
+                  <strong>$250M</strong>
+                </div>
+                <div class="bar-row">
+                  <span>BNY Mellon Prime Fund 7</span>
+                  <div class="bar-track"><div class="bar-fill alternate" style="width: 40%"></div></div>
+                  <strong>$200M</strong>
+                </div>
+                <div class="bar-row">
+                  <span>BNY Mellon Government Fund 2</span>
+                  <div class="bar-track"><div class="bar-fill muted" style="width: 10%"></div></div>
+                  <strong>$50M</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-header tight">
+                <div>
+                  <span class="eyebrow">Constraints</span>
+                  <h2>Binding checks</h2>
+                </div>
+              </div>
+              <div class="constraint-stack">
+                <div class="constraint-item">
+                  <strong>Prime concentration</strong>
+                  <span>40% limit is binding</span>
+                </div>
+                <div class="constraint-item">
+                  <strong>Single fund limit</strong>
+                  <span>MMF_002 capped at 50%</span>
+                </div>
+                <div class="constraint-item muted">
+                  <strong>Liquidity</strong>
+                  <span>Daily and weekly requirements satisfied</span>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="table-grid">
+            <section class="panel">
+              <div class="section-header tight">
+                <div>
+                  <span class="eyebrow">Allocations</span>
+                  <h2>Recommended portfolio</h2>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fund</th>
+                      <th>Amount</th>
+                      <th>Weight</th>
+                      <th>Yield</th>
+                      <th>WAM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>BNY Mellon Government Fund 3</td>
+                      <td>$250.0M</td>
+                      <td>50.0%</td>
+                      <td>5.23%</td>
+                      <td>47d</td>
+                    </tr>
+                    <tr>
+                      <td>BNY Mellon Prime Fund 7</td>
+                      <td>$200.0M</td>
+                      <td>40.0%</td>
+                      <td>5.57%</td>
+                      <td>58d</td>
+                    </tr>
+                    <tr>
+                      <td>BNY Mellon Government Fund 2</td>
+                      <td>$50.0M</td>
+                      <td>10.0%</td>
+                      <td>5.03%</td>
+                      <td>36d</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-header tight">
+                <div>
+                  <span class="eyebrow">Sensitivity</span>
+                  <h2>Decision drivers</h2>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Parameter</th>
+                      <th>Shadow price</th>
+                      <th>Interpretation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Daily liquidity</td>
+                      <td>0.0000</td>
+                      <td>No current yield impact from a 5pp relaxation.</td>
+                    </tr>
+                    <tr>
+                      <td>Weekly liquidity</td>
+                      <td>0.0000</td>
+                      <td>No current yield impact from a 5pp relaxation.</td>
+                    </tr>
+                    <tr>
+                      <td>Prime fund limit</td>
+                      <td>32.2400</td>
+                      <td>Relaxing by 10pp improves yield by 3.22bps.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

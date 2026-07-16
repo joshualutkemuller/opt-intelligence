@@ -19,8 +19,10 @@ def test_guided_money_market_workflow_builds_request():
         "40%",
         "60",
         "50%",
+        "4",
+        "5%",
         "scipy",
-        "lp",
+        "milp",
         "stress",
     ]
     for answer in answers:
@@ -41,8 +43,10 @@ def test_guided_money_market_workflow_builds_request():
     assert req.context["max_prime_fraction"] == 0.40
     assert req.context["max_wam_days"] == 60
     assert req.context["max_single_fund"] == 0.50
+    assert req.context["max_funds"] == 4
+    assert req.context["min_allocation_fraction"] == 0.05
     assert req.context["solver_backend"] == "scipy"
-    assert req.context["problem_type"] == "lp"
+    assert req.context["problem_type"] == "milp"
     assert req.scenarios[0].name == "stress"
 
 

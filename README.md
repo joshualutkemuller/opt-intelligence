@@ -1,7 +1,7 @@
 # Decision Intelligence Platform
 
 A reusable optimization framework for financial decision intelligence.
-Combines deterministic LP optimization, a common interface contract, an
+Combines deterministic LP/MILP optimization, a common interface contract, an
 optimizer registry, and a deterministic orchestrator — ready to be extended
 with real data adapters, additional domains, and an LLM agent layer.
 
@@ -24,7 +24,7 @@ Collateral  MoneyMarket  Financing
 Optimizer   Optimizer    Optimizer
         │
         ▼
-validate_request → prepare_problem → solve (HiGHS LP)
+validate_request → prepare_problem → solve (registered solver backend)
 → validate_solution → run_sensitivity → explain
         │
         ▼
@@ -45,7 +45,9 @@ AuditLog
 | **Money Market** | Maximize net yield | Fund weights | Daily/weekly liquidity, WAM, prime fraction, single-fund limit |
 | **Financing** | Minimize spread cost | Counterparty-to-need amounts | Tenor compatibility, capacity, concentration, capital budget |
 
-All three use `scipy.optimize.linprog` with the HiGHS solver.
+All three support the default continuous LP path through SciPy/HiGHS. The
+money-market optimizer also supports a true MILP fund-selection model through
+SciPy/HiGHS with binary selected/not-selected variables.
 
 ---
 
@@ -79,6 +81,26 @@ Produces a rich terminal output showing:
 - Sensitivity / shadow-price analysis
 - Scenario analysis (stress, downside)
 - Audit log entry count
+
+## Solver Backends
+
+Run the focused solver comparison:
+
+```bash
+python examples/run_solver_demo.py
+```
+
+Or select a backend directly from the CLI:
+
+```bash
+di run money_market --solver scipy --problem-type lp
+di run money_market --solver scipy --problem-type milp
+di run money_market --solver cvxpy --problem-type lp
+```
+
+`scipy/milp` enables money-market fund selection with binary variables, a
+maximum selected-fund count, and a minimum allocation per selected fund. See
+`docs/solver_backends.md` for the modeling details and extension points.
 
 ---
 
