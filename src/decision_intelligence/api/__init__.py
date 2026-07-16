@@ -1,1 +1,5 @@
-# API layer — FastAPI routes to be added in Phase 2.
+"""Browser-facing API for local Decision Intelligence demos."""
+
+from .app import app
+
+__all__ = ["app"]

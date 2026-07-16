@@ -6,8 +6,15 @@ const exportButton = document.querySelector("#exportButton");
 const parsePdfButton = document.querySelector("#parsePdfButton");
 const requestSummary = document.querySelector("#requestSummary");
 const workflowStatus = document.querySelector("#workflowStatus");
+const allocationBody = document.querySelector("#allocationBody");
+const sensitivityBody = document.querySelector("#sensitivityBody");
+
+const API_BASE = "http://127.0.0.1:8000";
 
 const state = {
+  apiConnected: false,
+  sessionId: null,
+  latestPayload: null,
   step: 0,
   solver: "scipy-lp",
   fields: {
@@ -148,6 +155,29 @@ function updateSummary() {
   );
 }
 
+function updateSummaryFromApi(apiState) {
+  const collected = apiState?.collected || {};
+  const domain = apiState?.domain || "money_market";
+  state.fields.domain = titleCase(domain.replaceAll("_", " "));
+  state.fields.portfolio = collected.portfolio_id || state.fields.portfolio;
+  state.fields.scenario = formatScenarioList(collected.scenario_names);
+  state.fields.totalCash = formatCurrency(collected.total_cash);
+  state.fields.dailyLiquidity = formatFraction(collected.daily_liquidity_req);
+  state.fields.weeklyLiquidity = formatFraction(collected.weekly_liquidity_req);
+  state.fields.primeLimit = formatFraction(collected.max_prime_fraction);
+  state.fields.maxWam = collected.max_wam_days ? `${collected.max_wam_days} days` : state.fields.maxWam;
+  state.fields.singleFund = formatFraction(collected.max_single_fund);
+
+  if (apiState?.awaiting_confirmation) {
+    workflowStatus.textContent = "Confirm";
+    workflowStatus.className = "status-pill status-ready";
+  } else if (apiState?.domain) {
+    workflowStatus.textContent = "Collecting";
+    workflowStatus.className = "status-pill status-ready";
+  }
+  updateSummary();
+}
+
 function completeRun() {
   workflowStatus.textContent = "Complete";
   workflowStatus.className = "status-pill status-optimal";
@@ -157,7 +187,7 @@ function completeRun() {
   );
 }
 
-function handleChatSubmit(event) {
+async function handleChatSubmit(event) {
   event.preventDefault();
   const raw = chatInput.value.trim();
   if (!raw) return;
@@ -166,7 +196,12 @@ function handleChatSubmit(event) {
   chatInput.value = "";
 
   if (raw.toLowerCase() === "reset") {
-    resetSession();
+    await resetSession();
+    return;
+  }
+
+  if (state.apiConnected) {
+    await sendApiMessage(raw);
     return;
   }
 
@@ -203,8 +238,9 @@ function handleChatSubmit(event) {
   );
 }
 
-function resetSession() {
+async function resetSession() {
   state.step = 0;
+  state.latestPayload = null;
   state.fields = {
     domain: "Money market",
     portfolio: "PORT_204",
@@ -222,6 +258,10 @@ function resetSession() {
   addMessage("assistant", "I will guide a money market allocation workflow.");
   addAssistantQuestion(workflow[0]);
   updateSummary();
+
+  if (state.apiConnected) {
+    await createApiSession({ clearMessages: true });
+  }
 }
 
 function setSolver(solverKey) {
@@ -251,7 +291,7 @@ function parsePdf() {
 }
 
 function exportResult() {
-  const payload = {
+  const payload = state.latestPayload || {
     domain: "money_market",
     portfolio: state.fields.portfolio,
     solver: solverProfiles[state.solver],
@@ -278,6 +318,101 @@ function exportResult() {
   URL.revokeObjectURL(url);
 }
 
+async function createApiSession({ clearMessages = false } = {}) {
+  try {
+    const response = await fetch(`${API_BASE}/api/chat/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seed: 42, default_portfolio: "PORT_001" }),
+    });
+    if (!response.ok) throw new Error(`API returned ${response.status}`);
+    const body = await response.json();
+    state.apiConnected = true;
+    state.sessionId = body.session_id;
+    workflowStatus.textContent = "API ready";
+    workflowStatus.className = "status-pill status-optimal";
+    if (clearMessages) {
+      messages.replaceChildren();
+      addMessage("assistant", body.assistant_message);
+    } else {
+      addMessage("assistant", "Connected to the local Python optimizer API.");
+    }
+  } catch {
+    state.apiConnected = false;
+    state.sessionId = null;
+    addMessage("assistant", "API server not detected. Running in static prototype mode.");
+  }
+}
+
+async function sendApiMessage(message) {
+  if (!state.sessionId) {
+    await createApiSession();
+  }
+
+  const response = await fetch(`${API_BASE}/api/chat/sessions/${state.sessionId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!response.ok) {
+    addMessage("assistant", `The API returned ${response.status}. Falling back to static mode.`);
+    state.apiConnected = false;
+    return;
+  }
+
+  const body = await response.json();
+  addMessage("assistant", body.assistant_message);
+  updateSummaryFromApi(body.state);
+
+  if (body.result) {
+    state.latestPayload = body;
+    workflowStatus.textContent = "Complete";
+    workflowStatus.className = "status-pill status-optimal";
+    renderResult(body.result);
+  }
+}
+
+function renderResult(result) {
+  document.querySelector("#resultStatus").textContent = titleCase(result.status);
+  document.querySelector("#metricObjective").textContent = `${Number(result.objective_value).toFixed(4)}%`;
+  document.querySelector("#metricBaseline").textContent = `${Number(result.baseline_value).toFixed(4)}%`;
+  document.querySelector("#metricImprovement").textContent =
+    `${result.improvement >= 0 ? "+" : ""}${(Number(result.improvement) * 100).toFixed(2)} bps`;
+
+  const metadata = result.solver_metadata || {};
+  document.querySelector("#solverBackend").textContent = metadata.solver_backend || "scipy";
+  document.querySelector("#solverProblem").textContent = metadata.problem_type || "lp";
+  document.querySelector("#solverMethod").textContent = metadata.solver_method || metadata.solver || "HiGHS";
+
+  allocationBody.replaceChildren(
+    ...result.allocations.map((allocation) => {
+      const row = document.createElement("tr");
+      const cells = [
+        allocation.label,
+        formatCurrency(allocation.allocated_value),
+        formatFraction(allocation.allocated_fraction),
+        formatMaybePercent(allocation.metadata?.yield_7day),
+        allocation.metadata?.wam_days ? `${allocation.metadata.wam_days}d` : "-",
+      ];
+      row.append(...cells.map(tableCell));
+      return row;
+    }),
+  );
+
+  sensitivityBody.replaceChildren(
+    ...result.sensitivities.map((item) => {
+      const row = document.createElement("tr");
+      row.append(
+        tableCell(titleCase(item.parameter.replaceAll("_", " "))),
+        tableCell(Number(item.shadow_price).toFixed(4)),
+        tableCell(item.interpretation || "-"),
+      );
+      return row;
+    }),
+  );
+}
+
 function formatAmount(value) {
   const raw = value.toLowerCase().replace(/[$,\s]/g, "");
   const number = Number.parseFloat(raw);
@@ -286,6 +421,35 @@ function formatAmount(value) {
   if (raw.includes("million") || raw.endsWith("m")) return `$${number.toLocaleString()}M`;
   if (number >= 1000000) return `$${(number / 1000000).toLocaleString()}M`;
   return `$${number.toLocaleString()}`;
+}
+
+function formatCurrency(value) {
+  if (value === undefined || value === null || value === "") return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return String(value);
+  if (number >= 1_000_000_000) return `$${(number / 1_000_000_000).toFixed(1)}B`;
+  if (number >= 1_000_000) return `$${(number / 1_000_000).toFixed(0)}M`;
+  return `$${number.toLocaleString()}`;
+}
+
+function formatFraction(value) {
+  if (value === undefined || value === null || value === "") return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return String(value);
+  if (number <= 1) return `${Math.round(number * 100)}%`;
+  return `${number}%`;
+}
+
+function formatMaybePercent(value) {
+  if (value === undefined || value === null || value === "") return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return String(value);
+  return `${number.toFixed(2)}%`;
+}
+
+function formatScenarioList(value) {
+  if (!Array.isArray(value) || value.length === 0) return "None";
+  return value.map((item) => titleCase(String(item).replaceAll("_", " "))).join(", ");
 }
 
 function formatPercent(value) {
@@ -309,6 +473,20 @@ function parseNumber(value, fallback) {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function tableCell(value) {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  return cell;
+}
+
+function titleCase(value) {
+  return String(value)
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 document.querySelectorAll(".segmented-button").forEach((button) => {
   button.addEventListener("click", () => setSolver(button.dataset.solver));
 });
@@ -326,3 +504,4 @@ parsePdfButton.addEventListener("click", parsePdf);
 exportButton.addEventListener("click", exportResult);
 
 updateSummary();
+createApiSession();

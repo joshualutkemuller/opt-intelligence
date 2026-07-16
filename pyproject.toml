@@ -39,6 +39,11 @@ ingest = [
 llm-anthropic = ["anthropic>=0.40"]
 llm-openai = ["openai>=1.40"]
 solver-cvxpy = ["cvxpy>=1.6"]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

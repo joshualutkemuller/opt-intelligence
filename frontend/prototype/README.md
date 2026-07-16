@@ -2,11 +2,23 @@
 
 Static browser prototype for the Decision Intelligence guided chat demo.
 
-Open:
+Start the Python API:
+
+```bash
+cd "/Users/joshualutkemuller/Documents/Quant Sandbox/opt-intelligence"
+source .venv/bin/activate
+uvicorn decision_intelligence.api.app:app --reload
+```
+
+Then open:
 
 ```text
 frontend/prototype/index.html
 ```
+
+The page connects to `http://127.0.0.1:8000` and uses the real
+`ChatSession -> OptimizationRequest -> Orchestrator -> Optimizer` flow. If the
+API is not running, it falls back to static mock mode.
 
 Demo flow:
 
@@ -33,6 +45,5 @@ Included interactions:
 - allocation and sensitivity tables
 - JSON export mock
 
-This prototype is static and uses mocked browser data. The next build step is
-to connect it to the FastAPI wrapper described in
-`docs/features/FrontEnd_UI_PlanHandoff.md`.
+The next build step is converting this static prototype into a maintainable
+React/TypeScript application while preserving the current layout and API calls.

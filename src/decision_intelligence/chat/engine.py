@@ -41,6 +41,31 @@ class ChatSession:
     def active(self) -> bool:
         return self._state is not None
 
+    def snapshot(self) -> dict[str, Any]:
+        """Return browser-friendly workflow state for the current chat session."""
+        if self._state is None:
+            return {
+                "domain": None,
+                "title": None,
+                "collected": {},
+                "next_field": None,
+                "awaiting_confirmation": False,
+            }
+
+        state = self._state
+        next_field = None
+        if not state.awaiting_confirmation:
+            next_spec = self._advance_to_missing_field()
+            next_field = next_spec.key if next_spec else None
+
+        return {
+            "domain": state.spec.domain,
+            "title": state.spec.title,
+            "collected": dict(state.values),
+            "next_field": next_field,
+            "awaiting_confirmation": state.awaiting_confirmation,
+        }
+
     def reply(self, text: str) -> ChatResponse:
         prompt = text.strip()
         low = prompt.lower()
