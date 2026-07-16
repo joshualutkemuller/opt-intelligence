@@ -300,11 +300,13 @@ deterministic agents for the first agentic loop:
   readiness state.
 - `ScenarioAgent` suggests domain-relevant stress/downside/inventory scenarios.
 
-The guided chat session now exposes `intent` and `plan` in its browser/API
-snapshot, and the React demo shows an "Agent Plan" card with missing inputs,
-readiness, and scenario chips. This remains deterministic and offline-safe; a
-future LLM-backed planning agent should emit the same contracts rather than
-changing downstream orchestration.
+The guided chat session now uses `ExecutionPlan.missing_fields` as its workflow
+driver, exposes `intent`, `plan`, and `trace` in its browser/API snapshot, and
+attaches `agent_trace` to completed API result payloads. The React demo shows an
+"Agent Plan" card with missing inputs, readiness, scenario chips, plan-step
+progress, and a compact "Agent Trace" card. This remains deterministic and
+offline-safe; a future LLM-backed planning agent should emit the same contracts
+rather than changing downstream orchestration.
 
 ------------------------------------------------------------------------
 

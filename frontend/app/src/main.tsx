@@ -20,6 +20,7 @@ type WorkflowState = {
   awaiting_confirmation: boolean;
   intent?: AgentIntent | null;
   plan?: ExecutionPlan | null;
+  trace?: AgentTraceEvent[];
 };
 
 type AgentIntent = {
@@ -40,7 +41,14 @@ type ExecutionPlan = {
   required_fields: Array<{ key: string; label: string }>;
   scenario_names: string[];
   scenario_suggestions: Array<{ name: string; reason: string; selected: boolean }>;
+  steps: Array<{ name: string; description: string; status: string }>;
   ready_to_run: boolean;
+};
+
+type AgentTraceEvent = {
+  event: string;
+  message: string;
+  details: Record<string, unknown>;
 };
 
 type Allocation = {
@@ -101,12 +109,14 @@ type OptimizationResult = {
   validation_report?: ValidationReport | null;
   explanation_report?: ExplanationReport | null;
   solver_metadata: Record<string, unknown>;
+  agent_trace?: AgentTraceEvent[];
 };
 
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
   state: WorkflowState;
+  trace: AgentTraceEvent[];
   result: OptimizationResult | null;
   request: Record<string, unknown> | null;
 };
@@ -296,6 +306,8 @@ function App() {
 
           <PlanPanel workflow={workflow} />
 
+          <TracePanel workflow={workflow} result={result} />
+
           <section className="panel compact">
             <div className="panel-heading">
               <span className="eyebrow">Solver</span>
@@ -456,6 +468,16 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
           ))}
         </ul>
       ) : null}
+      {plan?.steps?.length ? (
+        <div className="plan-steps">
+          {plan.steps.map((step) => (
+            <div className={`plan-step ${step.status}`} key={step.name}>
+              <span />
+              <strong>{titleCase(step.name.replaceAll("_", " "))}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {plan?.scenario_suggestions?.length ? (
         <div className="scenario-chips">
           {plan.scenario_suggestions.slice(0, 3).map((scenario) => (
@@ -465,6 +487,36 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function TracePanel({
+  workflow,
+  result,
+}: {
+  workflow: WorkflowState | null;
+  result: OptimizationResult | null;
+}) {
+  const trace = result?.agent_trace || workflow?.trace || [];
+  return (
+    <section className="panel compact trace-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Agent Trace</span>
+        <span className="status-pill">{trace.length}</span>
+      </div>
+      {trace.length ? (
+        <ol>
+          {trace.slice(-5).map((event, index) => (
+            <li key={`${event.event}-${index}`}>
+              <strong>{titleCase(event.event.replaceAll("_", " "))}</strong>
+              <span>{event.message}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>Trace events appear after the agent starts planning.</p>
+      )}
     </section>
   );
 }

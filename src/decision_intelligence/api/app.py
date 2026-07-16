@@ -68,6 +68,7 @@ def create_chat_session(payload: CreateChatSessionRequest) -> ChatSessionRespons
             "Tell me which workflow you want: collateral, money market, or financing."
         ),
         state=session.snapshot(),
+        trace=session.snapshot().get("trace", []),
     )
 
 
@@ -88,10 +89,16 @@ def send_chat_message(
         request = _json(reply.request)
         result = _json(_run_request(reply.request))
 
+    state = session.snapshot()
+    trace = state.get("trace", [])
+    if result is not None:
+        result["agent_trace"] = trace
+
     return ChatSessionResponse(
         session_id=session_id,
         assistant_message=reply.message,
-        state=session.snapshot(),
+        state=state,
+        trace=trace,
         result=result,
         request=request,
     )

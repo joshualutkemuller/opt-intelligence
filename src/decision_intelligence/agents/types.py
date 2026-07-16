@@ -31,6 +31,12 @@ class PlanStep(BaseModel):
     status: Literal["complete", "pending", "blocked"] = "pending"
 
 
+class AgentTraceEvent(BaseModel):
+    event: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class ExecutionPlan(BaseModel):
     domain: str | None = None
     title: str = "Optimization workflow"

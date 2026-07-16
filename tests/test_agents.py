@@ -74,3 +74,38 @@ def test_chat_snapshot_includes_intent_and_plan():
     assert snapshot["plan"]["domain"] == "money_market"
     assert snapshot["plan"]["scenario_names"] == ["stress"]
     assert "portfolio_id" in snapshot["plan"]["missing_fields"]
+    assert snapshot["trace"][0]["event"] == "intent_detected"
+
+
+def test_plan_driven_chat_skips_prefilled_scenario_and_completes():
+    session = ChatSession(seed=42, default_portfolio="PORT_001")
+    response = session.reply("optimize money market under stress")
+    assert "portfolio ID" in response.message
+
+    answers = [
+        "PORT_001",
+        "$500 million",
+        "30%",
+        "60%",
+        "40%",
+        "60",
+        "50%",
+        "4",
+        "5%",
+        "scipy",
+        "lp",
+    ]
+    for answer in answers:
+        response = session.reply(answer)
+
+    assert "Confirm" in response.message
+    snapshot = session.snapshot()
+    assert snapshot["plan"]["ready_to_run"] is True
+    assert snapshot["plan"]["missing_fields"] == []
+    assert snapshot["plan"]["scenario_names"] == ["stress"]
+
+    response = session.reply("yes")
+    assert response.request is not None
+    assert response.request.scenarios[0].name == "stress"
+    final_snapshot = session.snapshot()
+    assert final_snapshot["trace"][-1]["event"] == "request_compiled"

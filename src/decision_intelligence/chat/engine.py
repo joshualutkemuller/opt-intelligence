@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from decision_intelligence.agents import AgentIntent, IntentAgent, PlanningAgent
+from decision_intelligence.agents import (
+    AgentIntent,
+    AgentTraceEvent,
+    ExecutionPlan,
+    IntentAgent,
+    PlanningAgent,
+)
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
@@ -40,6 +46,8 @@ class ChatSession:
         self._intent_agent = IntentAgent()
         self._planning_agent = PlanningAgent()
         self._last_intent: AgentIntent | None = None
+        self._last_plan: ExecutionPlan | None = None
+        self._trace: list[AgentTraceEvent] = []
 
     @property
     def active(self) -> bool:
@@ -55,18 +63,19 @@ class ChatSession:
                 "next_field": None,
                 "awaiting_confirmation": False,
                 "intent": _dump_model(self._last_intent),
-                "plan": _dump_model(
-                    self._planning_agent.build_plan(self._last_intent)
-                    if self._last_intent
-                    else None
-                ),
+                "plan": _dump_model(self._last_plan),
+                "trace": _dump_models(self._trace),
             }
 
         state = self._state
-        next_field = None
+        plan = self._build_plan()
+        next_field = (
+            plan.missing_fields[0]
+            if not state.awaiting_confirmation and plan.missing_fields
+            else None
+        )
         if not state.awaiting_confirmation:
-            next_spec = self._advance_to_missing_field()
-            next_field = next_spec.key if next_spec else None
+            self._sync_index_to_plan(plan)
 
         return {
             "domain": state.spec.domain,
@@ -75,13 +84,8 @@ class ChatSession:
             "next_field": next_field,
             "awaiting_confirmation": state.awaiting_confirmation,
             "intent": _dump_model(self._last_intent),
-            "plan": _dump_model(
-                self._planning_agent.build_plan(
-                    self._last_intent
-                    or AgentIntent(raw_text="", domain=state.spec.domain),
-                    collected=state.values,
-                )
-            ),
+            "plan": _dump_model(plan),
+            "trace": _dump_models(self._trace),
         }
 
     def reply(self, text: str) -> ChatResponse:
@@ -89,12 +93,18 @@ class ChatSession:
         low = prompt.lower()
 
         if low in {"exit", "quit", "q", "bye"}:
+            self._record_trace("session_exit", "User exited the guided workflow.")
             self._state = None
             return ChatResponse("Leaving guided workflow.", should_exit=True)
 
         if self._state is None:
             intent = self._intent_agent.analyze(prompt)
             self._last_intent = intent
+            self._record_trace(
+                "intent_detected",
+                "Detected user intent from the opening message.",
+                intent=intent.model_dump(),
+            )
             domain = intent.domain or detect_domain(prompt)
             if domain is None:
                 return ChatResponse(
@@ -122,14 +132,25 @@ class ChatSession:
         if scenarios:
             self._state.values["scenario_names"] = scenarios
 
-        plan = self._planning_agent.build_plan(self._last_intent, collected=self._state.values)
+        plan = self._build_plan()
+        self._record_trace(
+            "plan_built",
+            "Built an execution plan from detected intent.",
+            plan=plan.model_dump(),
+        )
         return ChatResponse(f"{spec.intro}\n\n{plan.summary}\n\n{self._next_question()}")
 
     def _handle_answer(self, prompt: str) -> ChatResponse:
         state = self._require_state()
-        field_spec = self._current_field()
+        plan = self._build_plan()
+        field_spec = self._current_field(plan)
         if field_spec is None:
             state.awaiting_confirmation = True
+            self._record_trace(
+                "plan_ready",
+                "All plan-required inputs have been collected.",
+                plan=plan.model_dump(),
+            )
             return ChatResponse(self._confirmation_message())
 
         try:
@@ -138,21 +159,40 @@ class ChatSession:
             return ChatResponse(f"{exc}\n\n{self._format_question(field_spec)}")
 
         state.values[field_spec.key] = value
-        state.current_index += 1
+        self._record_trace(
+            "field_collected",
+            f"Collected {field_spec.display_label}.",
+            field=field_spec.key,
+            value=value,
+        )
+        self._sync_index_to_plan()
 
         next_question = self._next_question()
         if next_question:
             return ChatResponse(next_question)
 
         state.awaiting_confirmation = True
+        self._record_trace(
+            "plan_ready",
+            "All plan-required inputs have been collected.",
+            plan=self._build_plan().model_dump(),
+        )
         return ChatResponse(self._confirmation_message())
 
     def _handle_confirmation(self, prompt: str) -> ChatResponse:
         if is_yes(prompt):
             request = self._build_request()
+            self._record_trace(
+                "request_compiled",
+                "Compiled OptimizationRequest from the confirmed plan.",
+                request_id=request.request_id,
+                domain=request.domain,
+                execution_mode=request.execution_mode.value,
+            )
             self._state = None
             return ChatResponse("Confirmed. Running optimization...", request=request)
         if is_no(prompt):
+            self._record_trace("plan_cancelled", "User cancelled the execution plan.")
             self._state = None
             return ChatResponse("Cancelled this workflow. Start another request when ready.")
         return ChatResponse("Please confirm with yes or no.\n\n" + self._confirmation_message())
@@ -170,20 +210,26 @@ class ChatSession:
             return ""
         return self._format_question(field_spec)
 
-    def _advance_to_missing_field(self) -> FieldSpec | None:
+    def _advance_to_missing_field(self, plan: ExecutionPlan | None = None) -> FieldSpec | None:
         state = self._require_state()
-        while state.current_index < len(state.spec.fields):
-            field_spec = state.spec.fields[state.current_index]
-            if field_spec.key not in state.values:
+        plan = plan or self._build_plan()
+        if not plan.missing_fields:
+            state.current_index = len(state.spec.fields)
+            return None
+        next_key = plan.missing_fields[0]
+        for index, field_spec in enumerate(state.spec.fields):
+            if field_spec.key == next_key:
+                state.current_index = index
                 return field_spec
-            state.current_index += 1
         return None
 
-    def _current_field(self) -> FieldSpec | None:
+    def _current_field(self, plan: ExecutionPlan | None = None) -> FieldSpec | None:
         state = self._require_state()
-        if state.current_index >= len(state.spec.fields):
+        plan = plan or self._build_plan()
+        if not plan.missing_fields:
             return None
-        return state.spec.fields[state.current_index]
+        next_key = plan.missing_fields[0]
+        return next((field for field in state.spec.fields if field.key == next_key), None)
 
     def _format_question(self, field_spec: FieldSpec) -> str:
         value = self.default_portfolio if field_spec.key == "portfolio_id" else field_spec.default
@@ -251,6 +297,18 @@ class ChatSession:
             raise RuntimeError("No active workflow.")
         return self._state
 
+    def _build_plan(self) -> ExecutionPlan:
+        state = self._require_state()
+        intent = self._last_intent or AgentIntent(raw_text="", domain=state.spec.domain)
+        self._last_plan = self._planning_agent.build_plan(intent, collected=state.values)
+        return self._last_plan
+
+    def _sync_index_to_plan(self, plan: ExecutionPlan | None = None) -> None:
+        self._advance_to_missing_field(plan)
+
+    def _record_trace(self, event: str, message: str, **details: Any) -> None:
+        self._trace.append(AgentTraceEvent(event=event, message=message, details=details))
+
 
 def _format_value(value: Any, field_spec: FieldSpec) -> str:
     if field_spec.target == "scenarios":
@@ -269,3 +327,7 @@ def _dump_model(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
     return value.model_dump()
+
+
+def _dump_models(values: list[Any]) -> list[dict[str, Any]]:
+    return [value.model_dump() for value in values]

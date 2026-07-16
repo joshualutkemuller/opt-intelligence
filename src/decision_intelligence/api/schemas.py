@@ -20,6 +20,7 @@ class ChatSessionResponse(BaseModel):
     session_id: str
     assistant_message: str
     state: dict[str, Any]
+    trace: list[dict[str, Any]] = Field(default_factory=list)
     result: dict[str, Any] | None = None
     request: dict[str, Any] | None = None
 

@@ -54,6 +54,8 @@ def test_chat_session_completes_money_market_workflow():
     assert body["request"]["domain"] == "money_market"
     assert body["request"]["context"]["solver_backend"] == "scipy"
     assert body["request"]["context"]["problem_type"] == "lp"
+    assert body["trace"][-1]["event"] == "request_compiled"
+    assert body["result"]["agent_trace"][-1]["event"] == "request_compiled"
 
 
 def test_direct_optimization_endpoint():
