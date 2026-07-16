@@ -10,6 +10,35 @@ from pydantic import BaseModel, Field
 from decision_intelligence.contracts import OptimizationRequest, OptimizationResult
 
 WorkflowStatus = Literal["complete", "partial", "error"]
+DependencyRuleType = Literal[
+    "funding_pressure_liquidity_buffer",
+    "collateral_pressure_liquidity_buffer",
+]
+
+
+class WorkflowDependencyRule(BaseModel):
+    """Declarative rule that lets one completed step alter a downstream request."""
+
+    source_step_id: str
+    rule_type: DependencyRuleType
+    target_context_keys: list[str]
+    description: str = ""
+
+    model_config = {"frozen": True}
+
+
+class DependencyEffect(BaseModel):
+    """Audit record for a cross-step context mutation."""
+
+    rule_type: DependencyRuleType
+    source_step_id: str
+    target_step_id: str
+    target_context_key: str
+    previous_value: float
+    new_value: float
+    delta: float
+    reason: str
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowStep(BaseModel):
@@ -21,6 +50,7 @@ class WorkflowStep(BaseModel):
     description: str = ""
     request: OptimizationRequest
     depends_on: list[str] = Field(default_factory=list)
+    dependency_rules: list[WorkflowDependencyRule] = Field(default_factory=list)
 
     model_config = {"frozen": True}
 
@@ -54,6 +84,7 @@ class WorkflowStepResult(BaseModel):
     request: OptimizationRequest
     result: OptimizationResult
     inputs_from: list[str] = Field(default_factory=list)
+    dependency_effects: list[DependencyEffect] = Field(default_factory=list)
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -63,6 +94,7 @@ class WorkflowResult(BaseModel):
     status: WorkflowStatus
     step_results: list[WorkflowStepResult] = Field(default_factory=list)
     validation_summary: dict[str, Any] = Field(default_factory=dict)
+    dependency_summary: dict[str, Any] = Field(default_factory=dict)
     explanation: str = ""
     trace: list[WorkflowTraceEvent] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

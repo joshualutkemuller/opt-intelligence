@@ -7,7 +7,7 @@ from typing import Any
 from decision_intelligence.contracts import Objective, ObjectiveDirection, OptimizationRequest
 from decision_intelligence.contracts.requests import ExecutionMode
 
-from .types import WorkflowPlan, WorkflowStep
+from .types import WorkflowDependencyRule, WorkflowPlan, WorkflowStep
 
 LIQUIDITY_STRESS_WORKFLOW_ID = "liquidity_stress_funding_workflow"
 
@@ -106,6 +106,32 @@ def build_liquidity_stress_funding_workflow(
                 name="Liquidity reserve allocation",
                 description="Allocate cash reserves while meeting stressed liquidity needs.",
                 depends_on=["financing_001", "collateral_001"],
+                dependency_rules=[
+                    WorkflowDependencyRule(
+                        source_step_id="financing_001",
+                        rule_type="funding_pressure_liquidity_buffer",
+                        target_context_keys=[
+                            "daily_liquidity_req",
+                            "weekly_liquidity_req",
+                        ],
+                        description=(
+                            "Raise liquidity requirements when financing capacity "
+                            "or cost pressure is elevated."
+                        ),
+                    ),
+                    WorkflowDependencyRule(
+                        source_step_id="collateral_001",
+                        rule_type="collateral_pressure_liquidity_buffer",
+                        target_context_keys=[
+                            "daily_liquidity_req",
+                            "weekly_liquidity_req",
+                        ],
+                        description=(
+                            "Raise liquidity requirements when collateral coverage "
+                            "or inventory constraints are tight."
+                        ),
+                    ),
+                ],
                 request=_request(
                     domain="money_market",
                     portfolio_id=portfolio_id,

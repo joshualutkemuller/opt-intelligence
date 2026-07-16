@@ -133,7 +133,20 @@ type WorkflowStepResult = {
   request: Record<string, unknown>;
   result: OptimizationResult;
   inputs_from: string[];
+  dependency_effects: DependencyEffect[];
   summary: WorkflowSummary;
+};
+
+type DependencyEffect = {
+  rule_type: string;
+  source_step_id: string;
+  target_step_id: string;
+  target_context_key: string;
+  previous_value: number;
+  new_value: number;
+  delta: number;
+  reason: string;
+  details: Record<string, unknown>;
 };
 
 type WorkflowTraceEvent = {
@@ -162,6 +175,12 @@ type WorkflowRunResult = {
   status: "complete" | "partial" | "error";
   step_results: WorkflowStepResult[];
   validation_summary: WorkflowValidationSummary;
+  dependency_summary: {
+    total_effects: number;
+    target_steps: string[];
+    source_steps: string[];
+    context_changes: DependencyEffect[];
+  };
   explanation: string;
   trace: WorkflowTraceEvent[];
   timestamp: string;
@@ -672,9 +691,9 @@ function WorkflowTimelinePanel({
           note={workflowRun ? "Completed" : "Planned"}
         />
         <Metric
-          label="Checks"
-          value={String(summary?.total_checks ?? 0)}
-          note="Validation checks"
+          label="Dependencies"
+          value={String(workflowRun?.dependency_summary.total_effects ?? 0)}
+          note="Context changes"
         />
         <Metric
           label="Warnings"
@@ -714,6 +733,22 @@ function WorkflowTimelinePanel({
                   </div>
                   {step.inputs_from.length ? (
                     <p>Inputs carried from {step.inputs_from.join(", ")}.</p>
+                  ) : null}
+                  {step.dependency_effects.length ? (
+                    <ul className="workflow-dependency-list">
+                      {step.dependency_effects.map((effect) => (
+                        <li
+                          key={`${effect.source_step_id}-${effect.target_context_key}-${effect.new_value}`}
+                        >
+                          <strong>{titleCase(effect.target_context_key.replaceAll("_", " "))}</strong>
+                          <span>
+                            {formatFraction(effect.previous_value)} to{" "}
+                            {formatFraction(effect.new_value)} from{" "}
+                            {effect.source_step_id.replaceAll("_", " ")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
                 </div>
               </div>

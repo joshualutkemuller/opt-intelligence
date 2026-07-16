@@ -826,6 +826,37 @@ h2 {
   margin-top: 10px;
 }
 
+.workflow-dependency-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-dependency-list li {
+  padding: 8px;
+  border: 1px solid #b8c8f7;
+  border-radius: 7px;
+  background: #eef4ff;
+}
+
+.workflow-dependency-list strong,
+.workflow-dependency-list span {
+  display: block;
+}
+
+.workflow-dependency-list strong {
+  font-size: 12px;
+}
+
+.workflow-dependency-list span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
 .workflow-empty {
   max-width: 720px;
 }
@@ -986,6 +1017,7 @@ tbody tr:hover {
   .workflow-validation-strip,
   .workflow-step-metrics,
   .workflow-trace-grid,
+  .workflow-dependency-list,
   .validation-checks,
   .explanation-grid,
   .table-grid,

@@ -8,7 +8,9 @@ from decision_intelligence.contracts import OptimizationRequest, OptimizationRes
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.optimization import OptimizationOrchestrator
 
+from .dependencies import CrossStepDependencyEngine
 from .types import (
+    DependencyEffect,
     WorkflowPlan,
     WorkflowResult,
     WorkflowStatus,
@@ -21,8 +23,13 @@ from .types import (
 class SequentialWorkflowRunner:
     """Run a WorkflowPlan one step at a time through the optimization orchestrator."""
 
-    def __init__(self, orchestrator: OptimizationOrchestrator) -> None:
+    def __init__(
+        self,
+        orchestrator: OptimizationOrchestrator,
+        dependency_engine: CrossStepDependencyEngine | None = None,
+    ) -> None:
         self.orchestrator = orchestrator
+        self.dependency_engine = dependency_engine or CrossStepDependencyEngine()
 
     def run(self, plan: WorkflowPlan) -> WorkflowResult:
         trace: list[WorkflowTraceEvent] = [
@@ -49,7 +56,25 @@ class SequentialWorkflowRunner:
                 )
                 break
 
-            request = self._apply_prior_outputs(step, completed)
+            request, dependency_effects = self._prepare_request(step, completed)
+            if dependency_effects:
+                trace.append(
+                    WorkflowTraceEvent(
+                        event="dependencies_applied",
+                        message=(
+                            f"Applied {len(dependency_effects)} cross-step dependency "
+                            f"effect{'s' if len(dependency_effects) != 1 else ''}."
+                        ),
+                        step_id=step.step_id,
+                        domain=step.domain,
+                        details={
+                            "effects": [
+                                effect.model_dump(mode="json")
+                                for effect in dependency_effects
+                            ]
+                        },
+                    )
+                )
             trace.append(
                 WorkflowTraceEvent(
                     event="step_started",
@@ -69,6 +94,7 @@ class SequentialWorkflowRunner:
                 request=request,
                 result=result,
                 inputs_from=list(step.depends_on),
+                dependency_effects=dependency_effects,
                 summary=self._summarize_result(result),
             )
             completed[step.step_id] = step_result
@@ -110,17 +136,18 @@ class SequentialWorkflowRunner:
             status=status,
             step_results=step_results,
             validation_summary=self._aggregate_validation(step_results),
+            dependency_summary=self._aggregate_dependencies(step_results),
             explanation=self._build_explanation(plan, step_results, status),
             trace=trace,
         )
 
-    def _apply_prior_outputs(
+    def _prepare_request(
         self,
         step: WorkflowStep,
         completed: dict[str, WorkflowStepResult],
-    ) -> OptimizationRequest:
+    ) -> tuple[OptimizationRequest, list[DependencyEffect]]:
         if not step.depends_on:
-            return step.request
+            return step.request, []
 
         upstream = {
             dep: completed[dep].summary
@@ -131,7 +158,9 @@ class SequentialWorkflowRunner:
             **step.request.context,
             "workflow_inputs": upstream,
         }
-        return step.request.model_copy(update={"context": context})
+        request = step.request.model_copy(update={"context": context})
+        step_with_inputs = step.model_copy(update={"request": request})
+        return self.dependency_engine.apply(step_with_inputs, completed)
 
     def _summarize_result(self, result: OptimizationResult) -> dict[str, Any]:
         validation = result.validation_report
@@ -150,6 +179,33 @@ class SequentialWorkflowRunner:
             "violation_count": (
                 len(validation.violations) if validation else len(result.validation.violations)
             ),
+        }
+
+    def _aggregate_dependencies(
+        self,
+        step_results: list[WorkflowStepResult],
+    ) -> dict[str, Any]:
+        effects = [
+            effect
+            for step in step_results
+            for effect in step.dependency_effects
+        ]
+        return {
+            "total_effects": len(effects),
+            "target_steps": sorted({effect.target_step_id for effect in effects}),
+            "source_steps": sorted({effect.source_step_id for effect in effects}),
+            "context_changes": [
+                {
+                    "source_step_id": effect.source_step_id,
+                    "target_step_id": effect.target_step_id,
+                    "target_context_key": effect.target_context_key,
+                    "previous_value": effect.previous_value,
+                    "new_value": effect.new_value,
+                    "delta": effect.delta,
+                    "reason": effect.reason,
+                }
+                for effect in effects
+            ],
         }
 
     def _workflow_status(
@@ -215,4 +271,11 @@ class SequentialWorkflowRunner:
                 f"{step.name}: {step.status}, objective {step.result.objective_value:,.4f}, "
                 f"improvement {step.result.improvement_pct:,.2f}%."
             )
+            if step.dependency_effects:
+                changed = ", ".join(
+                    f"{effect.target_context_key} {effect.previous_value:.2%}→"
+                    f"{effect.new_value:.2%}"
+                    for effect in step.dependency_effects
+                )
+                pieces.append(f"Cross-step dependencies adjusted {changed}.")
         return " ".join(pieces)

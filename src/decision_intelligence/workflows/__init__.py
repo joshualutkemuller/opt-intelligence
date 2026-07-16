@@ -6,6 +6,8 @@ from .library import (
 )
 from .runner import SequentialWorkflowRunner
 from .types import (
+    DependencyEffect,
+    WorkflowDependencyRule,
     WorkflowPlan,
     WorkflowResult,
     WorkflowStep,
@@ -15,7 +17,9 @@ from .types import (
 
 __all__ = [
     "LIQUIDITY_STRESS_WORKFLOW_ID",
+    "DependencyEffect",
     "SequentialWorkflowRunner",
+    "WorkflowDependencyRule",
     "WorkflowPlan",
     "WorkflowResult",
     "WorkflowStep",

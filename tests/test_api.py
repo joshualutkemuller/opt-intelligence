@@ -108,6 +108,8 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
         "money_market",
     ]
     assert body["result"]["validation_summary"]["passed"] is True
+    assert body["result"]["dependency_summary"]["total_effects"] == 4
+    assert body["result"]["step_results"][-1]["dependency_effects"]
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
 
 

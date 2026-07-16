@@ -524,9 +524,12 @@ decision-intelligence-platform/
     browser-facing `/api/workflows/run` endpoint.
 -   ✅ **Liquidity Stress Funding Workflow (POC)** — chains financing,
     collateral, and money-market optimizers under a shared stress context.
--   Next: promote workflow outputs into the front-end progress UI, add
-    configurable workflow templates, and add cross-step data dependencies that
-    alter downstream optimizer inputs rather than only carrying summaries.
+-   ✅ **Cross-Step Dependency Engine (POC)** — upstream financing and
+    collateral pressure now deterministically adjust downstream money-market
+    liquidity requirements, with auditable `DependencyEffect` records.
+-   Next: add configurable workflow templates, a workflow registry/list API,
+    and top-level workflow explanations that summarize why upstream results
+    changed downstream recommendations.
 
 ## Phase 6
 
