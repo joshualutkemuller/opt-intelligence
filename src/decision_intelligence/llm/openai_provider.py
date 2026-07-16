@@ -54,19 +54,12 @@ class OpenAIProvider(LLMProvider):
 
     @staticmethod
     def is_available() -> bool:
-        configured = bool(
+        return bool(
             os.environ.get("OPENAI_API_KEY")
             or os.environ.get("DI_LLM_API_KEY")
             or os.environ.get("DI_LLM_BASE_URL")
             or os.environ.get("OPENAI_BASE_URL")
         )
-        if not configured:
-            return False
-        try:
-            import openai  # noqa: F401
-        except ImportError:
-            return False
-        return True
 
     def _client(self):
         import openai

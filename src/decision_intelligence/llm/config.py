@@ -42,7 +42,7 @@ _REGISTRY: dict[str, ProviderFactory] = {
     ),
 }
 
-# name → availability predicate (credentials present + SDK importable)
+# name → availability predicate (credentials/base URL configured)
 _AVAILABILITY: dict[str, Callable[[], bool]] = {
     "anthropic": AnthropicProvider.is_available,
     "openai": OpenAIProvider.is_available,
@@ -62,7 +62,7 @@ def register_provider(
 
 
 def available_providers() -> list[str]:
-    """Names of registered providers whose credentials/SDK are currently present."""
+    """Names of registered providers with enough configuration to be selected."""
     return [n for n, check in _AVAILABILITY.items() if _safe(check)]
 
 

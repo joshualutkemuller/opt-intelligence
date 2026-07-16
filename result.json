@@ -1,0 +1,295 @@
+{
+  "request_id": "22f543e9-0cbb-45fa-8ffa-608bb9ed620c",
+  "domain": "money_market",
+  "status": "optimal",
+  "objective_value": 5.2284099999999984,
+  "baseline_value": 5.029133333333333,
+  "improvement": 0.19927666666666521,
+  "improvement_pct": 3.962445484311383,
+  "allocations": [
+    {
+      "asset_id": "MMF_001",
+      "label": "BNY Mellon Government Fund 2",
+      "allocated_value": 50000000.0,
+      "allocated_fraction": 0.1,
+      "metadata": {
+        "yield_7day": 5.0715,
+        "expense_ratio_bps": 5.3,
+        "wam_days": 36,
+        "daily_liquidity_pct": 0.7965,
+        "credit_quality": "government",
+        "contribution_to_yield_bps": 50.71
+      }
+    },
+    {
+      "asset_id": "MMF_002",
+      "label": "BNY Mellon Government Fund 3",
+      "allocated_value": 250000000.0,
+      "allocated_fraction": 0.5,
+      "metadata": {
+        "yield_7day": 5.1274,
+        "expense_ratio_bps": 9.5,
+        "wam_days": 38,
+        "daily_liquidity_pct": 0.9119,
+        "credit_quality": "government",
+        "contribution_to_yield_bps": 256.37
+      }
+    },
+    {
+      "asset_id": "MMF_006",
+      "label": "BNY Mellon Prime Fund 7",
+      "allocated_value": 200000000.0,
+      "allocated_fraction": 0.4,
+      "metadata": {
+        "yield_7day": 5.3939,
+        "expense_ratio_bps": 17.4,
+        "wam_days": 62,
+        "daily_liquidity_pct": 0.5629,
+        "credit_quality": "prime",
+        "contribution_to_yield_bps": 215.76
+      }
+    }
+  ],
+  "binding_constraints": [
+    "prime_concentration",
+    "single_fund_limit:MMF_002"
+  ],
+  "sensitivities": [
+    {
+      "parameter": "daily_liquidity_req",
+      "shadow_price": 0.0,
+      "range_lower": 0.2,
+      "range_upper": 0.4,
+      "interpretation": "Relaxing daily liquidity requirement by 5pp improves yield by 0.00bps"
+    },
+    {
+      "parameter": "weekly_liquidity_req",
+      "shadow_price": 0.0,
+      "range_lower": 0.5,
+      "range_upper": 0.7,
+      "interpretation": "Relaxing weekly liquidity requirement by 5pp improves yield by 0.00bps"
+    },
+    {
+      "parameter": "max_prime_fraction",
+      "shadow_price": 32.24,
+      "range_lower": 0.3,
+      "range_upper": 0.5,
+      "interpretation": "Relaxing prime fund limit by 10pp improves yield by 3.22bps"
+    }
+  ],
+  "validation": {
+    "passed": true,
+    "checks": [],
+    "violations": [],
+    "warnings": []
+  },
+  "explanation": "Money market optimizer allocated $500M across 3 funds.\nAchieved net yield: 5.2284% vs baseline 5.0291% \u2014 improvement of 19.93bps.\nPortfolio liquidity: daily=76.1%, weekly=90.9%, WAM=47d.\nTop allocations: BNY Mellon Government Fund 3 (50.0%); BNY Mellon Prime Fund 7 (40.0%); BNY Mellon Government Fund 2 (10.0%).\nBinding constraints: prime_concentration, single_fund_limit:MMF_002.\nThe optimizer concentrated in higher-yielding funds while respecting daily/weekly liquidity floors and the WAM cap.",
+  "governance": {
+    "request_id": "22f543e9-0cbb-45fa-8ffa-608bb9ed620c",
+    "execution_mode": "recommendation",
+    "tier": 2,
+    "action": "recommendation",
+    "required": false,
+    "status": "not_required",
+    "action_performed": true,
+    "approval_id": null,
+    "approver": null,
+    "reason": "",
+    "decided_at": null
+  },
+  "scenario_results": {
+    "liquidity_stress": {
+      "request_id": "22f543e9-0cbb-45fa-8ffa-608bb9ed620c",
+      "domain": "money_market",
+      "status": "optimal",
+      "objective_value": 5.2284099999999984,
+      "baseline_value": 5.029133333333333,
+      "improvement": 0.19927666666666521,
+      "improvement_pct": 3.962445484311383,
+      "allocations": [
+        {
+          "asset_id": "MMF_001",
+          "label": "BNY Mellon Government Fund 2",
+          "allocated_value": 50000000.0,
+          "allocated_fraction": 0.1,
+          "metadata": {
+            "yield_7day": 5.0715,
+            "expense_ratio_bps": 5.3,
+            "wam_days": 36,
+            "daily_liquidity_pct": 0.7965,
+            "credit_quality": "government",
+            "contribution_to_yield_bps": 50.71
+          }
+        },
+        {
+          "asset_id": "MMF_002",
+          "label": "BNY Mellon Government Fund 3",
+          "allocated_value": 250000000.0,
+          "allocated_fraction": 0.5,
+          "metadata": {
+            "yield_7day": 5.1274,
+            "expense_ratio_bps": 9.5,
+            "wam_days": 38,
+            "daily_liquidity_pct": 0.9119,
+            "credit_quality": "government",
+            "contribution_to_yield_bps": 256.37
+          }
+        },
+        {
+          "asset_id": "MMF_006",
+          "label": "BNY Mellon Prime Fund 7",
+          "allocated_value": 200000000.0,
+          "allocated_fraction": 0.4,
+          "metadata": {
+            "yield_7day": 5.3939,
+            "expense_ratio_bps": 17.4,
+            "wam_days": 62,
+            "daily_liquidity_pct": 0.5629,
+            "credit_quality": "prime",
+            "contribution_to_yield_bps": 215.76
+          }
+        }
+      ],
+      "binding_constraints": [
+        "prime_concentration",
+        "single_fund_limit:MMF_002"
+      ],
+      "sensitivities": [
+        {
+          "parameter": "daily_liquidity_req",
+          "shadow_price": 0.0,
+          "range_lower": 0.3,
+          "range_upper": 0.5,
+          "interpretation": "Relaxing daily liquidity requirement by 5pp improves yield by 0.00bps"
+        },
+        {
+          "parameter": "weekly_liquidity_req",
+          "shadow_price": 0.0,
+          "range_lower": 0.6,
+          "range_upper": 0.8,
+          "interpretation": "Relaxing weekly liquidity requirement by 5pp improves yield by 0.00bps"
+        },
+        {
+          "parameter": "max_prime_fraction",
+          "shadow_price": 32.24,
+          "range_lower": 0.3,
+          "range_upper": 0.5,
+          "interpretation": "Relaxing prime fund limit by 10pp improves yield by 3.22bps"
+        }
+      ],
+      "validation": {
+        "passed": true,
+        "checks": [],
+        "violations": [],
+        "warnings": []
+      },
+      "explanation": "Money market optimizer allocated $500M across 3 funds.\nAchieved net yield: 5.2284% vs baseline 5.0291% \u2014 improvement of 19.93bps.\nPortfolio liquidity: daily=76.1%, weekly=90.9%, WAM=47d.\nTop allocations: BNY Mellon Government Fund 3 (50.0%); BNY Mellon Prime Fund 7 (40.0%); BNY Mellon Government Fund 2 (10.0%).\nBinding constraints: prime_concentration, single_fund_limit:MMF_002.\nThe optimizer concentrated in higher-yielding funds while respecting daily/weekly liquidity floors and the WAM cap.",
+      "governance": null,
+      "scenario_results": {},
+      "solver_metadata": {
+        "solver": "HiGHS",
+        "n_funds_used": 3
+      },
+      "timestamp": "2026-07-16T00:48:30.976629Z"
+    },
+    "credit_stress": {
+      "request_id": "22f543e9-0cbb-45fa-8ffa-608bb9ed620c",
+      "domain": "money_market",
+      "status": "optimal",
+      "objective_value": 5.2284099999999984,
+      "baseline_value": 5.029133333333333,
+      "improvement": 0.19927666666666521,
+      "improvement_pct": 3.962445484311383,
+      "allocations": [
+        {
+          "asset_id": "MMF_001",
+          "label": "BNY Mellon Government Fund 2",
+          "allocated_value": 50000000.0,
+          "allocated_fraction": 0.1,
+          "metadata": {
+            "yield_7day": 5.0715,
+            "expense_ratio_bps": 5.3,
+            "wam_days": 36,
+            "daily_liquidity_pct": 0.7965,
+            "credit_quality": "government",
+            "contribution_to_yield_bps": 50.71
+          }
+        },
+        {
+          "asset_id": "MMF_002",
+          "label": "BNY Mellon Government Fund 3",
+          "allocated_value": 250000000.0,
+          "allocated_fraction": 0.5,
+          "metadata": {
+            "yield_7day": 5.1274,
+            "expense_ratio_bps": 9.5,
+            "wam_days": 38,
+            "daily_liquidity_pct": 0.9119,
+            "credit_quality": "government",
+            "contribution_to_yield_bps": 256.37
+          }
+        },
+        {
+          "asset_id": "MMF_006",
+          "label": "BNY Mellon Prime Fund 7",
+          "allocated_value": 200000000.0,
+          "allocated_fraction": 0.4,
+          "metadata": {
+            "yield_7day": 5.3939,
+            "expense_ratio_bps": 17.4,
+            "wam_days": 62,
+            "daily_liquidity_pct": 0.5629,
+            "credit_quality": "prime",
+            "contribution_to_yield_bps": 215.76
+          }
+        }
+      ],
+      "binding_constraints": [
+        "prime_concentration",
+        "single_fund_limit:MMF_002"
+      ],
+      "sensitivities": [
+        {
+          "parameter": "daily_liquidity_req",
+          "shadow_price": 0.0,
+          "range_lower": 0.2,
+          "range_upper": 0.4,
+          "interpretation": "Relaxing daily liquidity requirement by 5pp improves yield by 0.00bps"
+        },
+        {
+          "parameter": "weekly_liquidity_req",
+          "shadow_price": 0.0,
+          "range_lower": 0.5,
+          "range_upper": 0.7,
+          "interpretation": "Relaxing weekly liquidity requirement by 5pp improves yield by 0.00bps"
+        },
+        {
+          "parameter": "max_prime_fraction",
+          "shadow_price": 32.24,
+          "range_lower": 0.3,
+          "range_upper": 0.5,
+          "interpretation": "Relaxing prime fund limit by 10pp improves yield by 3.22bps"
+        }
+      ],
+      "validation": {
+        "passed": true,
+        "checks": [],
+        "violations": [],
+        "warnings": []
+      },
+      "explanation": "Money market optimizer allocated $500M across 3 funds.\nAchieved net yield: 5.2284% vs baseline 5.0291% \u2014 improvement of 19.93bps.\nPortfolio liquidity: daily=76.1%, weekly=90.9%, WAM=47d.\nTop allocations: BNY Mellon Government Fund 3 (50.0%); BNY Mellon Prime Fund 7 (40.0%); BNY Mellon Government Fund 2 (10.0%).\nBinding constraints: prime_concentration, single_fund_limit:MMF_002.\nThe optimizer concentrated in higher-yielding funds while respecting daily/weekly liquidity floors and the WAM cap.",
+      "governance": null,
+      "scenario_results": {},
+      "solver_metadata": {
+        "solver": "HiGHS",
+        "n_funds_used": 3
+      },
+      "timestamp": "2026-07-16T00:48:30.978481Z"
+    }
+  },
+  "solver_metadata": {
+    "solver": "HiGHS",
+    "n_funds_used": 3
+  },
+  "timestamp": "2026-07-16T00:48:30.974527Z"
+}

@@ -22,17 +22,11 @@ class AnthropicProvider(LLMProvider):
 
     def __init__(self, model: str | None = None, *, api_key: str | None = None) -> None:
         super().__init__(model or os.environ.get("DI_LLM_MODEL") or DEFAULT_MODEL)
-        self._api_key = api_key  # None → SDK reads ANTHROPIC_API_KEY
+        self._api_key = api_key or os.environ.get("DI_LLM_API_KEY")
 
     @staticmethod
     def is_available() -> bool:
-        if not os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("DI_LLM_API_KEY"):
-            return False
-        try:
-            import anthropic  # noqa: F401
-        except ImportError:
-            return False
-        return True
+        return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("DI_LLM_API_KEY"))
 
     def _client(self):
         import anthropic
