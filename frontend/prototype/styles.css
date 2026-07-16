@@ -293,6 +293,48 @@ h2 {
   color: var(--muted);
 }
 
+.plan-panel p {
+  margin: 12px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.plan-panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scenario-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.scenario-chips span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scenario-chips span.selected {
+  color: var(--blue-deep);
+  border-color: #b8c8f7;
+  background: #eef4ff;
+}
+
 .pdf-card {
   margin-top: 12px;
   padding: 10px;

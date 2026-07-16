@@ -42,6 +42,8 @@ def test_chat_session_completes_money_market_workflow():
         assert response.status_code == 200
         assert response.json()["result"] is None
 
+    assert response.json()["state"]["plan"]["domain"] == "money_market"
+
     response = client.post(
         f"/api/chat/sessions/{session_id}/messages",
         json={"message": "yes"},

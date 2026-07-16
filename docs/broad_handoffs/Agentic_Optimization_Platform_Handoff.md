@@ -288,6 +288,24 @@ Explanation Agent
 
 Produces natural-language rationale.
 
+**Status:** ✅ first deterministic agent layer implemented (POC).
+
+`decision_intelligence/agents/` now provides provider-agnostic contracts and
+deterministic agents for the first agentic loop:
+
+- `IntentAgent` classifies domain, action, scenario intent, confidence, and
+  missing inputs from plain language.
+- `PlanningAgent` converts intent plus collected fields into an `ExecutionPlan`
+  with required inputs, missing fields, execution mode, solver options, and
+  readiness state.
+- `ScenarioAgent` suggests domain-relevant stress/downside/inventory scenarios.
+
+The guided chat session now exposes `intent` and `plan` in its browser/API
+snapshot, and the React demo shows an "Agent Plan" card with missing inputs,
+readiness, and scenario chips. This remains deterministic and offline-safe; a
+future LLM-backed planning agent should emit the same contracts rather than
+changing downstream orchestration.
+
 ------------------------------------------------------------------------
 
 # 9a. LLM Provider Abstraction — ✅ IMPLEMENTED (POC)

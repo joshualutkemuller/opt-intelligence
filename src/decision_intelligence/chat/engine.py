@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from decision_intelligence.agents import AgentIntent, IntentAgent, PlanningAgent
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
@@ -36,6 +37,9 @@ class ChatSession:
         self.seed = seed
         self.default_portfolio = default_portfolio
         self._state: _WorkflowState | None = None
+        self._intent_agent = IntentAgent()
+        self._planning_agent = PlanningAgent()
+        self._last_intent: AgentIntent | None = None
 
     @property
     def active(self) -> bool:
@@ -50,6 +54,12 @@ class ChatSession:
                 "collected": {},
                 "next_field": None,
                 "awaiting_confirmation": False,
+                "intent": _dump_model(self._last_intent),
+                "plan": _dump_model(
+                    self._planning_agent.build_plan(self._last_intent)
+                    if self._last_intent
+                    else None
+                ),
             }
 
         state = self._state
@@ -64,6 +74,14 @@ class ChatSession:
             "collected": dict(state.values),
             "next_field": next_field,
             "awaiting_confirmation": state.awaiting_confirmation,
+            "intent": _dump_model(self._last_intent),
+            "plan": _dump_model(
+                self._planning_agent.build_plan(
+                    self._last_intent
+                    or AgentIntent(raw_text="", domain=state.spec.domain),
+                    collected=state.values,
+                )
+            ),
         }
 
     def reply(self, text: str) -> ChatResponse:
@@ -75,27 +93,37 @@ class ChatSession:
             return ChatResponse("Leaving guided workflow.", should_exit=True)
 
         if self._state is None:
-            domain = detect_domain(prompt)
+            intent = self._intent_agent.analyze(prompt)
+            self._last_intent = intent
+            domain = intent.domain or detect_domain(prompt)
             if domain is None:
                 return ChatResponse(
                     "Tell me which workflow you want: collateral, money market, or financing."
                 )
-            return self._start(domain, prompt)
+            return self._start(domain, prompt, intent)
 
         if self._state.awaiting_confirmation:
             return self._handle_confirmation(prompt)
 
         return self._handle_answer(prompt)
 
-    def _start(self, domain: str, prompt: str) -> ChatResponse:
+    def _start(
+        self,
+        domain: str,
+        prompt: str,
+        intent: AgentIntent | None = None,
+    ) -> ChatResponse:
         spec = WORKFLOWS[domain]
         self._state = _WorkflowState(spec=spec, seed=self.seed)
 
-        scenarios = detect_scenarios(prompt)
+        intent = intent or self._intent_agent.analyze(prompt)
+        self._last_intent = intent.model_copy(update={"domain": domain})
+        scenarios = intent.scenarios or detect_scenarios(prompt)
         if scenarios:
             self._state.values["scenario_names"] = scenarios
 
-        return ChatResponse(f"{spec.intro}\n\n{self._next_question()}")
+        plan = self._planning_agent.build_plan(self._last_intent, collected=self._state.values)
+        return ChatResponse(f"{spec.intro}\n\n{plan.summary}\n\n{self._next_question()}")
 
     def _handle_answer(self, prompt: str) -> ChatResponse:
         state = self._require_state()
@@ -235,3 +263,9 @@ def _format_value(value: Any, field_spec: FieldSpec) -> str:
             return f"{value:.0%}"
         return f"{value:g}%"
     return str(value)
+
+
+def _dump_model(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return value.model_dump()

@@ -18,6 +18,29 @@ type WorkflowState = {
   collected: Record<string, unknown>;
   next_field: string | null;
   awaiting_confirmation: boolean;
+  intent?: AgentIntent | null;
+  plan?: ExecutionPlan | null;
+};
+
+type AgentIntent = {
+  action: string;
+  domain: string | null;
+  confidence: number;
+  scenarios: string[];
+  missing_inputs: string[];
+  signals: string[];
+};
+
+type ExecutionPlan = {
+  title: string;
+  action: string;
+  execution_mode: string;
+  summary: string;
+  missing_fields: string[];
+  required_fields: Array<{ key: string; label: string }>;
+  scenario_names: string[];
+  scenario_suggestions: Array<{ name: string; reason: string; selected: boolean }>;
+  ready_to_run: boolean;
 };
 
 type Allocation = {
@@ -271,6 +294,8 @@ function App() {
             </dl>
           </section>
 
+          <PlanPanel workflow={workflow} />
+
           <section className="panel compact">
             <div className="panel-heading">
               <span className="eyebrow">Solver</span>
@@ -405,6 +430,43 @@ async function fetchWithTimeout(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
+  const plan = workflow?.plan;
+  const missingFields = plan?.missing_fields || [];
+  const nextLabels =
+    plan?.required_fields
+      .filter((field) => missingFields.includes(field.key))
+      .slice(0, 4)
+      .map((field) => field.label) || [];
+  return (
+    <section className="panel compact plan-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Agent Plan</span>
+        <span className={`status-pill ${plan?.ready_to_run ? "status-optimal" : "status-ready"}`}>
+          {plan?.ready_to_run ? "Ready" : `${missingFields.length || 0} inputs`}
+        </span>
+      </div>
+      <p>{plan?.summary || "Start a request to generate an execution plan."}</p>
+      {nextLabels.length > 0 ? (
+        <ul>
+          {nextLabels.map((label) => (
+            <li key={label}>{label}</li>
+          ))}
+        </ul>
+      ) : null}
+      {plan?.scenario_suggestions?.length ? (
+        <div className="scenario-chips">
+          {plan.scenario_suggestions.slice(0, 3).map((scenario) => (
+            <span className={scenario.selected ? "selected" : ""} key={scenario.name}>
+              {titleCase(scenario.name.replaceAll("_", " "))}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function ValidationPanel({ result }: { result: OptimizationResult }) {
