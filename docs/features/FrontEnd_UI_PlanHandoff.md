@@ -15,6 +15,69 @@ through a friendly web interface.
 
 ---
 
+## Local Demo Run Guide
+
+Use the React/Vite app for browser-based demos.
+
+Open two terminals from the project root.
+
+Terminal 1 starts the Python API:
+
+```bash
+cd "/Users/joshualutkemuller/Documents/Quant Sandbox/opt-intelligence"
+source .venv/bin/activate
+uvicorn decision_intelligence.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Terminal 2 starts the browser UI:
+
+```bash
+cd "/Users/joshualutkemuller/Documents/Quant Sandbox/opt-intelligence/frontend/app"
+npm install
+npm run dev
+```
+
+Open the demo at:
+
+```text
+http://127.0.0.1:5173/
+```
+
+Quick backend health check:
+
+```bash
+curl http://127.0.0.1:8000/api/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+Recommended chat demo flow:
+
+```text
+I want to optimize money market cash
+PORT_204
+$500 million
+30%
+60%
+40%
+60
+50%
+4
+5%
+scipy
+lp
+stress
+yes
+```
+
+Additional operator notes live in `frontend/app/README.md`.
+
+---
+
 ## Current Backend Capabilities
 
 The repository already supports the core capabilities needed for a GUI:

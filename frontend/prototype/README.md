@@ -2,6 +2,12 @@
 
 Static browser prototype for the Decision Intelligence guided chat demo.
 
+For the newer React/Vite demo app, use:
+
+```text
+frontend/app/README.md
+```
+
 Start the Python API:
 
 ```bash
@@ -31,6 +37,10 @@ $500 million
 40%
 60
 50%
+4
+5%
+scipy
+lp
 stress
 yes
 ```
@@ -45,5 +55,5 @@ Included interactions:
 - allocation and sensitivity tables
 - JSON export mock
 
-The next build step is converting this static prototype into a maintainable
-React/TypeScript application while preserving the current layout and API calls.
+This static prototype is kept as a lightweight fallback. The maintainable
+React/TypeScript demo now lives in `frontend/app`.

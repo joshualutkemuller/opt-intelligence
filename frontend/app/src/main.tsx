@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "../../prototype/styles.css";
 
@@ -9,6 +9,7 @@ type Role = "assistant" | "user";
 type Message = {
   role: Role;
   content: string;
+  pending?: boolean;
 };
 
 type WorkflowState = {
@@ -70,10 +71,21 @@ function App() {
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
+  const didCreateSession = useRef(false);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (didCreateSession.current) return;
+    didCreateSession.current = true;
     void createSession();
   }, []);
+
+  useEffect(() => {
+    const messagePane = messagesRef.current;
+    if (messagePane) {
+      messagePane.scrollTop = messagePane.scrollHeight;
+    }
+  }, [messages]);
 
   async function createSession() {
     try {
@@ -109,6 +121,7 @@ function App() {
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isRunning) return;
     const message = input.trim();
     if (!message) return;
     setInput("");
@@ -127,8 +140,14 @@ function App() {
     }
 
     setIsRunning(true);
+    const pendingMessage: Message = {
+      role: "assistant",
+      content: "Working...",
+      pending: true,
+    };
+    setMessages((items) => [...items, pendingMessage]);
     try {
-      const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionId}/messages`, {
+      const response = await fetchWithTimeout(`${API_BASE}/api/chat/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
@@ -136,19 +155,19 @@ function App() {
       if (!response.ok) throw new Error(String(response.status));
       const body = (await response.json()) as ChatApiResponse;
       setWorkflow(body.state);
-      setMessages((items) => [
-        ...items,
-        { role: "assistant", content: body.assistant_message },
-      ]);
+      setMessages((items) => replacePendingMessage(items, body.assistant_message));
       if (body.result) {
         setResult(body.result);
         setLatestPayload(body);
       }
-    } catch {
-      setMessages((items) => [
-        ...items,
-        { role: "assistant", content: "The API request failed. Check the server." },
-      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) =>
+        replacePendingMessage(
+          items,
+          `The API request did not complete (${detail}). Check that http://127.0.0.1:8000 is running, then try Reset.`,
+        ),
+      );
     } finally {
       setIsRunning(false);
     }
@@ -177,6 +196,8 @@ function App() {
   const display = useMemo(() => buildDisplayState(collected), [collected]);
   const solverProfile = solverProfiles[solver];
   const dashboard = result || mockResult;
+  const latestAssistantPrompt =
+    [...messages].reverse().find((message) => message.role === "assistant")?.content || "";
 
   return (
     <div className="app-shell">
@@ -278,7 +299,7 @@ function App() {
               </div>
             </div>
 
-            <div className="messages" aria-live="polite">
+            <div className="messages" aria-live="polite" ref={messagesRef}>
               {messages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
                   <span className="message-label">
@@ -287,6 +308,11 @@ function App() {
                   <p>{message.content}</p>
                 </article>
               ))}
+            </div>
+
+            <div className="current-prompt" aria-live="polite">
+              <span>Current prompt</span>
+              <strong>{latestAssistantPrompt}</strong>
             </div>
 
             <form className="chat-input" onSubmit={submitMessage}>
@@ -315,6 +341,31 @@ function App() {
       </main>
     </div>
   );
+}
+
+function replacePendingMessage(messages: Message[], content: string): Message[] {
+  const next = [...messages];
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    if (next[index].pending) {
+      next[index] = { role: "assistant", content };
+      return next;
+    }
+  }
+  return [...next, { role: "assistant", content }];
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = 10000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function StateRow({ label, value }: { label: string; value: string }) {
@@ -589,8 +640,4 @@ const mockResult: OptimizationResult = {
   ],
 };
 
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+createRoot(document.getElementById("root")!).render(<App />);
