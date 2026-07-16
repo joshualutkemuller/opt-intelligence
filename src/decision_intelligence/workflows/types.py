@@ -88,6 +88,17 @@ class WorkflowStepResult(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowExplanationReport(BaseModel):
+    summary: str
+    overall_recommendation: str
+    key_drivers: list[str] = Field(default_factory=list)
+    dependency_changes: list[str] = Field(default_factory=list)
+    economic_impact: dict[str, Any] = Field(default_factory=dict)
+    risks: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    step_summaries: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class WorkflowResult(BaseModel):
     workflow_id: str
     name: str
@@ -96,5 +107,6 @@ class WorkflowResult(BaseModel):
     validation_summary: dict[str, Any] = Field(default_factory=dict)
     dependency_summary: dict[str, Any] = Field(default_factory=dict)
     explanation: str = ""
+    explanation_report: WorkflowExplanationReport | None = None
     trace: list[WorkflowTraceEvent] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

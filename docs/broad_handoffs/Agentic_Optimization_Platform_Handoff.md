@@ -532,9 +532,11 @@ decision-intelligence-platform/
 -   ✅ **Workflow Templates + Selector (POC)** — added Funding Capacity Shock
     and Collateral Liquidity Review templates, surfaced through the browser
     workflow selector.
--   Next: add externally configurable workflow templates and top-level workflow
-    explanations that summarize why upstream results changed downstream
-    recommendations.
+-   ✅ **Workflow Explanation Report (POC)** — workflow results now include a
+    top-level `explanation_report` summarizing recommendation, drivers,
+    dependency changes, risks, economic impact, and next actions.
+-   Next: add externally configurable workflow templates and package demo
+    presets for repeatable stakeholder walkthroughs.
 
 ## Phase 6
 

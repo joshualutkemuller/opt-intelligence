@@ -118,6 +118,11 @@ def test_sequential_runner_completes_liquidity_stress_workflow(orchestrator):
     assert result.trace[-1].event == "workflow_completed"
     assert result.dependency_summary["total_effects"] == 4
     assert "Liquidity Stress Funding Workflow finished" in result.explanation
+    assert result.explanation_report is not None
+    assert result.explanation_report.summary == result.explanation
+    assert result.explanation_report.overall_recommendation.startswith("Ready")
+    assert result.explanation_report.dependency_changes
+    assert result.explanation_report.economic_impact["dependency_effect_count"] == 4
     money_market_step = result.step_results[-1]
     assert money_market_step.request.context["workflow_inputs"]["financing_001"]
     assert money_market_step.request.context["total_cash"] == 250_000_000
@@ -128,6 +133,22 @@ def test_sequential_runner_completes_liquidity_stress_workflow(orchestrator):
         effect.source_step_id for effect in money_market_step.dependency_effects
     } == {"financing_001", "collateral_001"}
     assert any(event.event == "dependencies_applied" for event in result.trace)
+
+
+def test_workflow_explanation_report_for_all_registered_workflows(orchestrator):
+    for workflow_id in DEFAULT_WORKFLOW_REGISTRY.list_ids():
+        plan = DEFAULT_WORKFLOW_REGISTRY.build(workflow_id, portfolio_id="PORT_204", seed=7)
+        result = SequentialWorkflowRunner(orchestrator).run(plan)
+
+        report = result.explanation_report
+        assert report is not None
+        assert plan.name in report.summary
+        assert report.overall_recommendation
+        assert report.key_drivers
+        assert report.dependency_changes
+        assert report.economic_impact["steps"]
+        assert report.next_actions
+        assert len(report.step_summaries) == len(result.step_results)
 
 
 @pytest.mark.parametrize(

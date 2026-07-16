@@ -182,8 +182,20 @@ type WorkflowRunResult = {
     context_changes: DependencyEffect[];
   };
   explanation: string;
+  explanation_report: WorkflowExplanationReport | null;
   trace: WorkflowTraceEvent[];
   timestamp: string;
+};
+
+type WorkflowExplanationReport = {
+  summary: string;
+  overall_recommendation: string;
+  key_drivers: string[];
+  dependency_changes: string[];
+  economic_impact: Record<string, unknown>;
+  risks: string[];
+  next_actions: string[];
+  step_summaries: Array<Record<string, unknown>>;
 };
 
 type WorkflowRunApiResponse = {
@@ -651,6 +663,8 @@ function App() {
             selectedWorkflow={selectedWorkflow}
           />
 
+          <WorkflowExplanationPanel workflowRun={workflowRun} />
+
           <ValidationPanel result={dashboard} />
 
           <ExplanationPanel result={dashboard} />
@@ -930,6 +944,64 @@ function WorkflowTimelinePanel({
           sequential demo.
         </p>
       )}
+    </section>
+  );
+}
+
+function WorkflowExplanationPanel({
+  workflowRun,
+}: {
+  workflowRun: WorkflowRunResult | null;
+}) {
+  const report = workflowRun?.explanation_report;
+  const economicImpact = report?.economic_impact || {};
+  return (
+    <section className="panel workflow-explanation-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Workflow Explanation</span>
+          <h2>What the workflow concluded</h2>
+        </div>
+        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
+          {workflowRun ? titleCase(workflowRun.status) : "Pending"}
+        </span>
+      </div>
+
+      <p className="explanation-summary">
+        {report?.summary || "Run a workflow to generate a cross-step explanation."}
+      </p>
+
+      {report ? (
+        <>
+          <div className="workflow-recommendation">
+            <strong>Recommendation</strong>
+            <span>{report.overall_recommendation}</span>
+          </div>
+          <div className="workflow-impact-strip">
+            <Metric
+              label="Favorable steps"
+              value={String(economicImpact.favorable_steps ?? 0)}
+              note="Objective improved"
+            />
+            <Metric
+              label="Dependency effects"
+              value={String(economicImpact.dependency_effect_count ?? 0)}
+              note="Context changes"
+            />
+            <Metric
+              label="Step summaries"
+              value={String(report.step_summaries.length)}
+              note="Explained"
+            />
+          </div>
+          <div className="explanation-grid">
+            <ExplanationList title="Drivers" items={report.key_drivers} />
+            <ExplanationList title="Dependency Changes" items={report.dependency_changes} />
+            <ExplanationList title="Risks" items={report.risks} />
+            <ExplanationList title="Next Actions" items={report.next_actions} />
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

@@ -1,5 +1,6 @@
 """Deterministic multi-optimizer workflow engine."""
 
+from .explanation import build_workflow_explanation_report
 from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
@@ -18,6 +19,7 @@ from .runner import SequentialWorkflowRunner
 from .types import (
     DependencyEffect,
     WorkflowDependencyRule,
+    WorkflowExplanationReport,
     WorkflowPlan,
     WorkflowResult,
     WorkflowStep,
@@ -35,11 +37,13 @@ __all__ = [
     "WorkflowRegistry",
     "WorkflowTemplate",
     "WorkflowDependencyRule",
+    "WorkflowExplanationReport",
     "WorkflowPlan",
     "WorkflowResult",
     "WorkflowStep",
     "WorkflowStepResult",
     "WorkflowTraceEvent",
+    "build_workflow_explanation_report",
     "build_collateral_liquidity_review_workflow",
     "build_default_workflow_registry",
     "build_funding_capacity_shock_workflow",

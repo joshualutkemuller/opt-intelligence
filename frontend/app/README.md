@@ -86,6 +86,9 @@ The UI renders the returned `step_results`, `trace`, and `validation_summary`
 as a progress timeline for the financing → collateral → money-market workflow.
 It also displays dependency effects, such as upstream funding or collateral
 pressure increasing downstream money-market liquidity requirements.
+After a run, the workflow explanation panel summarizes the overall
+recommendation, key drivers, dependency changes, risks, and suggested next
+actions from the top-level `explanation_report`.
 
 Registered demo templates:
 

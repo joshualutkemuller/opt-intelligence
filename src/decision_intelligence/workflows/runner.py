@@ -9,6 +9,7 @@ from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.optimization import OptimizationOrchestrator
 
 from .dependencies import CrossStepDependencyEngine
+from .explanation import build_workflow_explanation_report
 from .types import (
     DependencyEffect,
     WorkflowPlan,
@@ -130,14 +131,25 @@ class SequentialWorkflowRunner:
             )
         )
 
+        validation_summary = self._aggregate_validation(step_results)
+        dependency_summary = self._aggregate_dependencies(step_results)
+        explanation_report = build_workflow_explanation_report(
+            plan=plan,
+            step_results=step_results,
+            status=status,
+            validation_summary=validation_summary,
+            dependency_summary=dependency_summary,
+        )
+
         return WorkflowResult(
             workflow_id=plan.workflow_id,
             name=plan.name,
             status=status,
             step_results=step_results,
-            validation_summary=self._aggregate_validation(step_results),
-            dependency_summary=self._aggregate_dependencies(step_results),
-            explanation=self._build_explanation(plan, step_results, status),
+            validation_summary=validation_summary,
+            dependency_summary=dependency_summary,
+            explanation=explanation_report.summary,
+            explanation_report=explanation_report,
             trace=trace,
         )
 
@@ -258,24 +270,3 @@ class SequentialWorkflowRunner:
             "violations": violations,
             "recommendations": recommendations,
         }
-
-    def _build_explanation(
-        self,
-        plan: WorkflowPlan,
-        step_results: list[WorkflowStepResult],
-        status: WorkflowStatus,
-    ) -> str:
-        pieces = [f"{plan.name} finished with status {status}."]
-        for step in step_results:
-            pieces.append(
-                f"{step.name}: {step.status}, objective {step.result.objective_value:,.4f}, "
-                f"improvement {step.result.improvement_pct:,.2f}%."
-            )
-            if step.dependency_effects:
-                changed = ", ".join(
-                    f"{effect.target_context_key} {effect.previous_value:.2%}→"
-                    f"{effect.new_value:.2%}"
-                    for effect in step.dependency_effects
-                )
-                pieces.append(f"Cross-step dependencies adjusted {changed}.")
-        return " ".join(pieces)

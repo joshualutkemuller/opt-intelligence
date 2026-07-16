@@ -941,6 +941,40 @@ h2 {
   margin-bottom: 2px;
 }
 
+.workflow-explanation-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-recommendation {
+  padding: 12px;
+  border: 1px solid #b7e0c5;
+  border-radius: 8px;
+  background: var(--green-soft);
+}
+
+.workflow-recommendation strong,
+.workflow-recommendation span {
+  display: block;
+}
+
+.workflow-recommendation span {
+  color: var(--muted);
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.workflow-impact-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workflow-explanation-panel .explanation-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .explanation-panel {
   display: grid;
   gap: 14px;
@@ -1065,6 +1099,8 @@ tbody tr:hover {
   .workflow-step-metrics,
   .workflow-trace-grid,
   .workflow-dependency-list,
+  .workflow-impact-strip,
+  .workflow-explanation-panel .explanation-grid,
   .validation-checks,
   .explanation-grid,
   .table-grid,
