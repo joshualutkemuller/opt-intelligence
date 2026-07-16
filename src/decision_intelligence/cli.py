@@ -18,6 +18,7 @@ try:
     import typer
     from rich.console import Console
     from rich.panel import Panel
+    from rich.prompt import Prompt
     from rich.table import Table
     from rich import box
 except ImportError:
@@ -105,6 +106,18 @@ _SCENARIO_PRESETS = {
     },
 }
 
+_DOMAIN_ALIASES = {
+    "collateral": "collateral",
+    "collateral optimizer": "collateral",
+    "money_market": "money_market",
+    "money market": "money_market",
+    "cash": "money_market",
+    "liquidity": "money_market",
+    "financing": "financing",
+    "funding": "financing",
+    "repo": "financing",
+}
+
 
 def _build_registry() -> tuple[OptimizationOrchestrator, AuditLog]:
     audit = AuditLog()
@@ -121,6 +134,135 @@ def _bar(frac: float, width: int = 24) -> str:
     filled = round(frac * width)
     empty = width - filled
     return "█" * max(0, filled - 1) + ("▓" if filled else "") + "░" * empty
+
+
+def _detect_domain(text: str) -> str | None:
+    normalized = text.lower().replace("-", " ").replace("_", " ")
+    for alias, domain in sorted(_DOMAIN_ALIASES.items(), key=lambda item: -len(item[0])):
+        if alias.replace("_", " ") in normalized:
+            return domain
+    return None
+
+
+def _detect_scenarios(text: str) -> list[str]:
+    normalized = text.lower().replace("-", " ")
+    scenarios: list[str] = []
+
+    if "credit" in normalized and "stress" in normalized:
+        scenarios.append("credit_stress")
+    elif "stress" in normalized or "liquidity shock" in normalized:
+        scenarios.append("stress")
+
+    if "downside" in normalized:
+        scenarios.append("downside")
+    if "inventory" in normalized or "squeeze" in normalized:
+        scenarios.append("inventory")
+
+    return scenarios
+
+
+def _extract_pdf_path(text: str) -> str:
+    for token in text.split():
+        cleaned = token.strip("'\".,:;()[]")
+        if cleaned.lower().endswith(".pdf"):
+            return cleaned
+    return "examples/sample_brief.pdf"
+
+
+def _print_chat_help() -> None:
+    console.print(Panel(
+        "[bold blue]CHAT DEMO[/bold blue]\n\n"
+        "Try prompts like:\n"
+        "  list domains\n"
+        "  tell me about collateral\n"
+        "  optimize money market under stress\n"
+        "  run financing with credit stress\n"
+        "  parse the sample PDF\n"
+        "  ingest examples/sample_brief.pdf and solve\n\n"
+        "Type [bold]exit[/bold] to leave.",
+        border_style="blue",
+        padding=(1, 2),
+    ))
+
+
+def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
+    prompt = text.strip()
+    normalized = prompt.lower()
+
+    if not prompt:
+        return True
+    if normalized in {"exit", "quit", "q", "bye"}:
+        console.print("[dim]Leaving chat demo.[/dim]")
+        return False
+    if normalized in {"help", "?", "examples"}:
+        _print_chat_help()
+        return True
+
+    if "list" in normalized or "domains" in normalized or "capabilities" in normalized:
+        console.print("[bold blue]assistant[/bold blue] I found the registered optimizer domains.")
+        cmd_list()
+        return True
+
+    if "pdf" in normalized or "brief" in normalized or "ingest" in normalized:
+        pdf = _extract_pdf_path(prompt)
+        dry_run = "dry" in normalized or ("parse" in normalized and "solve" not in normalized)
+        action = "parse only" if dry_run else "parse and solve"
+        console.print(
+            f"[bold blue]assistant[/bold blue] I will {action} "
+            f"[cyan]{pdf}[/cyan] using the offline heuristic intake agent."
+        )
+        cmd_ingest(
+            pdf=pdf,
+            backend="heuristic",
+            seed=seed,
+            verbose=False,
+            show_extraction=True,
+            dry_run=dry_run,
+            output=None,
+        )
+        return True
+
+    domain = _detect_domain(prompt)
+    if not domain:
+        console.print(
+            "[bold blue]assistant[/bold blue] I can route collateral, money market, "
+            "or financing requests. Type [bold]help[/bold] for examples."
+        )
+        return True
+
+    if "info" in normalized or "about" in normalized or "describe" in normalized:
+        console.print(f"[bold blue]assistant[/bold blue] Here is the domain profile for [cyan]{domain}[/cyan].")
+        cmd_info(domain)
+        return True
+
+    scenarios = _detect_scenarios(prompt)
+    scenario_arg = ",".join(scenarios) if scenarios else None
+    verbose = "explain" in normalized or "why" in normalized
+    mode = "scenario_analysis" if scenario_arg else "recommendation"
+
+    console.print(
+        "[bold blue]assistant[/bold blue] Parsed request: "
+        f"domain=[cyan]{domain}[/cyan], "
+        f"portfolio=[cyan]{portfolio}[/cyan], "
+        f"mode=[cyan]{mode}[/cyan], "
+        f"scenarios=[cyan]{scenario_arg or 'none'}[/cyan], "
+        f"seed=[cyan]{seed}[/cyan]."
+    )
+    cmd_run(
+        domain=domain,
+        portfolio=portfolio,
+        objective=None,
+        scenario=scenario_arg,
+        seed=seed,
+        mode=mode,
+        verbose=verbose,
+        output=None,
+        data=None,
+        approve_as=None,
+        reject=False,
+        reason="",
+    )
+    return True
 
 
 @app.command("list")
@@ -243,6 +385,34 @@ def cmd_run(
 
     _print_result(domain, result, verbose)
     _write_output(output, result, req)
+
+
+@app.command("chat")
+def cmd_chat(
+    seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
+    portfolio: str = typer.Option("PORT_001", "--portfolio", "-p", help="Portfolio identifier"),
+    prompt: Optional[str] = typer.Option(
+        None,
+        "--prompt",
+        help="Run a single chat prompt and exit; useful for scripted demos.",
+    ),
+):
+    """Start a deterministic chat-style demo over the optimization CLI."""
+    if prompt:
+        _chat_turn(prompt, seed=seed, portfolio=portfolio)
+        return
+
+    _print_chat_help()
+    while True:
+        try:
+            text = Prompt.ask("[bold cyan]you[/bold cyan]")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            console.print("[dim]Leaving chat demo.[/dim]")
+            return
+
+        if not _chat_turn(text, seed=seed, portfolio=portfolio):
+            return
 
 
 @app.command("ingest")
