@@ -47,6 +47,25 @@ type ExplanationReport = {
   source_explanation: string;
 };
 
+type ValidationCheck = {
+  name: string;
+  status: "pass" | "warning" | "fail";
+  severity: "info" | "warning" | "error";
+  message: string;
+  details: Record<string, unknown>;
+};
+
+type ValidationReport = {
+  passed: boolean;
+  recommendation: "ready" | "review" | "blocked";
+  risk_score: number;
+  checks: ValidationCheck[];
+  violations: string[];
+  warnings: string[];
+  data_quality: Record<string, unknown>;
+  policy_status: string | null;
+};
+
 type OptimizationResult = {
   status: string;
   objective_value: number;
@@ -56,6 +75,7 @@ type OptimizationResult = {
   allocations: Allocation[];
   sensitivities: Sensitivity[];
   binding_constraints: string[];
+  validation_report?: ValidationReport | null;
   explanation_report?: ExplanationReport | null;
   solver_metadata: Record<string, unknown>;
 };
@@ -348,6 +368,8 @@ function App() {
             <ConstraintPanel result={dashboard} />
           </section>
 
+          <ValidationPanel result={dashboard} />
+
           <ExplanationPanel result={dashboard} />
 
           <section className="table-grid">
@@ -385,6 +407,60 @@ async function fetchWithTimeout(
   }
 }
 
+function ValidationPanel({ result }: { result: OptimizationResult }) {
+  const report = result.validation_report;
+  const checks = report?.checks.length
+    ? report.checks
+    : [
+        {
+          name: "demo_mode",
+          status: "pass" as const,
+          severity: "info" as const,
+          message: "Validation checks will update after a completed run.",
+          details: {},
+        },
+      ];
+
+  return (
+    <section className="panel validation-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Validation</span>
+          <h2>Readiness checks</h2>
+        </div>
+        <span className={`status-pill ${validationStatusClass(report?.recommendation)}`}>
+          {titleCase(report?.recommendation || "ready")}
+        </span>
+      </div>
+      <div className="validation-summary">
+        <Metric
+          label="Risk score"
+          value={(report?.risk_score ?? 0).toFixed(2)}
+          note="0 low, 5 high"
+        />
+        <Metric
+          label="Violations"
+          value={String(report?.violations.length ?? 0)}
+          note="Blocking issues"
+        />
+        <Metric
+          label="Warnings"
+          value={String(report?.warnings.length ?? 0)}
+          note="Review items"
+        />
+      </div>
+      <div className="validation-checks">
+        {checks.slice(0, 6).map((check) => (
+          <div className={`validation-check ${check.status}`} key={check.name}>
+            <strong>{titleCase(check.name.replaceAll("_", " "))}</strong>
+            <span>{check.message}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ExplanationPanel({ result }: { result: OptimizationResult }) {
   const report = result.explanation_report;
   const rationale = report?.rationale.length
@@ -417,6 +493,12 @@ function ExplanationPanel({ result }: { result: OptimizationResult }) {
       </div>
     </section>
   );
+}
+
+function validationStatusClass(status: string | undefined) {
+  if (status === "blocked") return "status-error";
+  if (status === "review") return "status-ready";
+  return "status-optimal";
 }
 
 function ExplanationList({ title, items }: { title: string; items: string[] }) {
@@ -664,6 +746,43 @@ const mockResult: OptimizationResult = {
   improvement: 0.1993,
   improvement_pct: 3.96,
   binding_constraints: ["prime_concentration", "single_fund_limit"],
+  validation_report: {
+    passed: true,
+    recommendation: "ready",
+    risk_score: 0,
+    checks: [
+      {
+        name: "solver_status",
+        status: "pass",
+        severity: "info",
+        message: "Solver returned an optimal result.",
+        details: {},
+      },
+      {
+        name: "allocation_fractions",
+        status: "pass",
+        severity: "info",
+        message: "Allocation fractions are within expected bounds.",
+        details: { total_fraction: 1 },
+      },
+      {
+        name: "objective_quality",
+        status: "pass",
+        severity: "info",
+        message: "Optimization result is at least as good as the baseline.",
+        details: { improvement_pct: 3.96 },
+      },
+    ],
+    violations: [],
+    warnings: [],
+    data_quality: {
+      allocation_count: 3,
+      has_sensitivities: true,
+      has_scenarios: false,
+      has_explanation: true,
+    },
+    policy_status: null,
+  },
   explanation_report: {
     summary: "Money market optimizer allocated $500M across 3 funds.",
     what_changed: [

@@ -198,6 +198,12 @@ h2 {
   border-color: #b7e0c5;
 }
 
+.status-error {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
 .state-list {
   margin: 14px 0 0;
   display: grid;
@@ -528,6 +534,58 @@ h2 {
   margin-top: 2px;
 }
 
+.validation-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.validation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.validation-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.validation-check {
+  min-height: 78px;
+  padding: 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.validation-check.pass {
+  border-color: #b7e0c5;
+  background: var(--green-soft);
+}
+
+.validation-check.warning {
+  border-color: #f1cf91;
+  background: var(--amber-soft);
+}
+
+.validation-check.fail {
+  border-color: #fecaca;
+  background: #fee2e2;
+}
+
+.validation-check strong,
+.validation-check span {
+  display: block;
+}
+
+.validation-check span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
 .explanation-panel {
   display: grid;
   gap: 14px;
@@ -647,6 +705,8 @@ tbody tr:hover {
 
   .sidebar,
   .dashboard-grid,
+  .validation-summary,
+  .validation-checks,
   .explanation-grid,
   .table-grid,
   .metric-grid {

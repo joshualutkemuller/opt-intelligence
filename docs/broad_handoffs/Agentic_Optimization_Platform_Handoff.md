@@ -262,6 +262,28 @@ Validation Agent
 
 Checks feasibility and policy compliance.
 
+**Status:** ✅ deterministic structured validation engine implemented (POC).
+
+`decision_intelligence/validation/` now builds a cross-domain
+`ValidationReport` for orchestrated results. This complements optimizer-local
+feasibility checks with platform-level readiness checks:
+
+- solver status
+- optimizer validation violations and warnings
+- allocation presence
+- allocation value and fraction bounds
+- objective quality versus baseline
+- scenario result health
+- governance status
+- explanation availability
+
+The orchestrator attaches the report to `OptimizationResult.validation_report`
+and mirrors its checks, warnings, and violations into the existing
+`ValidationResult` contract. Recommendations are classified as `ready`,
+`review`, or `blocked`, with a simple deterministic risk score for UI/API
+consumers. The browser demo surfaces this through a "Validation / Readiness
+checks" panel.
+
 Explanation Agent
 
 Produces natural-language rationale.
@@ -494,7 +516,7 @@ decision-intelligence-platform/
 6.  Money market wrapper
 7.  Financing wrapper
 8.  Scenario engine
-9.  Validation engine
+9.  ✅ Validation engine — deterministic cross-domain readiness checks (POC)
 10. Explanation engine
 11. ✅ **LLMProvider abstraction** — vendor-agnostic, config-driven,
     offline-capable model access (see §9a) — implemented

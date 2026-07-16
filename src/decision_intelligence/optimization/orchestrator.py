@@ -16,6 +16,7 @@ from decision_intelligence.contracts.results import SolveStatus, ValidationResul
 from decision_intelligence.explanation import build_explanation_report
 from decision_intelligence.governance.approvals import ApprovalDecision, GovernanceController
 from decision_intelligence.governance.audit import AuditLog
+from decision_intelligence.validation import apply_validation_report
 
 from .registry import OptimizerRegistry
 
@@ -95,6 +96,7 @@ class OptimizationOrchestrator:
             record = self.governance.evaluate(request, approval)
             result = result.model_copy(update={"governance": record})
 
+        result = apply_validation_report(result)
         result = result.model_copy(
             update={"explanation_report": build_explanation_report(result)}
         )

@@ -8,6 +8,8 @@ from .results import (
     OptimizationResult,
     SensitivityItem,
     SolveStatus,
+    ValidationCheck,
+    ValidationReport,
     ValidationResult,
 )
 from .scenarios import Scenario, ScenarioType
@@ -26,6 +28,8 @@ __all__ = [
     "OptimizationResult",
     "SensitivityItem",
     "SolveStatus",
+    "ValidationCheck",
+    "ValidationReport",
     "ValidationResult",
     "Scenario",
     "ScenarioType",

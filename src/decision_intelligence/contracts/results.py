@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,25 @@ class ValidationResult(BaseModel):
     checks: list[dict[str, Any]] = Field(default_factory=list)
     violations: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ValidationCheck(BaseModel):
+    name: str
+    status: Literal["pass", "warning", "fail"]
+    severity: Literal["info", "warning", "error"]
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ValidationReport(BaseModel):
+    passed: bool
+    recommendation: Literal["ready", "review", "blocked"]
+    risk_score: float = 0.0
+    checks: list[ValidationCheck] = Field(default_factory=list)
+    violations: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    data_quality: dict[str, Any] = Field(default_factory=dict)
+    policy_status: str | None = None
 
 
 class AllocationItem(BaseModel):
@@ -65,6 +84,7 @@ class OptimizationResult(BaseModel):
     validation: ValidationResult = Field(
         default_factory=lambda: ValidationResult(passed=True)
     )
+    validation_report: ValidationReport | None = None
     explanation: str = ""
     explanation_report: ExplanationReport | None = None
     governance: ApprovalRecord | None = None
