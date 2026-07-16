@@ -30,6 +30,12 @@ from scipy.optimize import linprog
 
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.optimization.base import OptimizationCapability
+from decision_intelligence.solvers import (
+    LinearProblem,
+    SolverConfigError,
+    SolverSpec,
+    solve_linear_problem,
+)
 
 from .data import CashPosition, MoneyMarketFund
 
@@ -133,23 +139,28 @@ class MoneyMarketOptimizer(OptimizationCapability):
             "max_prime": max_prime,
             "baseline_value": baseline_yield,
             "total_cash": position.total_cash,
+            "solver_spec": SolverSpec.from_context(request.context),
         }
 
     def solve(self, problem: dict[str, Any]) -> dict[str, Any]:
         from decision_intelligence.contracts.results import SolveStatus
 
-        res = linprog(
+        lp = LinearProblem(
             c=problem["c"],
             A_ub=problem["A_ub"],
             b_ub=problem["b_ub"],
             A_eq=problem["A_eq"],
             b_eq=problem["b_eq"],
             bounds=problem["bounds"],
-            method="highs",
         )
 
-        if res.status == 0:
-            w = res.x
+        try:
+            solver_result = solve_linear_problem(lp, problem["solver_spec"])
+        except SolverConfigError as exc:
+            return {"status": SolveStatus.ERROR, "message": str(exc)}
+
+        if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
+            w = solver_result.x
             funds = problem["funds"]
             total_cash = problem["total_cash"]
             yields = problem["yields"]
@@ -173,7 +184,7 @@ class MoneyMarketOptimizer(OptimizationCapability):
                         },
                     })
 
-            achieved_yield = float(-res.fun)
+            achieved_yield = float(-(solver_result.objective_value or 0.0))
             binding = _find_binding(problem, w)
 
             return {
@@ -182,15 +193,16 @@ class MoneyMarketOptimizer(OptimizationCapability):
                 "w": w,
                 "allocations": allocations,
                 "binding_constraints": binding,
-                "metadata": {"solver": "HiGHS", "n_funds_used": int((w > 1e-6).sum())},
+                "metadata": {
+                    **solver_result.metadata,
+                    "n_funds_used": int((w > 1e-6).sum()),
+                },
             }
-        else:
-            from decision_intelligence.contracts.results import SolveStatus
-            status_map = {2: SolveStatus.INFEASIBLE, 3: SolveStatus.UNBOUNDED}
-            return {
-                "status": status_map.get(res.status, SolveStatus.ERROR),
-                "message": res.message,
-            }
+
+        return {
+            "status": solver_result.status,
+            "message": solver_result.message or "Solver did not find optimal solution.",
+        }
 
     def validate_solution(self, problem: dict[str, Any], solution: dict[str, Any]) -> list[str]:
         violations: list[str] = []

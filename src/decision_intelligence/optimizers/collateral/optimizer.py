@@ -28,6 +28,12 @@ from scipy.optimize import linprog
 
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.optimization.base import OptimizationCapability
+from decision_intelligence.solvers import (
+    LinearProblem,
+    SolverConfigError,
+    SolverSpec,
+    solve_linear_problem,
+)
 
 from .data import CollateralAsset, CollateralObligation
 
@@ -144,21 +150,26 @@ class CollateralOptimizer(OptimizationCapability):
             "baseline_value": baseline_value,
             "conc_limit": conc_limit,
             "request": request,
+            "solver_spec": SolverSpec.from_context(request.context),
         }
 
     def solve(self, problem: dict[str, Any]) -> dict[str, Any]:
         from decision_intelligence.contracts.results import SolveStatus
 
-        res = linprog(
+        lp = LinearProblem(
             c=problem["c"],
             A_ub=problem["A_ub"],
             b_ub=problem["b_ub"],
             bounds=problem["bounds"],
-            method="highs",
         )
 
-        if res.status == 0:
-            x = res.x
+        try:
+            solver_result = solve_linear_problem(lp, problem["solver_spec"])
+        except SolverConfigError as exc:
+            return {"status": SolveStatus.ERROR, "message": str(exc)}
+
+        if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
+            x = solver_result.x
             n, m = problem["n"], problem["m"]
             mv = problem["mv"]
             hc = problem["hc"]
@@ -190,19 +201,17 @@ class CollateralOptimizer(OptimizationCapability):
             binding = _find_binding_constraints(problem, x)
             return {
                 "status": SolveStatus.OPTIMAL,
-                "objective_value": float(res.fun),
+                "objective_value": float(solver_result.objective_value or 0.0),
                 "x": x,
                 "allocations": allocations,
                 "binding_constraints": binding,
-                "metadata": {"solver": "HiGHS", "iterations": res.nit, "message": res.message},
+                "metadata": solver_result.metadata,
             }
-        else:
-            from decision_intelligence.contracts.results import SolveStatus
-            status_map = {1: SolveStatus.ERROR, 2: SolveStatus.INFEASIBLE, 3: SolveStatus.UNBOUNDED}
-            return {
-                "status": status_map.get(res.status, SolveStatus.ERROR),
-                "message": res.message,
-            }
+
+        return {
+            "status": solver_result.status,
+            "message": solver_result.message or "Solver did not find optimal solution.",
+        }
 
     def validate_solution(self, problem: dict[str, Any], solution: dict[str, Any]) -> list[str]:
         violations: list[str] = []

@@ -38,6 +38,7 @@ ingest = [
 ]
 llm-anthropic = ["anthropic>=0.40"]
 llm-openai = ["openai>=1.40"]
+solver-cvxpy = ["cvxpy>=1.6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

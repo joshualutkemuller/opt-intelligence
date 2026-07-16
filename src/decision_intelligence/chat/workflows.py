@@ -13,7 +13,9 @@ from .parser import (
     parse_fraction,
     parse_int,
     parse_percent_points,
+    parse_problem_type,
     parse_scenario_names,
+    parse_solver_backend,
 )
 
 FieldTarget = Literal["portfolio", "context", "scenarios"]
@@ -76,6 +78,24 @@ def _identity(text: str) -> str:
     return value
 
 
+SOLVER_FIELDS = (
+    FieldSpec(
+        "solver_backend",
+        "Which optimization engine should I use? Type scipy or cvxpy.",
+        parse_solver_backend,
+        "scipy",
+        label="solver backend",
+    ),
+    FieldSpec(
+        "problem_type",
+        "What problem type should I solve? Type lp, milp, qp, or conic.",
+        parse_problem_type,
+        "lp",
+        label="problem type",
+    ),
+)
+
+
 WORKFLOWS: dict[str, WorkflowSpec] = {
     "money_market": WorkflowSpec(
         domain="money_market",
@@ -123,6 +143,7 @@ WORKFLOWS: dict[str, WorkflowSpec] = {
                 0.50,
                 label="single-fund limit",
             ),
+            *SOLVER_FIELDS,
             FieldSpec(
                 "scenario_names",
                 "Scenario to include? Type none, stress, credit stress, downside, or inventory.",
@@ -170,6 +191,7 @@ WORKFLOWS: dict[str, WorkflowSpec] = {
                 5.0,
                 label="capital budget",
             ),
+            *SOLVER_FIELDS,
             FieldSpec(
                 "scenario_names",
                 "Scenario to include? Type none, stress, credit stress, downside, or inventory.",
@@ -196,7 +218,12 @@ WORKFLOWS: dict[str, WorkflowSpec] = {
                 "portfolio",
                 "portfolio",
             ),
-            FieldSpec("n_assets", "How many simulated collateral assets should I model?", parse_int, 20),
+            FieldSpec(
+                "n_assets",
+                "How many simulated collateral assets should I model?",
+                parse_int,
+                20,
+            ),
             FieldSpec(
                 "concentration_limit",
                 "Maximum single asset-class concentration per obligation? (for example 60%)",
@@ -204,6 +231,7 @@ WORKFLOWS: dict[str, WorkflowSpec] = {
                 0.60,
                 label="asset-class concentration",
             ),
+            *SOLVER_FIELDS,
             FieldSpec(
                 "scenario_names",
                 "Scenario to include? Type none, stress, credit stress, downside, or inventory.",

@@ -10,7 +10,7 @@ from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
 
 from .parser import detect_domain, detect_scenarios, is_no, is_yes
-from .workflows import SCENARIO_PRESETS, FieldSpec, WORKFLOWS, WorkflowSpec
+from .workflows import SCENARIO_PRESETS, WORKFLOWS, FieldSpec, WorkflowSpec
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,6 @@ class ChatSession:
     def _start(self, domain: str, prompt: str) -> ChatResponse:
         spec = WORKFLOWS[domain]
         self._state = _WorkflowState(spec=spec, seed=self.seed)
-        self._state.values["portfolio_id"] = self.default_portfolio
 
         scenarios = detect_scenarios(prompt)
         if scenarios:
@@ -107,6 +106,8 @@ class ChatSession:
 
     def _parse_field(self, field_spec: FieldSpec, prompt: str) -> Any:
         if prompt.strip().lower() in {"", "default", "use default", "skip"}:
+            if field_spec.key == "portfolio_id":
+                return self.default_portfolio
             return field_spec.default
         return field_spec.parser(prompt)
 
@@ -132,7 +133,8 @@ class ChatSession:
         return state.spec.fields[state.current_index]
 
     def _format_question(self, field_spec: FieldSpec) -> str:
-        default = _format_value(field_spec.default, field_spec)
+        value = self.default_portfolio if field_spec.key == "portfolio_id" else field_spec.default
+        default = _format_value(value, field_spec)
         return f"{field_spec.prompt} [default: {default}]"
 
     def _confirmation_message(self) -> str:
@@ -200,9 +202,10 @@ class ChatSession:
 def _format_value(value: Any, field_spec: FieldSpec) -> str:
     if field_spec.target == "scenarios":
         return ", ".join(value) if value else "none"
-    if isinstance(value, float):
+    if isinstance(value, int | float):
         if field_spec.key.endswith("_cash") or field_spec.key.endswith("_need"):
             return f"${value / 1_000_000:,.0f}M"
+    if isinstance(value, float):
         if 0 <= value <= 1:
             return f"{value:.0%}"
         return f"{value:g}%"

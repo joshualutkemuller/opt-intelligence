@@ -108,3 +108,20 @@ def parse_scenario_names(text: str) -> list[str]:
     if "liquidity" in text.lower():
         return ["stress"]
     raise ValueError("Enter none, stress, credit stress, downside, or inventory.")
+
+
+def parse_solver_backend(text: str) -> str:
+    normalized = text.strip().lower()
+    if "scipy" in normalized or "highs" in normalized:
+        return "scipy"
+    if "cvx" in normalized:
+        return "cvxpy"
+    raise ValueError("Enter scipy or cvxpy.")
+
+
+def parse_problem_type(text: str) -> str:
+    normalized = text.strip().lower()
+    for problem_type in ("milp", "lp", "qp", "conic"):
+        if problem_type in normalized:
+            return problem_type
+    raise ValueError("Enter lp, milp, qp, or conic.")

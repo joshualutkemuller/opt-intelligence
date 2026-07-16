@@ -36,6 +36,7 @@ from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.export import export_csv, export_json, generate_report
 from decision_intelligence.contracts.approvals import ApprovalStatus
+from decision_intelligence.chat import ChatSession
 from decision_intelligence.governance import (
     ApprovalDecision,
     ApprovalPolicy,
@@ -172,6 +173,11 @@ def _extract_pdf_path(text: str) -> str:
 def _print_chat_help() -> None:
     console.print(Panel(
         "[bold blue]CHAT DEMO[/bold blue]\n\n"
+        "Guided workflows:\n"
+        "  I want to optimize money market cash\n"
+        "  Help me source financing\n"
+        "  Guide a collateral optimization\n\n"
+        "Quick commands:\n"
         "Try prompts like:\n"
         "  list domains\n"
         "  tell me about collateral\n"
@@ -183,6 +189,20 @@ def _print_chat_help() -> None:
         border_style="blue",
         padding=(1, 2),
     ))
+
+
+def _run_guided_chat_turn(session: ChatSession, text: str) -> bool:
+    response = session.reply(text)
+    console.print("[bold blue]assistant[/bold blue] ", end="")
+    console.print(response.message, markup=False)
+
+    if response.request is not None:
+        orch, audit = _build_registry()
+        with console.status(f"[dim]Solving {response.request.domain}…[/dim]", spinner="dots"):
+            result = orch.run(response.request)
+        _print_result(response.request.domain, result, verbose=False)
+
+    return not response.should_exit
 
 
 def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
@@ -218,6 +238,9 @@ def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
             verbose=False,
             show_extraction=True,
             dry_run=dry_run,
+            solver="scipy",
+            problem_type="lp",
+            solver_method=None,
             output=None,
         )
         return True
@@ -257,6 +280,9 @@ def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
         mode=mode,
         verbose=verbose,
         output=None,
+        solver="scipy",
+        problem_type="lp",
+        solver_method=None,
         data=None,
         approve_as=None,
         reject=False,
@@ -315,6 +341,11 @@ def cmd_run(
     mode: str = typer.Option("recommendation", "--mode", "-m", help="Execution mode: explain, scenario_analysis, recommendation"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
     output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+    solver: str = typer.Option("scipy", "--solver", help="Solver backend: scipy | cvxpy"),
+    problem_type: str = typer.Option("lp", "--problem-type", help="Problem type: lp | milp | qp | conic"),
+    solver_method: Optional[str] = typer.Option(
+        None, "--solver-method", help="Backend-specific solver method override",
+    ),
     data: Optional[str] = typer.Option(
         None, "--data", "-d",
         help="JSON file with a 'data_source' config to load real data (CSV) instead of simulated",
@@ -336,7 +367,14 @@ def cmd_run(
     info = _DOMAIN_INFO[domain]
     metric = objective or info["objective"]
     direction = info["direction"]
-    ctx = {**info["default_context"], "seed": seed}
+    ctx = {
+        **info["default_context"],
+        "seed": seed,
+        "solver_backend": solver,
+        "problem_type": problem_type,
+    }
+    if solver_method:
+        ctx["solver_method"] = solver_method
 
     if data:
         ctx = {**ctx, **_load_data_source(data)}
@@ -402,6 +440,7 @@ def cmd_chat(
         _chat_turn(prompt, seed=seed, portfolio=portfolio)
         return
 
+    session = ChatSession(seed=seed, default_portfolio=portfolio)
     _print_chat_help()
     while True:
         try:
@@ -411,7 +450,35 @@ def cmd_chat(
             console.print("[dim]Leaving chat demo.[/dim]")
             return
 
-        if not _chat_turn(text, seed=seed, portfolio=portfolio):
+        normalized = text.strip().lower()
+        domain = _detect_domain(text)
+        should_use_quick = (
+            not session.active
+            and (
+                normalized in {"help", "?", "examples", "exit", "quit", "q", "bye"}
+                or "list" in normalized
+                or "domains" in normalized
+                or "capabilities" in normalized
+                or "pdf" in normalized
+                or "brief" in normalized
+                or "ingest" in normalized
+                or (
+                    domain is not None
+                    and (
+                        "info" in normalized
+                        or "about" in normalized
+                        or "describe" in normalized
+                    )
+                )
+            )
+        )
+
+        if should_use_quick:
+            keep_going = _chat_turn(text, seed=seed, portfolio=portfolio)
+        else:
+            keep_going = _run_guided_chat_turn(session, text)
+
+        if not keep_going:
             return
 
 
@@ -437,6 +504,11 @@ def cmd_ingest(
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Only parse the PDF into a request; do not solve",
+    ),
+    solver: str = typer.Option("scipy", "--solver", help="Solver backend: scipy | cvxpy"),
+    problem_type: str = typer.Option("lp", "--problem-type", help="Problem type: lp | milp | qp | conic"),
+    solver_method: Optional[str] = typer.Option(
+        None, "--solver-method", help="Backend-specific solver method override",
     ),
     output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
 ):
@@ -503,6 +575,15 @@ def cmd_ingest(
 
     if show_extraction:
         _print_extraction(req, extracted)
+
+    solver_context = {
+        **req.context,
+        "solver_backend": solver,
+        "problem_type": problem_type,
+    }
+    if solver_method:
+        solver_context["solver_method"] = solver_method
+    req = req.model_copy(update={"context": solver_context})
 
     if dry_run:
         console.print("[dim]--dry-run: parsed request only, not solving.[/dim]\n")
@@ -616,6 +697,15 @@ def _print_result(domain: str, result, verbose: bool):
         return
 
     _print_governance(result.governance)
+    if result.solver_metadata:
+        backend = result.solver_metadata.get("solver_backend", "unknown")
+        problem_type = result.solver_metadata.get("problem_type", "unknown")
+        solver_name = result.solver_metadata.get("solver", backend)
+        console.print(
+            f"  [dim]Solver[/dim] [cyan]{backend}/{problem_type}[/cyan] "
+            f"[dim]({solver_name})[/dim]"
+        )
+        console.print()
 
     # ── Progress bar ──
     frac = min(1.0, result.improvement_pct / 100)

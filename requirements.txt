@@ -1,2 +1,2 @@
 # Project package plus local development/test dependencies.
--e ".[dev,ingest,llm-anthropic,llm-openai]"
+-e ".[dev,ingest,llm-anthropic,llm-openai,solver-cvxpy]"
