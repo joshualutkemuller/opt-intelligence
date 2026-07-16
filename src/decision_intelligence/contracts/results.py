@@ -37,6 +37,20 @@ class SensitivityItem(BaseModel):
     interpretation: str = ""
 
 
+class ExplanationReport(BaseModel):
+    summary: str
+    what_changed: list[str] = Field(default_factory=list)
+    rationale: list[str] = Field(default_factory=list)
+    economic_impact: dict[str, Any] = Field(default_factory=dict)
+    binding_constraints: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    alternatives: list[str] = Field(default_factory=list)
+    sensitivities: list[str] = Field(default_factory=list)
+    scenarios: list[dict[str, Any]] = Field(default_factory=list)
+    governance: str | None = None
+    source_explanation: str = ""
+
+
 class OptimizationResult(BaseModel):
     request_id: str
     domain: str
@@ -52,6 +66,7 @@ class OptimizationResult(BaseModel):
         default_factory=lambda: ValidationResult(passed=True)
     )
     explanation: str = ""
+    explanation_report: ExplanationReport | None = None
     governance: ApprovalRecord | None = None
     scenario_results: dict[str, "OptimizationResult"] = Field(default_factory=dict)
     solver_metadata: dict[str, Any] = Field(default_factory=dict)

@@ -33,6 +33,20 @@ type Sensitivity = {
   interpretation: string;
 };
 
+type ExplanationReport = {
+  summary: string;
+  what_changed: string[];
+  rationale: string[];
+  economic_impact: Record<string, unknown>;
+  binding_constraints: string[];
+  risks: string[];
+  alternatives: string[];
+  sensitivities: string[];
+  scenarios: Record<string, unknown>[];
+  governance: string | null;
+  source_explanation: string;
+};
+
 type OptimizationResult = {
   status: string;
   objective_value: number;
@@ -42,6 +56,7 @@ type OptimizationResult = {
   allocations: Allocation[];
   sensitivities: Sensitivity[];
   binding_constraints: string[];
+  explanation_report?: ExplanationReport | null;
   solver_metadata: Record<string, unknown>;
 };
 
@@ -333,6 +348,8 @@ function App() {
             <ConstraintPanel result={dashboard} />
           </section>
 
+          <ExplanationPanel result={dashboard} />
+
           <section className="table-grid">
             <AllocationTable result={dashboard} />
             <SensitivityTable result={dashboard} />
@@ -366,6 +383,53 @@ async function fetchWithTimeout(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+function ExplanationPanel({ result }: { result: OptimizationResult }) {
+  const report = result.explanation_report;
+  const rationale = report?.rationale.length
+    ? report.rationale
+    : [
+        "The recommendation follows the optimizer objective while preserving configured constraints.",
+      ];
+  const risks = report?.risks.length
+    ? report.risks
+    : ["No deterministic validation risks were detected."];
+  const alternatives = report?.alternatives.length
+    ? report.alternatives
+    : ["Run downside and stress scenarios to compare robustness."];
+
+  return (
+    <section className="panel explanation-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Explanation</span>
+          <h2>Why this recommendation</h2>
+        </div>
+      </div>
+      <p className="explanation-summary">
+        {report?.summary || "Structured explanation will appear after a completed run."}
+      </p>
+      <div className="explanation-grid">
+        <ExplanationList title="Rationale" items={rationale} />
+        <ExplanationList title="Risks" items={risks} />
+        <ExplanationList title="Alternatives" items={alternatives} />
+      </div>
+    </section>
+  );
+}
+
+function ExplanationList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="explanation-list">
+      <h3>{title}</h3>
+      <ul>
+        {items.slice(0, 4).map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function StateRow({ label, value }: { label: string; value: string }) {
@@ -600,6 +664,36 @@ const mockResult: OptimizationResult = {
   improvement: 0.1993,
   improvement_pct: 3.96,
   binding_constraints: ["prime_concentration", "single_fund_limit"],
+  explanation_report: {
+    summary: "Money market optimizer allocated $500M across 3 funds.",
+    what_changed: [
+      "Allocated 3 positions totaling $500.0M.",
+      "BNY Mellon Government Fund 3: $250.0M (50.0%).",
+    ],
+    rationale: [
+      "The recommendation prioritizes the highest-contributing feasible allocations while preserving portfolio constraints.",
+      "Binding constraints shaped the final allocation: prime_concentration, single_fund_limit.",
+    ],
+    economic_impact: {
+      objective_value: 5.2284,
+      baseline_value: 5.0291,
+      improvement: 0.1993,
+      improvement_pct: 3.96,
+    },
+    binding_constraints: ["prime_concentration", "single_fund_limit"],
+    risks: [
+      "Concentration review: BNY Mellon Government Fund 3 receives 50.0%.",
+      "Active binding constraints may limit flexibility if assumptions change.",
+    ],
+    alternatives: [
+      "Relaxing prime fund limit by 10pp improves yield by 3.22bps.",
+      "Run a scenario with relaxed binding constraints to quantify the cost of policy limits.",
+    ],
+    sensitivities: ["Relaxing prime fund limit by 10pp improves yield by 3.22bps."],
+    scenarios: [],
+    governance: null,
+    source_explanation: "Money market optimizer allocated $500M across 3 funds.",
+  },
   solver_metadata: { solver_backend: "scipy", problem_type: "lp", solver_method: "HiGHS" },
   allocations: [
     {

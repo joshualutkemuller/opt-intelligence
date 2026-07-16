@@ -401,6 +401,28 @@ Every optimization should answer:
 6.  Alternative solutions?
 7.  Sensitivities?
 
+**Status:** ✅ deterministic structured explanation engine implemented (POC).
+
+`decision_intelligence/explanation/` now builds an `ExplanationReport` for each
+orchestrated optimization result. The report preserves the optimizer's original
+narrative `explanation` string while adding structured sections for:
+
+- what changed
+- rationale
+- economic impact
+- binding constraints
+- risks
+- alternatives
+- sensitivities
+- scenario deltas
+- governance status
+
+The orchestrator attaches this report to `OptimizationResult.explanation_report`
+after scenario analysis and governance evaluation, so API responses and the
+browser demo can render the same deterministic explanation structure. This is
+the foundation for a future LLM-backed Explanation Agent: the LLM should polish
+or tailor these structured facts, not invent the decision logic.
+
 ------------------------------------------------------------------------
 
 # 14. Suggested Repository

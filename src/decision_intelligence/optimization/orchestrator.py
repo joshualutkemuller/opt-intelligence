@@ -13,7 +13,7 @@ from typing import Any
 
 from decision_intelligence.contracts import OptimizationRequest, OptimizationResult
 from decision_intelligence.contracts.results import SolveStatus, ValidationResult
-from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.explanation import build_explanation_report
 from decision_intelligence.governance.approvals import ApprovalDecision, GovernanceController
 from decision_intelligence.governance.audit import AuditLog
 
@@ -94,6 +94,10 @@ class OptimizationOrchestrator:
         if self.governance is not None and result.status == SolveStatus.OPTIMAL:
             record = self.governance.evaluate(request, approval)
             result = result.model_copy(update={"governance": record})
+
+        result = result.model_copy(
+            update={"explanation_report": build_explanation_report(result)}
+        )
 
         logger.info(
             "Request %s complete: status=%s improvement=%.2f%%",

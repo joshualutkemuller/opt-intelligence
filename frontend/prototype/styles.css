@@ -528,6 +528,47 @@ h2 {
   margin-top: 2px;
 }
 
+.explanation-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.explanation-summary {
+  max-width: 920px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.explanation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.explanation-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9fb;
+  padding: 12px;
+}
+
+.explanation-list h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.explanation-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .table-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -606,6 +647,7 @@ tbody tr:hover {
 
   .sidebar,
   .dashboard-grid,
+  .explanation-grid,
   .table-grid,
   .metric-grid {
     grid-template-columns: 1fr;

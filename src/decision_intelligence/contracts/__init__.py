@@ -4,6 +4,7 @@ from .objectives import Objective, ObjectiveDirection
 from .requests import ExecutionMode, OptimizationRequest
 from .results import (
     AllocationItem,
+    ExplanationReport,
     OptimizationResult,
     SensitivityItem,
     SolveStatus,
@@ -21,6 +22,7 @@ __all__ = [
     "ExecutionMode",
     "OptimizationRequest",
     "AllocationItem",
+    "ExplanationReport",
     "OptimizationResult",
     "SensitivityItem",
     "SolveStatus",
