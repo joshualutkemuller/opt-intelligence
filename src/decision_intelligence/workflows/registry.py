@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config_loader import WorkflowTemplateConfig, load_workflow_configs
+from .config_loader import (
+    WorkflowInputConfig,
+    WorkflowTemplateConfig,
+    load_workflow_configs,
+)
 from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
@@ -31,8 +35,10 @@ class WorkflowTemplate:
     description: str
     domains: tuple[str, ...]
     builder: WorkflowBuilder
+    version: int = 1
     tags: tuple[str, ...] = ()
     default_context: dict[str, Any] = field(default_factory=dict)
+    inputs: tuple[WorkflowInputConfig, ...] = ()
 
     def build(
         self,
@@ -51,11 +57,13 @@ class WorkflowTemplate:
     def catalog_item(self) -> dict[str, Any]:
         return {
             "workflow_id": self.workflow_id,
+            "version": self.version,
             "name": self.name,
             "description": self.description,
             "domains": list(self.domains),
             "tags": list(self.tags),
             "default_context": self.default_context,
+            "inputs": [workflow_input.model_dump() for workflow_input in self.inputs],
         }
 
 
@@ -135,8 +143,10 @@ def _template_from_config(
         name=config.name,
         description=config.description,
         domains=tuple(config.domains),
+        version=config.version,
         tags=tuple(config.tags),
         default_context=dict(config.default_context),
+        inputs=tuple(config.inputs),
         builder=builder,
     )
 

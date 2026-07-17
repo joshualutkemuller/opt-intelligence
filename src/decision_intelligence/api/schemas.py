@@ -39,13 +39,23 @@ class OptimizationResponse(BaseModel):
     request: dict[str, Any]
 
 
+class WorkflowCatalogInput(BaseModel):
+    key: str
+    label: str
+    type: Literal["string", "integer", "number", "currency", "fraction", "percent"]
+    default: Any = None
+    required: bool = True
+
+
 class WorkflowCatalogItem(BaseModel):
     workflow_id: str
+    version: int
     name: str
     description: str
     domains: list[str]
     tags: list[str] = Field(default_factory=list)
     default_context: dict[str, Any] = Field(default_factory=dict)
+    inputs: list[WorkflowCatalogInput] = Field(default_factory=list)
 
 
 class WorkflowCatalogResponse(BaseModel):

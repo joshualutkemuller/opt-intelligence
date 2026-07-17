@@ -541,8 +541,10 @@ decision-intelligence-platform/
 -   ✅ **Config-Backed Registry Metadata (POC)** — the default workflow
     registry now hydrates names, descriptions, domains, tags, and default
     context from `config/workflows` while retaining Python builder mappings.
--   Next: expose config `version` and `inputs` through the workflow catalog,
-    then package demo presets for repeatable stakeholder walkthroughs.
+-   ✅ **Config Inputs in Workflow Catalog (POC)** — `GET /api/workflows` now
+    exposes config `version` and user-facing `inputs` for every registered
+    workflow template.
+-   Next: package demo presets for repeatable stakeholder walkthroughs.
 
 ## Phase 6
 

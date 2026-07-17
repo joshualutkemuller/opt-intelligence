@@ -92,6 +92,30 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
         "funding_capacity_shock",
         "liquidity_stress_funding_workflow"
     ]
+    assert body["workflows"][0]["version"] == 1
+    assert body["workflows"][0]["inputs"] == [
+        {
+            "key": "portfolio_id",
+            "label": "Portfolio ID",
+            "type": "string",
+            "default": "PORT_001",
+            "required": True,
+        },
+        {
+            "key": "collateral.obligation_scale",
+            "label": "Obligation scale",
+            "type": "fraction",
+            "default": 1.65,
+            "required": True,
+        },
+        {
+            "key": "money_market.total_cash",
+            "label": "Money-market cash",
+            "type": "currency",
+            "default": 450_000_000,
+            "required": True,
+        },
+    ]
     assert body["workflows"][-1]["domains"] == [
         "financing",
         "collateral",

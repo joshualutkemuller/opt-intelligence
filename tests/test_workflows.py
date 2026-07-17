@@ -61,8 +61,18 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         LIQUIDITY_STRESS_WORKFLOW_ID,
     ]
     assert catalog[-1]["domains"] == ["financing", "collateral", "money_market"]
+    assert catalog[-1]["version"] == 1
     assert catalog[-1]["default_context"]["scenario"] == "stress"
     assert "liquidity" in catalog[-1]["tags"]
+    assert catalog[-1]["inputs"][0] == {
+        "key": "portfolio_id",
+        "label": "Portfolio ID",
+        "type": "string",
+        "default": "PORT_001",
+        "required": True,
+    }
+    assert catalog[-1]["inputs"][2]["key"] == "money_market.total_cash"
+    assert catalog[-1]["inputs"][2]["default"] == 500_000_000
 
     plan = DEFAULT_WORKFLOW_REGISTRY.build(
         LIQUIDITY_STRESS_WORKFLOW_ID,
@@ -100,6 +110,11 @@ def test_loads_workflow_template_configs():
     )
     assert liquidity.version == 1
     assert liquidity.default_context["scenario"] == "stress"
+    assert [workflow_input.key for workflow_input in liquidity.inputs] == [
+        "portfolio_id",
+        "seed",
+        "money_market.total_cash",
+    ]
     assert [step.domain for step in liquidity.steps] == [
         "financing",
         "collateral",
