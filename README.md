@@ -163,6 +163,21 @@ DI_LLM_PROVIDER=openai DI_LLM_BASE_URL=http://localhost:11434/v1 \
   DI_LLM_MODEL=llama3.1 di ingest examples/sample_brief.pdf
 ```
 
+To run the full local Ollama smoke test in one step:
+
+```bash
+ollama serve
+ollama pull llama3.2:3b
+python examples/run_ollama_smoke.py
+```
+
+The smoke test checks whether Ollama is reachable, picks an available
+lightweight model, resolves the OpenAI-compatible provider, runs LLM PDF
+ingestion as a dry-run, then routes the mapped request through the optimizer.
+If Ollama or the optional packages are unavailable, it skips cleanly and prints
+the missing setup. Use `--strict` when you expect Ollama to be installed and
+want unavailable dependencies to fail the command.
+
 Native-PDF providers (Anthropic) read the document directly; others receive
 extracted text — the return type is identical either way. Structured-output
 parity is handled per-provider (native schema decoding, else JSON-mode +
