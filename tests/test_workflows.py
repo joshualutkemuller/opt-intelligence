@@ -17,7 +17,11 @@ from decision_intelligence.workflows import (
     WorkflowRegistry,
     WorkflowTemplate,
     build_liquidity_stress_funding_workflow,
+    load_workflow_config,
+    load_workflow_configs,
 )
+
+WORKFLOW_CONFIG_DIR = "config/workflows"
 
 
 @pytest.fixture
@@ -57,6 +61,8 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         LIQUIDITY_STRESS_WORKFLOW_ID,
     ]
     assert catalog[-1]["domains"] == ["financing", "collateral", "money_market"]
+    assert catalog[-1]["default_context"]["scenario"] == "stress"
+    assert "liquidity" in catalog[-1]["tags"]
 
     plan = DEFAULT_WORKFLOW_REGISTRY.build(
         LIQUIDITY_STRESS_WORKFLOW_ID,
@@ -65,6 +71,7 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
     )
     assert plan.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
     assert plan.context["portfolio_id"] == "PORT_204"
+    assert plan.context["scenario"] == "stress"
 
 
 def test_default_workflow_registry_builds_all_templates():
@@ -78,6 +85,53 @@ def test_default_workflow_registry_builds_all_templates():
         plan = DEFAULT_WORKFLOW_REGISTRY.build(workflow_id, portfolio_id="PORT_204", seed=7)
         assert plan.workflow_id == workflow_id
         assert [step.domain for step in plan.steps] == domains
+
+
+def test_loads_workflow_template_configs():
+    configs = load_workflow_configs(WORKFLOW_CONFIG_DIR)
+
+    assert [config.workflow_id for config in configs] == [
+        COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
+        FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
+        LIQUIDITY_STRESS_WORKFLOW_ID,
+    ]
+    liquidity = next(
+        config for config in configs if config.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
+    )
+    assert liquidity.version == 1
+    assert liquidity.default_context["scenario"] == "stress"
+    assert [step.domain for step in liquidity.steps] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
+    assert liquidity.steps[-1].dependency_rules[0].rule_type == (
+        "funding_pressure_liquidity_buffer"
+    )
+
+
+def test_load_workflow_config_rejects_invalid_dependency(tmp_path):
+    path = tmp_path / "bad.yaml"
+    path.write_text(
+        """
+workflow_id: bad
+version: 1
+name: Bad Workflow
+description: Invalid dependency demo
+domains: [money_market]
+steps:
+  - step_id: money_market_001
+    domain: money_market
+    name: Money Market
+    objective_metric: yield
+    objective_direction: maximize
+    depends_on: [missing_step]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unknown step ids"):
+        load_workflow_config(path)
 
 
 def test_workflow_registry_rejects_duplicate_ids():

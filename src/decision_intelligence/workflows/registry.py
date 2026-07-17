@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from .config_loader import WorkflowTemplateConfig, load_workflow_configs
 from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
@@ -17,6 +19,7 @@ from .library import (
 from .types import WorkflowPlan
 
 WorkflowBuilder = Callable[..., WorkflowPlan]
+DEFAULT_WORKFLOW_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config" / "workflows"
 
 
 @dataclass(frozen=True)
@@ -102,46 +105,40 @@ class WorkflowRegistry:
 
 def build_default_workflow_registry() -> WorkflowRegistry:
     registry = WorkflowRegistry()
-    registry.register(
-        WorkflowTemplate(
-            workflow_id=COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
-            name="Collateral Liquidity Review",
-            description=(
-                "Runs collateral coverage first, then adjusts money-market liquidity "
-                "requirements based on collateral pressure."
-            ),
-            domains=("collateral", "money_market"),
-            tags=("collateral", "liquidity", "review", "demo"),
-            builder=build_collateral_liquidity_review_workflow,
-        )
-    )
-    registry.register(
-        WorkflowTemplate(
-            workflow_id=FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
-            name="Funding Capacity Shock",
-            description=(
-                "Runs stressed financing capacity first, then adjusts money-market "
-                "reserves based on funding pressure."
-            ),
-            domains=("financing", "money_market"),
-            tags=("funding", "capacity", "stress", "demo"),
-            builder=build_funding_capacity_shock_workflow,
-        )
-    )
-    registry.register(
-        WorkflowTemplate(
-            workflow_id=LIQUIDITY_STRESS_WORKFLOW_ID,
-            name="Liquidity Stress Funding Workflow",
-            description=(
-                "Runs financing, collateral, and money-market optimizers under "
-                "a shared liquidity stress context with cross-step dependency effects."
-            ),
-            domains=("financing", "collateral", "money_market"),
-            tags=("liquidity", "stress", "funding", "demo"),
-            builder=build_liquidity_stress_funding_workflow,
-        )
-    )
+    builder_map = _default_builder_map()
+    for config in load_workflow_configs(DEFAULT_WORKFLOW_CONFIG_DIR):
+        registry.register(_template_from_config(config, builder_map))
     return registry
+
+
+def _default_builder_map() -> dict[str, WorkflowBuilder]:
+    return {
+        COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID: build_collateral_liquidity_review_workflow,
+        FUNDING_CAPACITY_SHOCK_WORKFLOW_ID: build_funding_capacity_shock_workflow,
+        LIQUIDITY_STRESS_WORKFLOW_ID: build_liquidity_stress_funding_workflow,
+    }
+
+
+def _template_from_config(
+    config: WorkflowTemplateConfig,
+    builder_map: dict[str, WorkflowBuilder],
+) -> WorkflowTemplate:
+    try:
+        builder = builder_map[config.workflow_id]
+    except KeyError as exc:
+        raise ValueError(
+            f"No workflow builder registered for config workflow_id '{config.workflow_id}'."
+        ) from exc
+
+    return WorkflowTemplate(
+        workflow_id=config.workflow_id,
+        name=config.name,
+        description=config.description,
+        domains=tuple(config.domains),
+        tags=tuple(config.tags),
+        default_context=dict(config.default_context),
+        builder=builder,
+    )
 
 
 DEFAULT_WORKFLOW_REGISTRY = build_default_workflow_registry()

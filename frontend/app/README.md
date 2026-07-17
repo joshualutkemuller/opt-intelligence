@@ -96,6 +96,15 @@ Registered demo templates:
 - Funding Capacity Shock
 - Collateral Liquidity Review
 
+The corresponding YAML template configs live in:
+
+```text
+config/workflows/
+```
+
+`decision_intelligence.workflows.config_loader` validates those configs for
+metadata, default context, inputs, steps, and dependency rules.
+
 ## Build Check
 
 ```bash

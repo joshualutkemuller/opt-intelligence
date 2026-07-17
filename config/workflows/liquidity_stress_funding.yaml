@@ -1,0 +1,80 @@
+workflow_id: liquidity_stress_funding_workflow
+version: 1
+name: Liquidity Stress Funding Workflow
+description: >
+  Runs financing, collateral, and money-market optimizers under a shared
+  liquidity stress context with cross-step dependency effects.
+domains:
+  - financing
+  - collateral
+  - money_market
+tags:
+  - liquidity
+  - stress
+  - funding
+  - demo
+default_context:
+  scenario: stress
+  solver_backend: scipy
+  problem_type: lp
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_001
+  - key: seed
+    label: Simulation seed
+    type: integer
+    default: 42
+  - key: money_market.total_cash
+    label: Money-market cash
+    type: currency
+    default: 500000000
+steps:
+  - step_id: financing_001
+    domain: financing
+    name: Stress funding source optimization
+    objective_metric: funding_spread
+    objective_direction: minimize
+    context:
+      n_counterparties: 10
+      total_funding_need: 300000000
+      spread_shift: 1.5
+      capacity_scale: 0.6
+  - step_id: collateral_001
+    domain: collateral
+    name: Collateral coverage optimization
+    objective_metric: funding_cost
+    objective_direction: minimize
+    depends_on:
+      - financing_001
+    context:
+      n_assets: 20
+      obligation_scale: 1.5
+      concentration_limit: 0.60
+  - step_id: money_market_001
+    domain: money_market
+    name: Liquidity reserve allocation
+    objective_metric: yield
+    objective_direction: maximize
+    depends_on:
+      - financing_001
+      - collateral_001
+    context:
+      n_funds: 8
+      total_cash: 500000000
+      daily_liquidity_req: 0.40
+      weekly_liquidity_req: 0.70
+      max_prime_fraction: 0.40
+      max_wam_days: 60
+    dependency_rules:
+      - source_step_id: financing_001
+        rule_type: funding_pressure_liquidity_buffer
+        target_context_keys:
+          - daily_liquidity_req
+          - weekly_liquidity_req
+      - source_step_id: collateral_001
+        rule_type: collateral_pressure_liquidity_buffer
+        target_context_keys:
+          - daily_liquidity_req
+          - weekly_liquidity_req

@@ -535,8 +535,14 @@ decision-intelligence-platform/
 -   ✅ **Workflow Explanation Report (POC)** — workflow results now include a
     top-level `explanation_report` summarizing recommendation, drivers,
     dependency changes, risks, economic impact, and next actions.
--   Next: add externally configurable workflow templates and package demo
-    presets for repeatable stakeholder walkthroughs.
+-   ✅ **Workflow Template Configs (POC)** — registered demo workflows now have
+    YAML definitions under `config/workflows`, plus a validated config loader
+    for metadata, defaults, steps, dependencies, and inputs.
+-   ✅ **Config-Backed Registry Metadata (POC)** — the default workflow
+    registry now hydrates names, descriptions, domains, tags, and default
+    context from `config/workflows` while retaining Python builder mappings.
+-   Next: expose config `version` and `inputs` through the workflow catalog,
+    then package demo presets for repeatable stakeholder walkthroughs.
 
 ## Phase 6
 

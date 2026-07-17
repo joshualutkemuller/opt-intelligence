@@ -1,0 +1,61 @@
+workflow_id: collateral_liquidity_review
+version: 1
+name: Collateral Liquidity Review
+description: >
+  Runs collateral coverage first, then adjusts money-market liquidity
+  requirements based on collateral pressure.
+domains:
+  - collateral
+  - money_market
+tags:
+  - collateral
+  - liquidity
+  - review
+  - demo
+default_context:
+  scenario: collateral_review
+  solver_backend: scipy
+  problem_type: lp
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_001
+  - key: collateral.obligation_scale
+    label: Obligation scale
+    type: fraction
+    default: 1.65
+  - key: money_market.total_cash
+    label: Money-market cash
+    type: currency
+    default: 450000000
+steps:
+  - step_id: collateral_001
+    domain: collateral
+    name: Collateral pressure optimization
+    objective_metric: funding_cost
+    objective_direction: minimize
+    context:
+      n_assets: 20
+      obligation_scale: 1.65
+      concentration_limit: 0.55
+  - step_id: money_market_001
+    domain: money_market
+    name: Liquidity allocation review
+    objective_metric: yield
+    objective_direction: maximize
+    depends_on:
+      - collateral_001
+    context:
+      n_funds: 8
+      total_cash: 450000000
+      daily_liquidity_req: 0.35
+      weekly_liquidity_req: 0.65
+      max_prime_fraction: 0.40
+      max_wam_days: 55
+    dependency_rules:
+      - source_step_id: collateral_001
+        rule_type: collateral_pressure_liquidity_buffer
+        target_context_keys:
+          - daily_liquidity_req
+          - weekly_liquidity_req
