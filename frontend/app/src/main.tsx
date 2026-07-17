@@ -277,6 +277,30 @@ type PresenterReview = {
   changes: PresenterChange[];
 };
 
+type WorkflowRunPayload = {
+  workflow: string;
+  portfolio_id: string;
+  seed: number;
+  context: Record<string, unknown>;
+};
+
+type RunHistoryEntry = {
+  id: string;
+  created_at: string;
+  preset_id: string;
+  preset_name: string;
+  workflow_id: string;
+  workflow_name: string;
+  portfolio_id: string;
+  seed: number;
+  solver: string;
+  input_values: Record<string, string>;
+  payload: WorkflowRunPayload;
+  response: WorkflowRunApiResponse;
+  status: string;
+  validation_passed: boolean;
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -293,6 +317,9 @@ const defaultMessages: Message[] = [
       "Start with a business request like: I want to optimize money market cash.",
   },
 ];
+
+const RUN_HISTORY_KEY = "decision-intelligence.workflowRunHistory.v1";
+const MAX_RUN_HISTORY = 12;
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
   {
@@ -375,7 +402,10 @@ function App() {
     "liquidity_stress_funding_workflow",
   );
   const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
+  const [historyInputOverride, setHistoryInputOverride] =
+    useState<Record<string, string> | null>(null);
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
+  const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory());
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -405,8 +435,19 @@ function App() {
     const selectedPreset = demoPresets.find(
       (item) => item.preset_id === selectedDemoPresetId,
     ) || fallbackDemoPresets[0];
+    if (historyInputOverride) {
+      setWorkflowInputValues(historyInputOverride);
+      setHistoryInputOverride(null);
+      return;
+    }
     setWorkflowInputValues(buildWorkflowInputValues(selectedWorkflow.inputs, selectedPreset));
-  }, [demoPresets, selectedDemoPresetId, selectedWorkflowId, workflowCatalog]);
+  }, [
+    demoPresets,
+    historyInputOverride,
+    selectedDemoPresetId,
+    selectedWorkflowId,
+    workflowCatalog,
+  ]);
 
   async function createSession() {
     try {
@@ -598,6 +639,14 @@ function App() {
     const selectedPreset = demoPresets.find(
       (item) => item.preset_id === selectedDemoPresetId,
     ) || fallbackDemoPresets[0];
+    const payload = buildWorkflowPayload(
+      selectedWorkflow.workflow_id,
+      workflow?.collected || {},
+      solverProfiles[solver],
+      selectedPreset,
+      workflowInputValues,
+      selectedWorkflow.inputs,
+    );
     setIsWorkflowRunning(true);
     setMessages((items) => [
       ...items,
@@ -615,16 +664,7 @@ function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            buildWorkflowPayload(
-              selectedWorkflow.workflow_id,
-              workflow?.collected || {},
-              solverProfiles[solver],
-              selectedPreset,
-              workflowInputValues,
-              selectedWorkflow.inputs,
-            ),
-          ),
+          body: JSON.stringify(payload),
         },
         20000,
       );
@@ -637,6 +677,16 @@ function App() {
         setResult(finalStep.result);
       }
       setLatestPayload(body);
+      addRunHistoryEntry(
+        createRunHistoryEntry({
+          preset: selectedPreset,
+          workflow: selectedWorkflow,
+          solverKey: solver,
+          inputValues: workflowInputValues,
+          payload,
+          response: body,
+        }),
+      );
       setMessages((items) =>
         replacePendingMessage(
           items,
@@ -654,6 +704,95 @@ function App() {
     } finally {
       setIsWorkflowRunning(false);
     }
+  }
+
+  function addRunHistoryEntry(entry: RunHistoryEntry) {
+    setRunHistory((current) => persistRunHistory([entry, ...current]));
+  }
+
+  function restoreRunHistoryEntry(entry: RunHistoryEntry) {
+    setSelectedDemoPresetId(entry.preset_id);
+    setSelectedWorkflowId(entry.workflow_id);
+    setHistoryInputOverride(entry.input_values);
+    setWorkflowRun(entry.response.result);
+    const finalStep = [...entry.response.result.step_results].reverse()[0];
+    if (finalStep?.result) {
+      setResult(finalStep.result);
+    }
+    setLatestPayload(entry.response);
+    setPresenterReviewOpen(false);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content: `Restored ${entry.preset_name} from ${formatHistoryTimestamp(entry.created_at)}.`,
+      },
+    ]);
+  }
+
+  async function replayRunHistoryEntry(entry: RunHistoryEntry) {
+    if (isWorkflowRunning) return;
+    setIsWorkflowRunning(true);
+    setMessages((items) => [
+      ...items,
+      { role: "user", content: `Replay ${entry.preset_name}.` },
+      {
+        role: "assistant",
+        content: `Replaying ${entry.preset_name} with the stored payload...`,
+        pending: true,
+      },
+    ]);
+
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows/run`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry.payload),
+        },
+        20000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowRunApiResponse;
+      const finalStep = [...body.result.step_results].reverse()[0];
+      setSelectedDemoPresetId(entry.preset_id);
+      setSelectedWorkflowId(entry.workflow_id);
+      setHistoryInputOverride(entry.input_values);
+      setWorkflowRun(body.result);
+      if (finalStep?.result) {
+        setResult(finalStep.result);
+      }
+      setLatestPayload(body);
+      addRunHistoryEntry({
+        ...entry,
+        id: makeHistoryId(),
+        created_at: new Date().toISOString(),
+        response: body,
+        status: body.result.status,
+        validation_passed: body.result.validation_summary.passed,
+      });
+      setMessages((items) =>
+        replacePendingMessage(
+          items,
+          `Replay complete. ${body.result.step_results.length} optimizer steps ran with aggregate validation ${body.result.validation_summary.passed ? "passing" : "requiring review"}.`,
+        ),
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) =>
+        replacePendingMessage(
+          items,
+          `Replay did not complete (${detail}). Check the API server and try again.`,
+        ),
+      );
+    } finally {
+      setIsWorkflowRunning(false);
+    }
+  }
+
+  function clearRunHistory() {
+    setRunHistory(persistRunHistory([]));
   }
 
   const collected = workflow?.collected || {};
@@ -745,6 +884,14 @@ function App() {
             onReset={() =>
               setWorkflowInputValues(buildWorkflowInputValues(selectedWorkflow.inputs, selectedPreset))
             }
+            disabled={isWorkflowRunning}
+          />
+
+          <RunHistoryPanel
+            entries={runHistory}
+            onRestore={restoreRunHistoryEntry}
+            onReplay={replayRunHistoryEntry}
+            onClear={clearRunHistory}
             disabled={isWorkflowRunning}
           />
 
@@ -916,6 +1063,75 @@ async function fetchWithTimeout(
   }
 }
 
+function loadRunHistory(): RunHistoryEntry[] {
+  try {
+    const raw = window.localStorage.getItem(RUN_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_RUN_HISTORY) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistRunHistory(entries: RunHistoryEntry[]): RunHistoryEntry[] {
+  const next = entries.slice(0, MAX_RUN_HISTORY);
+  try {
+    window.localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // Keep the in-memory history for the session when browser storage is blocked.
+  }
+  return next;
+}
+
+function createRunHistoryEntry({
+  preset,
+  workflow,
+  solverKey,
+  inputValues,
+  payload,
+  response,
+}: {
+  preset: DemoPresetCatalogItem;
+  workflow: WorkflowCatalogItem;
+  solverKey: string;
+  inputValues: Record<string, string>;
+  payload: WorkflowRunPayload;
+  response: WorkflowRunApiResponse;
+}): RunHistoryEntry {
+  return {
+    id: makeHistoryId(),
+    created_at: new Date().toISOString(),
+    preset_id: preset.preset_id,
+    preset_name: preset.name,
+    workflow_id: workflow.workflow_id,
+    workflow_name: workflow.name,
+    portfolio_id: payload.portfolio_id,
+    seed: payload.seed,
+    solver: solverKey,
+    input_values: inputValues,
+    payload,
+    response,
+    status: response.result.status,
+    validation_passed: response.result.validation_summary.passed,
+  };
+}
+
+function makeHistoryId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatHistoryTimestamp(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function buildWorkflowPayload(
   workflowId: string,
   collected: Record<string, unknown>,
@@ -923,20 +1139,20 @@ function buildWorkflowPayload(
   preset?: DemoPresetCatalogItem,
   inputValues: Record<string, string> = {},
   workflowInputs: WorkflowInputSpec[] = [],
-) {
+): WorkflowRunPayload {
   const presetContext = toRecord(preset?.context);
   const presetMoneyMarket = toRecord(presetContext.money_market);
   const compiled = compileWorkflowInputs(workflowInputs, inputValues, preset);
   const compiledContext = toRecord(compiled.context);
-  const compiledMoneyMarket = toRecord(compiledContext.money_market);
+  const mergedContext = deepMerge(presetContext, compiledContext);
+  const compiledMoneyMarket = toRecord(mergedContext.money_market);
 
   return {
     workflow: preset?.workflow_id || workflowId,
     portfolio_id: String(compiled.portfolio_id || collected.portfolio_id || preset?.portfolio_id || "PORT_204"),
     seed: Number(compiled.seed || collected.seed || preset?.seed || 42),
     context: {
-      ...presetContext,
-      ...compiledContext,
+      ...mergedContext,
       solver_backend: solverProfile.backend,
       problem_type: solverProfile.problem,
       money_market: {
@@ -1377,6 +1593,98 @@ function inputType(type: string): "number" | "text" {
 function numericInputMode(type: string): "decimal" | "numeric" | "text" {
   if (type === "integer") return "numeric";
   return inputType(type) === "number" ? "decimal" : "text";
+}
+
+function RunHistoryPanel({
+  entries,
+  onRestore,
+  onReplay,
+  onClear,
+  disabled,
+}: {
+  entries: RunHistoryEntry[];
+  onRestore: (entry: RunHistoryEntry) => void;
+  onReplay: (entry: RunHistoryEntry) => void;
+  onClear: () => void;
+  disabled: boolean;
+}) {
+  const [selectedId, setSelectedId] = useState("");
+
+  useEffect(() => {
+    if (!entries.length) {
+      setSelectedId("");
+      return;
+    }
+    setSelectedId((current) =>
+      entries.some((entry) => entry.id === current) ? current : entries[0].id,
+    );
+  }, [entries]);
+
+  const selected = entries.find((entry) => entry.id === selectedId);
+
+  return (
+    <section className="panel compact run-history-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Run History</span>
+        <span className="status-pill">{entries.length}</span>
+      </div>
+      {entries.length ? (
+        <>
+          <select
+            className="select-input"
+            value={selectedId}
+            onChange={(event) => setSelectedId(event.target.value)}
+            disabled={disabled}
+            aria-label="Run history"
+          >
+            {entries.map((entry) => (
+              <option value={entry.id} key={entry.id}>
+                {entry.preset_name} - {formatHistoryTimestamp(entry.created_at)}
+              </option>
+            ))}
+          </select>
+          {selected ? (
+            <div className="history-card">
+              <strong>{selected.workflow_name}</strong>
+              <span>{selected.portfolio_id} / seed {selected.seed}</span>
+              <span>
+                {selected.validation_passed ? "Validation passed" : "Review required"} /{" "}
+                {titleCase(selected.status)}
+              </span>
+            </div>
+          ) : null}
+          <div className="history-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => selected && onRestore(selected)}
+              disabled={disabled || !selected}
+            >
+              Restore
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => selected && onReplay(selected)}
+              disabled={disabled || !selected}
+            >
+              Replay
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={onClear}
+              disabled={disabled}
+            >
+              Clear
+            </button>
+          </div>
+        </>
+      ) : (
+        <p>Completed workflow runs will appear here for restore and replay.</p>
+      )}
+    </section>
+  );
 }
 
 function WorkflowSelector({

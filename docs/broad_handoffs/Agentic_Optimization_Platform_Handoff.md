@@ -555,7 +555,11 @@ decision-intelligence-platform/
     stress consistency before execution. The browser demo opens a presenter
     review panel showing Ready/Review/Blocked status, changed fields, selected
     context, warnings, and a final Run Demo action.
--   Next: add persisted run history and demo replay/export packages.
+-   ✅ **Local Run History + Replay (POC)** — completed workflow demos are now
+    persisted in browser `localStorage` with preset, workflow, inputs, payload,
+    result, timestamp, and validation status. The browser demo can restore a
+    prior result or replay the exact stored payload.
+-   Next: add shareable demo export packages for stakeholder distribution.
 
 ## Phase 6
 

@@ -91,6 +91,11 @@ compiled into the workflow run payload before execution. Click **Review** to
 open the presenter guardrail panel, confirm changed fields and warnings, then
 click **Run Demo**.
 
+Completed workflow demos are saved to browser-local run history. Use the
+**Run History** selector to restore a prior result or replay the exact stored
+payload against the local API. History is stored in `localStorage` and kept to
+the most recent 12 runs.
+
 The run action calls:
 
 ```text
