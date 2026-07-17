@@ -170,6 +170,35 @@ type WorkflowValidationSummary = {
   recommendations: Record<string, string>;
 };
 
+type WorkflowVisualPoint = {
+  step_id: string;
+  name: string;
+  domain: string;
+  status: string;
+  objective_value: number;
+  baseline_value: number;
+  improvement: number;
+  improvement_pct: number;
+  allocation_count: number;
+  warning_count: number;
+  violation_count: number;
+  validation_recommendation: string | null;
+  expected_return: number | null;
+  volatility: number | null;
+  sharpe: number | null;
+};
+
+type WorkflowVisualSummary = {
+  chart_kind: "improvement_bar" | "risk_return";
+  points: WorkflowVisualPoint[];
+  best_step_id: string | null;
+  average_improvement_pct: number;
+  total_dependency_effects: number;
+  total_warnings: number;
+  total_violations: number;
+  has_risk_return_points: boolean;
+};
+
 type WorkflowRunResult = {
   workflow_id: string;
   name: string;
@@ -182,6 +211,7 @@ type WorkflowRunResult = {
     source_steps: string[];
     context_changes: DependencyEffect[];
   };
+  visual_summary: WorkflowVisualSummary;
   explanation: string;
   explanation_report: WorkflowExplanationReport | null;
   trace: WorkflowTraceEvent[];
@@ -1280,6 +1310,8 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
+          <WorkflowComparisonPanel workflowRun={workflowRun} />
+
           {presenterReviewOpen ? (
             <PresenterReviewPanel
               review={presenterReview}
@@ -2345,6 +2377,161 @@ function WorkflowTimelinePanel({
   );
 }
 
+function WorkflowComparisonPanel({
+  workflowRun,
+}: {
+  workflowRun: WorkflowRunResult | null;
+}) {
+  const visual = workflowRun?.visual_summary;
+  const points = visual?.points || [];
+  const maxAbsImprovement = Math.max(
+    1,
+    ...points.map((point) => Math.abs(point.improvement_pct)),
+  );
+
+  return (
+    <section className="panel workflow-comparison-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Workflow Comparison</span>
+          <h2>Step impact across the run</h2>
+        </div>
+        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
+          {workflowRun ? titleCase(visual?.chart_kind.replaceAll("_", " ") || "Summary") : "Pending"}
+        </span>
+      </div>
+
+      {visual && points.length ? (
+        <>
+          <div className="workflow-impact-strip">
+            <Metric
+              label="Avg improvement"
+              value={`${visual.average_improvement_pct.toFixed(2)}%`}
+              note="Across completed steps"
+            />
+            <Metric
+              label="Dependencies"
+              value={String(visual.total_dependency_effects)}
+              note="Applied effects"
+            />
+            <Metric
+              label="Warnings"
+              value={String(visual.total_warnings)}
+              note="Across steps"
+            />
+          </div>
+
+          <div className="workflow-comparison-grid">
+            <div className="workflow-impact-bars" aria-label="Workflow step impact chart">
+              {points.map((point) => (
+                <div
+                  className={`workflow-impact-row ${point.step_id === visual.best_step_id ? "best" : ""}`}
+                  key={point.step_id}
+                >
+                  <div className="workflow-impact-label">
+                    <strong>{point.name}</strong>
+                    <span>{titleCase(point.domain.replaceAll("_", " "))}</span>
+                  </div>
+                  <div className="workflow-impact-track">
+                    <div
+                      className="workflow-impact-fill"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.abs(point.improvement_pct / maxAbsImprovement) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="workflow-impact-value">
+                    <strong>{point.improvement_pct.toFixed(2)}%</strong>
+                    <span>{formatObjective(point.objective_value)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="workflow-point-table">
+              <h3>Step Details</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Step</th>
+                    <th>Allocations</th>
+                    <th>Review</th>
+                    <th>Risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {points.map((point) => (
+                    <tr key={point.step_id}>
+                      <td>{titleCase(point.domain.replaceAll("_", " "))}</td>
+                      <td>{point.allocation_count}</td>
+                      <td>{titleCase(point.validation_recommendation || "ready")}</td>
+                      <td>{point.warning_count + point.violation_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {visual.has_risk_return_points ? <RiskReturnPlot points={points} /> : null}
+        </>
+      ) : (
+        <p className="workflow-empty">
+          Run any workflow to compare objective impact, validation posture, and
+          step-level analytics across the completed optimizer chain.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function RiskReturnPlot({ points }: { points: WorkflowVisualPoint[] }) {
+  const plotted = points.filter(
+    (point) => point.expected_return !== null && point.volatility !== null,
+  );
+  if (!plotted.length) return null;
+
+  const returns = plotted.map((point) => point.expected_return || 0);
+  const volatilities = plotted.map((point) => point.volatility || 0);
+  const minReturn = Math.min(...returns);
+  const maxReturn = Math.max(...returns);
+  const minVolatility = Math.min(...volatilities);
+  const maxVolatility = Math.max(...volatilities);
+
+  return (
+    <div className="risk-return-card">
+      <div>
+        <h3>Risk / Return View</h3>
+        <p>Shown when a workflow step exposes expected return and volatility.</p>
+      </div>
+      <div className="risk-return-plot" aria-label="Risk return comparison plot">
+        {plotted.map((point) => {
+          const left = scalePlotValue(point.volatility || 0, minVolatility, maxVolatility);
+          const bottom = scalePlotValue(point.expected_return || 0, minReturn, maxReturn);
+          return (
+            <span
+              className="risk-return-dot"
+              style={{ left: `${left}%`, bottom: `${bottom}%` }}
+              title={`${point.name}: ${formatPercent(point.expected_return || 0)} return, ${formatPercent(point.volatility || 0)} volatility`}
+              key={point.step_id}
+            >
+              {point.domain.slice(0, 2).toUpperCase()}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function scalePlotValue(value: number, min: number, max: number): number {
+  if (max === min) return 50;
+  return 8 + ((value - min) / (max - min)) * 84;
+}
+
 function WorkflowExplanationPanel({
   workflowRun,
 }: {
@@ -2815,6 +3002,14 @@ function formatNumber(value: unknown) {
   if (Number.isNaN(number)) return String(value || "-");
   if (Math.abs(number) >= 1_000_000) return number.toExponential(2);
   return number.toFixed(4);
+}
+
+function formatObjective(value: unknown) {
+  const number = Number(value);
+  if (Number.isNaN(number)) return "-";
+  if (Math.abs(number) < 1) return number.toFixed(4);
+  if (Math.abs(number) < 100) return number.toFixed(2);
+  return number.toExponential(2);
 }
 
 function formatScenarioList(value: unknown) {

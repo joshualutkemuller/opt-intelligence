@@ -280,6 +280,28 @@ def test_workflow_explanation_report_for_all_registered_workflows(orchestrator):
         assert len(report.step_summaries) == len(result.step_results)
 
 
+def test_workflow_visual_summary_for_all_registered_workflows(orchestrator):
+    for workflow_id in DEFAULT_WORKFLOW_REGISTRY.list_ids():
+        plan = DEFAULT_WORKFLOW_REGISTRY.build(workflow_id, portfolio_id="PORT_204", seed=7)
+        result = SequentialWorkflowRunner(orchestrator).run(plan)
+
+        visual = result.visual_summary
+        assert len(visual.points) == len(result.step_results)
+        assert visual.best_step_id in {point.step_id for point in visual.points}
+        assert visual.total_dependency_effects == result.dependency_summary["total_effects"]
+        assert visual.total_warnings == result.validation_summary["warning_count"]
+        assert visual.total_violations == result.validation_summary["violation_count"]
+        assert all(point.allocation_count > 0 for point in visual.points)
+
+        if workflow_id == PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID:
+            assert visual.chart_kind == "risk_return"
+            assert visual.has_risk_return_points is True
+            assert visual.points[0].expected_return is not None
+            assert visual.points[0].volatility is not None
+        else:
+            assert visual.chart_kind == "improvement_bar"
+
+
 @pytest.mark.parametrize(
     ("workflow_id", "expected_effects"),
     [

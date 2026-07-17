@@ -262,6 +262,13 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     ]
     assert body["result"]["validation_summary"]["passed"] is True
     assert body["result"]["dependency_summary"]["total_effects"] == 4
+    assert body["result"]["visual_summary"]["chart_kind"] == "improvement_bar"
+    assert body["result"]["visual_summary"]["total_dependency_effects"] == 4
+    assert [point["domain"] for point in body["result"]["visual_summary"]["points"]] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
     assert body["result"]["explanation_report"]["overall_recommendation"].startswith("Ready")
     assert body["result"]["explanation_report"]["dependency_changes"]
     assert body["result"]["step_results"][-1]["dependency_effects"]

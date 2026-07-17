@@ -99,6 +99,35 @@ class WorkflowExplanationReport(BaseModel):
     step_summaries: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class WorkflowVisualPoint(BaseModel):
+    step_id: str
+    name: str
+    domain: str
+    status: str
+    objective_value: float
+    baseline_value: float
+    improvement: float
+    improvement_pct: float
+    allocation_count: int
+    warning_count: int
+    violation_count: int
+    validation_recommendation: str | None = None
+    expected_return: float | None = None
+    volatility: float | None = None
+    sharpe: float | None = None
+
+
+class WorkflowVisualSummary(BaseModel):
+    chart_kind: Literal["improvement_bar", "risk_return"] = "improvement_bar"
+    points: list[WorkflowVisualPoint] = Field(default_factory=list)
+    best_step_id: str | None = None
+    average_improvement_pct: float = 0.0
+    total_dependency_effects: int = 0
+    total_warnings: int = 0
+    total_violations: int = 0
+    has_risk_return_points: bool = False
+
+
 class WorkflowResult(BaseModel):
     workflow_id: str
     name: str
@@ -106,6 +135,7 @@ class WorkflowResult(BaseModel):
     step_results: list[WorkflowStepResult] = Field(default_factory=list)
     validation_summary: dict[str, Any] = Field(default_factory=dict)
     dependency_summary: dict[str, Any] = Field(default_factory=dict)
+    visual_summary: WorkflowVisualSummary = Field(default_factory=WorkflowVisualSummary)
     explanation: str = ""
     explanation_report: WorkflowExplanationReport | None = None
     trace: list[WorkflowTraceEvent] = Field(default_factory=list)

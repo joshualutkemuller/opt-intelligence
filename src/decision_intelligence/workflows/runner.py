@@ -18,6 +18,8 @@ from .types import (
     WorkflowStep,
     WorkflowStepResult,
     WorkflowTraceEvent,
+    WorkflowVisualPoint,
+    WorkflowVisualSummary,
 )
 
 
@@ -133,6 +135,10 @@ class SequentialWorkflowRunner:
 
         validation_summary = self._aggregate_validation(step_results)
         dependency_summary = self._aggregate_dependencies(step_results)
+        visual_summary = self._build_visual_summary(
+            step_results,
+            dependency_summary=dependency_summary,
+        )
         explanation_report = build_workflow_explanation_report(
             plan=plan,
             step_results=step_results,
@@ -148,6 +154,7 @@ class SequentialWorkflowRunner:
             step_results=step_results,
             validation_summary=validation_summary,
             dependency_summary=dependency_summary,
+            visual_summary=visual_summary,
             explanation=explanation_report.summary,
             explanation_report=explanation_report,
             trace=trace,
@@ -192,6 +199,65 @@ class SequentialWorkflowRunner:
                 len(validation.violations) if validation else len(result.validation.violations)
             ),
         }
+
+    def _build_visual_summary(
+        self,
+        step_results: list[WorkflowStepResult],
+        *,
+        dependency_summary: dict[str, Any],
+    ) -> WorkflowVisualSummary:
+        points = [
+            WorkflowVisualPoint(
+                step_id=step.step_id,
+                name=step.name,
+                domain=step.domain,
+                status=step.status,
+                objective_value=step.result.objective_value,
+                baseline_value=step.result.baseline_value,
+                improvement=step.result.improvement,
+                improvement_pct=step.result.improvement_pct,
+                allocation_count=len(step.result.allocations),
+                warning_count=int(step.summary.get("warning_count") or 0),
+                violation_count=int(step.summary.get("violation_count") or 0),
+                validation_recommendation=step.summary.get("validation_recommendation"),
+                expected_return=self._optional_float(
+                    step.result.solver_metadata.get("expected_return")
+                ),
+                volatility=self._optional_float(step.result.solver_metadata.get("volatility")),
+                sharpe=self._optional_float(step.result.solver_metadata.get("sharpe")),
+            )
+            for step in step_results
+        ]
+        best = max(points, key=lambda point: point.improvement_pct, default=None)
+        has_risk_return_points = any(
+            point.expected_return is not None and point.volatility is not None
+            for point in points
+        )
+        average_improvement_pct = (
+            sum(point.improvement_pct for point in points) / len(points)
+            if points
+            else 0.0
+        )
+
+        return WorkflowVisualSummary(
+            chart_kind="risk_return" if has_risk_return_points else "improvement_bar",
+            points=points,
+            best_step_id=best.step_id if best else None,
+            average_improvement_pct=average_improvement_pct,
+            total_dependency_effects=int(dependency_summary.get("total_effects") or 0),
+            total_warnings=sum(point.warning_count for point in points),
+            total_violations=sum(point.violation_count for point in points),
+            has_risk_return_points=has_risk_return_points,
+        )
+
+    @staticmethod
+    def _optional_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _aggregate_dependencies(
         self,

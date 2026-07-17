@@ -571,8 +571,13 @@ decision-intelligence-platform/
     demo preset now surface the Asset Allocation MVO optimizer in the browser
     workflow selector with editable inputs for notional, target return,
     risk-aversion, single-asset cap, and cash floor.
--   Next: add a visual efficient-frontier / risk-return comparison view for
-    the MVO demo.
+-   ✅ **Workflow Visual Comparison (POC)** — workflow results now include a
+    generic `visual_summary` with step-level objective impact, validation
+    posture, dependency counts, allocation counts, and optional risk/return
+    points when available. The browser demo renders this for every workflow,
+    with an MVO risk/return plot as a special case instead of a one-off view.
+-   Next: add scenario side-by-side comparison across saved/replayed workflow
+    runs.
 
 ## Phase 6
 

@@ -1169,6 +1169,175 @@ h2 {
   padding-top: 2px;
 }
 
+.workflow-comparison-panel {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-comparison-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.workflow-impact-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-impact-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(160px, 1.2fr) minmax(88px, 0.4fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.workflow-impact-row.best {
+  border-color: #b7e0c5;
+  background: var(--green-soft);
+}
+
+.workflow-impact-label strong,
+.workflow-impact-label span,
+.workflow-impact-value strong,
+.workflow-impact-value span {
+  display: block;
+}
+
+.workflow-impact-label strong,
+.workflow-impact-value strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.workflow-impact-label span,
+.workflow-impact-value span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.workflow-impact-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.workflow-impact-fill {
+  min-width: 4px;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+}
+
+.workflow-point-table {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.workflow-point-table h3,
+.risk-return-card h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.workflow-point-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.workflow-point-table th,
+.workflow-point-table td {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.workflow-point-table th {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.workflow-point-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.risk-return-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.55fr) minmax(220px, 1fr);
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #b8c8f7;
+  border-radius: 8px;
+  background: #eef4ff;
+}
+
+.risk-return-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.risk-return-plot {
+  position: relative;
+  min-height: 170px;
+  border: 1px solid #b8c8f7;
+  border-radius: 8px;
+  background:
+    linear-gradient(to right, rgba(37, 99, 235, 0.12) 1px, transparent 1px),
+    linear-gradient(to top, rgba(37, 99, 235, 0.12) 1px, transparent 1px),
+    #ffffff;
+  background-size: 25% 100%, 100% 25%, auto;
+}
+
+.risk-return-plot::before,
+.risk-return-plot::after {
+  position: absolute;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.risk-return-plot::before {
+  content: "Return";
+  left: 10px;
+  top: 8px;
+}
+
+.risk-return-plot::after {
+  content: "Volatility";
+  right: 10px;
+  bottom: 8px;
+}
+
+.risk-return-dot {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, 50%);
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--blue);
+  border: 2px solid #ffffff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .workflow-trace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
@@ -1355,6 +1524,9 @@ tbody tr:hover {
   .workflow-validation-strip,
   .workflow-step-metrics,
   .workflow-trace-grid,
+  .workflow-comparison-grid,
+  .workflow-impact-row,
+  .risk-return-card,
   .workflow-dependency-list,
   .workflow-impact-strip,
   .workflow-explanation-panel .explanation-grid,
