@@ -18,10 +18,11 @@ OptimizationOrchestrator
         ▼
 OptimizerRegistry
         │
- ┌──────┼──────────┐
- ▼      ▼          ▼
-Collateral  MoneyMarket  Financing
-Optimizer   Optimizer    Optimizer
+ ┌──────┼────────────┬──────────┐
+ ▼      ▼            ▼          ▼
+Asset   Collateral   Money      Financing
+MVO     Optimizer    Market     Optimizer
+                    Optimizer
         │
         ▼
 validate_request → prepare_problem → solve (registered solver backend)
@@ -41,13 +42,16 @@ AuditLog
 
 | Domain | Objective | Variables | Key Constraints |
 |---|---|---|---|
+| **Asset Allocation** | Maximize mean-variance utility | Asset-class weights | Full investment, long-only bounds, target return, class exposure limits |
 | **Collateral** | Minimize funding cost | Asset-to-obligation fractions | Eligibility, haircut coverage, inventory, concentration |
 | **Money Market** | Maximize net yield | Fund weights | Daily/weekly liquidity, WAM, prime fraction, single-fund limit |
 | **Financing** | Minimize spread cost | Counterparty-to-need amounts | Tenor compatibility, capacity, concentration, capital budget |
 
-All three support the default continuous LP path through SciPy/HiGHS. The
-money-market optimizer also supports a true MILP fund-selection model through
-SciPy/HiGHS with binary selected/not-selected variables.
+The asset allocation optimizer uses SciPy SLSQP for a constrained
+mean-variance objective. The other domains support the default continuous LP
+path through SciPy/HiGHS. The money-market optimizer also supports a true MILP
+fund-selection model through SciPy/HiGHS with binary selected/not-selected
+variables.
 
 ---
 
@@ -70,6 +74,17 @@ pytest
 ---
 
 ## Run the Demo
+
+Start the browser-based demo workspace with one command:
+
+```bash
+make demo-ui
+```
+
+This launches the local FastAPI backend at `http://127.0.0.1:8000` and the
+React/Vite UI at `http://127.0.0.1:5173/`. Stop both with `Ctrl+C`.
+
+For the original terminal demo:
 
 ```bash
 python examples/run_demo.py

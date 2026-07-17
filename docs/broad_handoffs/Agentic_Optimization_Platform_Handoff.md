@@ -563,8 +563,11 @@ decision-intelligence-platform/
     now generates a self-contained HTML stakeholder package from a workflow run,
     preset, payload, and workflow catalog item. The browser demo exposes this as
     **Export Package** after a sequential workflow completes.
--   Next: add one-command local demo startup (`make demo-ui` or
-    `scripts/run_demo_ui.sh`) so backend and frontend launch together.
+-   ✅ **One-Command Local Demo Startup (POC)** — `make demo-ui` now launches the
+    local FastAPI backend and React/Vite frontend together through
+    `scripts/run_demo_ui.sh`, with cleanup on exit.
+-   Next: surface the Asset Allocation MVO optimizer in the browser workflow
+    selector with a demo preset and editable inputs.
 
 ## Phase 6
 

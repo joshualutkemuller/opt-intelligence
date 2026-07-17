@@ -8,9 +8,34 @@ results in the browser.
 
 ## Run Locally
 
+From the project root, start the full local demo with one command:
+
+```bash
+make demo-ui
+```
+
+This starts:
+
+- FastAPI API: `http://127.0.0.1:8000`
+- React/Vite UI: `http://127.0.0.1:5173/`
+
+Stop both servers with `Ctrl+C`.
+
+Equivalent direct script:
+
+```bash
+./scripts/run_demo_ui.sh
+```
+
+The script uses the project `.venv`, installs frontend dependencies if
+`frontend/app/node_modules` is missing, and cleans up both server processes
+when it exits.
+
+### Manual Fallback
+
 Open two terminals from the project root.
 
-### Terminal 1: Python API
+#### Terminal 1: Python API
 
 ```bash
 cd "/Users/joshualutkemuller/Documents/Quant Sandbox/opt-intelligence"
@@ -30,7 +55,7 @@ Expected response:
 {"status":"ok"}
 ```
 
-### Terminal 2: Browser UI
+#### Terminal 2: Browser UI
 
 ```bash
 cd "/Users/joshualutkemuller/Documents/Quant Sandbox/opt-intelligence/frontend/app"
