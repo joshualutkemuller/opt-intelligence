@@ -174,6 +174,58 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
 
 
+def test_workflow_export_package_endpoint_returns_shareable_html():
+    run_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "funding_capacity_shock",
+            "portfolio_id": "PORT_EXPORT",
+            "seed": 11,
+            "context": {
+                "money_market": {
+                    "total_cash": 300_000_000,
+                    "weekly_liquidity_req": 0.64,
+                }
+            },
+        },
+    )
+    assert run_response.status_code == 200
+    run_body = run_response.json()
+
+    response = client.post(
+        "/api/workflows/export-package",
+        json={
+            "response": run_body,
+            "payload": {
+                "workflow": "funding_capacity_shock",
+                "portfolio_id": "PORT_EXPORT",
+                "seed": 11,
+                "context": {},
+            },
+            "preset": {
+                "name": "Export Test",
+                "audience": "Stakeholders",
+                "talking_points": ["Show workflow progress."],
+                "success_criteria": ["Package contains audit payload."],
+            },
+            "workflow": {
+                "workflow_id": "funding_capacity_shock",
+                "name": "Funding Capacity Shock",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filename"] == "funding-capacity-shock-demo-package.html"
+    assert body["content_type"] == "text/html"
+    assert "<!doctype html>" in body["html"]
+    assert "Funding Capacity Shock" in body["html"]
+    assert "Workflow Timeline" in body["html"]
+    assert "Audit Payload" in body["html"]
+    assert "PORT_EXPORT" in body["html"]
+
+
 def test_unknown_workflow_returns_400():
     response = client.post(
         "/api/workflows/run",

@@ -96,10 +96,22 @@ Completed workflow demos are saved to browser-local run history. Use the
 payload against the local API. History is stored in `localStorage` and kept to
 the most recent 12 runs.
 
+After a workflow run, click **Export Package** to download a self-contained
+HTML stakeholder package. The package includes the workflow summary,
+recommendation, presenter talking points, success criteria, plan timeline,
+validation summary, dependency changes, risks, next actions, and the embedded
+audit payload needed to reproduce the run locally.
+
 The run action calls:
 
 ```text
 POST /api/workflows/run
+```
+
+The package action calls:
+
+```text
+POST /api/workflows/export-package
 ```
 
 The UI renders the returned `step_results`, `trace`, and `validation_summary`

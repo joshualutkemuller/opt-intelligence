@@ -559,7 +559,12 @@ decision-intelligence-platform/
     persisted in browser `localStorage` with preset, workflow, inputs, payload,
     result, timestamp, and validation status. The browser demo can restore a
     prior result or replay the exact stored payload.
--   Next: add shareable demo export packages for stakeholder distribution.
+-   ✅ **Shareable Demo Export Packages (POC)** — `/api/workflows/export-package`
+    now generates a self-contained HTML stakeholder package from a workflow run,
+    preset, payload, and workflow catalog item. The browser demo exposes this as
+    **Export Package** after a sequential workflow completes.
+-   Next: add one-command local demo startup (`make demo-ui` or
+    `scripts/run_demo_ui.sh`) so backend and frontend launch together.
 
 ## Phase 6
 

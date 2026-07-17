@@ -14,6 +14,7 @@ from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.export import generate_workflow_demo_package
 from decision_intelligence.governance import (
     ApprovalPolicy,
     ApprovalStore,
@@ -41,6 +42,8 @@ from .schemas import (
     DirectOptimizationRequest,
     OptimizationResponse,
     WorkflowCatalogResponse,
+    WorkflowExportPackageRequest,
+    WorkflowExportPackageResponse,
     WorkflowRunRequest,
     WorkflowRunResponse,
 )
@@ -154,6 +157,28 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))
 
 
+@app.post("/api/workflows/export-package", response_model=WorkflowExportPackageResponse)
+def export_workflow_package(
+    payload: WorkflowExportPackageRequest,
+) -> WorkflowExportPackageResponse:
+    html = generate_workflow_demo_package(
+        response=payload.response,
+        payload=payload.payload,
+        preset=payload.preset,
+        workflow=payload.workflow,
+    )
+    workflow_id = (
+        payload.response.get("result", {}).get("workflow_id")
+        or payload.workflow.get("workflow_id")
+        or payload.payload.get("workflow")
+        or "workflow-demo"
+    )
+    return WorkflowExportPackageResponse(
+        filename=f"{_safe_filename(str(workflow_id))}-demo-package.html",
+        html=html,
+    )
+
+
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:
     spec = WORKFLOWS[payload.domain]
     context = {**spec.base_context, **payload.context}
@@ -207,3 +232,13 @@ def _build_orchestrator() -> tuple[OptimizationOrchestrator, AuditLog]:
 
 def _json(value: Any) -> dict[str, Any]:
     return jsonable_encoder(value)
+
+
+def _safe_filename(value: str) -> str:
+    safe = "".join(
+        character.lower() if character.isalnum() else "-"
+        for character in value.strip()
+    ).strip("-")
+    while "--" in safe:
+        safe = safe.replace("--", "-")
+    return safe or "workflow-demo"

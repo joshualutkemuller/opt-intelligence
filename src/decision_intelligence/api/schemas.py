@@ -91,3 +91,16 @@ class WorkflowRunRequest(BaseModel):
 class WorkflowRunResponse(BaseModel):
     plan: dict[str, Any]
     result: dict[str, Any]
+
+
+class WorkflowExportPackageRequest(BaseModel):
+    response: dict[str, Any]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    preset: dict[str, Any] = Field(default_factory=dict)
+    workflow: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowExportPackageResponse(BaseModel):
+    filename: str
+    content_type: str = "text/html"
+    html: str

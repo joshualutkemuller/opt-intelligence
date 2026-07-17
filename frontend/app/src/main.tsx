@@ -214,6 +214,12 @@ type WorkflowRunApiResponse = {
   result: WorkflowRunResult;
 };
 
+type WorkflowExportPackageApiResponse = {
+  filename: string;
+  content_type: string;
+  html: string;
+};
+
 type WorkflowCatalogItem = {
   workflow_id: string;
   version: number;
@@ -405,10 +411,13 @@ function App() {
   const [historyInputOverride, setHistoryInputOverride] =
     useState<Record<string, string> | null>(null);
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
+  const [latestWorkflowRunPayload, setLatestWorkflowRunPayload] =
+    useState<WorkflowRunPayload | null>(null);
   const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory());
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [presenterReviewOpen, setPresenterReviewOpen] = useState(false);
   const didCreateSession = useRef(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -588,21 +597,74 @@ function App() {
     setResult(null);
     setWorkflowRun(null);
     setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
     setPresenterReviewOpen(false);
     void createSession();
   }
 
   function exportJson() {
     const payload = latestPayload || { workflow, result };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "decision-intelligence-result.json";
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadTextFile(
+      "decision-intelligence-result.json",
+      JSON.stringify(payload, null, 2),
+      "application/json",
+    );
+  }
+
+  async function exportDemoPackage() {
+    const workflowResponse = workflowRunResponseFromLatest(latestPayload);
+    if (!workflowResponse || !workflowRun) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "Run or restore a sequential workflow before exporting a demo package.",
+        },
+      ]);
+      return;
+    }
+
+    setIsExportingPackage(true);
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows/export-package`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            response: workflowResponse,
+            payload:
+              latestWorkflowRunPayload ||
+              latestWorkflowRunPayloadFromHistory(runHistory, workflowRun) ||
+              {},
+            preset: selectedPreset,
+            workflow: selectedWorkflow,
+          }),
+        },
+        10000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowExportPackageApiResponse;
+      downloadTextFile(body.filename, body.html, body.content_type || "text/html");
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `Exported ${body.filename} for stakeholder sharing.`,
+        },
+      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `Demo package export did not complete (${detail}). Check the API server and try again.`,
+        },
+      ]);
+    } finally {
+      setIsExportingPackage(false);
+    }
   }
 
   function openPresenterReview() {
@@ -677,6 +739,7 @@ function App() {
         setResult(finalStep.result);
       }
       setLatestPayload(body);
+      setLatestWorkflowRunPayload(payload);
       addRunHistoryEntry(
         createRunHistoryEntry({
           preset: selectedPreset,
@@ -715,6 +778,7 @@ function App() {
     setSelectedWorkflowId(entry.workflow_id);
     setHistoryInputOverride(entry.input_values);
     setWorkflowRun(entry.response.result);
+    setLatestWorkflowRunPayload(entry.payload);
     const finalStep = [...entry.response.result.step_results].reverse()[0];
     if (finalStep?.result) {
       setResult(finalStep.result);
@@ -764,6 +828,7 @@ function App() {
         setResult(finalStep.result);
       }
       setLatestPayload(body);
+      setLatestWorkflowRunPayload(entry.payload);
       addRunHistoryEntry({
         ...entry,
         id: makeHistoryId(),
@@ -832,6 +897,14 @@ function App() {
           </button>
           <button className="primary-button" type="button" onClick={exportJson}>
             Export JSON
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={exportDemoPackage}
+            disabled={!workflowRun || isExportingPackage}
+          >
+            {isExportingPackage ? "Exporting" : "Export Package"}
           </button>
         </div>
       </header>
@@ -1061,6 +1134,34 @@ async function fetchWithTimeout(
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+function downloadTextFile(filename: string, contents: string, contentType: string) {
+  const blob = new Blob([contents], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function workflowRunResponseFromLatest(value: unknown): WorkflowRunApiResponse | null {
+  if (!isRecord(value)) return null;
+  if (!isRecord(value.plan) || !isRecord(value.result)) return null;
+  if (!Array.isArray(value.result.step_results)) return null;
+  return value as WorkflowRunApiResponse;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function latestWorkflowRunPayloadFromHistory(
+  history: RunHistoryEntry[],
+  workflowRun: WorkflowRunResult,
+): WorkflowRunPayload | null {
+  return history.find((entry) => entry.response.result.timestamp === workflowRun.timestamp)?.payload || null;
 }
 
 function loadRunHistory(): RunHistoryEntry[] {
