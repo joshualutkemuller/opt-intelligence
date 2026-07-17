@@ -315,8 +315,14 @@ def _format_value(value: Any, field_spec: FieldSpec) -> str:
     if field_spec.target == "scenarios":
         return ", ".join(value) if value else "none"
     if isinstance(value, int | float):
-        if field_spec.key.endswith("_cash") or field_spec.key.endswith("_need"):
+        if (
+            field_spec.key.endswith("_cash")
+            or field_spec.key.endswith("_need")
+            or field_spec.key.endswith("_notional")
+        ):
             return f"${value / 1_000_000:,.0f}M"
+        if field_spec.key == "risk_aversion":
+            return f"{value:g}"
     if isinstance(value, float):
         if 0 <= value <= 1:
             return f"{value:.0%}"

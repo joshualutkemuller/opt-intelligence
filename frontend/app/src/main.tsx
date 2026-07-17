@@ -317,6 +317,13 @@ type ChatApiResponse = {
   request: Record<string, unknown> | null;
 };
 
+type LlmChatApiResponse = {
+  provider: string;
+  model: string;
+  base_url: string | null;
+  response: string;
+};
+
 const defaultMessages: Message[] = [
   {
     role: "assistant",
@@ -473,6 +480,18 @@ function App() {
   const [apiConnected, setApiConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>(defaultMessages);
   const [input, setInput] = useState("");
+  const [ollamaMessages, setOllamaMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content:
+        "Ask a local Ollama model about the workflow, optimizer output, or demo storyline.",
+    },
+  ]);
+  const [ollamaInput, setOllamaInput] = useState(
+    "Explain the MVO asset allocation demo in plain English.",
+  );
+  const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
+  const [isOllamaRunning, setIsOllamaRunning] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -669,6 +688,59 @@ function App() {
       );
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function submitOllamaMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isOllamaRunning) return;
+    const message = ollamaInput.trim();
+    if (!message) return;
+    setOllamaInput("");
+    setOllamaMessages((items) => [...items, { role: "user", content: message }]);
+
+    setIsOllamaRunning(true);
+    setOllamaMessages((items) => [
+      ...items,
+      { role: "assistant", content: "Thinking locally with Ollama...", pending: true },
+    ]);
+
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/llm/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            provider: "openai",
+            model: ollamaModel,
+            base_url: "http://localhost:11434/v1",
+            max_tokens: 512,
+            system:
+              "You are a concise portfolio optimization assistant. Explain concepts plainly for a nontechnical market stakeholder.",
+          }),
+        },
+        45000,
+      );
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || String(response.status));
+      }
+      const body = (await response.json()) as LlmChatApiResponse;
+      setOllamaMessages((items) =>
+        replacePendingMessage(items, `[${body.model}] ${body.response}`),
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setOllamaMessages((items) =>
+        replacePendingMessage(
+          items,
+          `Ollama chat did not complete (${detail}). Confirm Ollama is running on http://localhost:11434 and that the model exists.`,
+        ),
+      );
+    } finally {
+      setIsOllamaRunning(false);
     }
   }
 
@@ -1040,6 +1112,8 @@ function App() {
             onReset={() =>
               setWorkflowInputValues(buildWorkflowInputValues(selectedWorkflow.inputs, selectedPreset))
             }
+            onReview={openPresenterReview}
+            reviewStatus={presenterReview.status}
             disabled={isWorkflowRunning}
           />
 
@@ -1151,6 +1225,46 @@ function App() {
               />
               <button className="primary-button" type="submit" disabled={isRunning}>
                 {isRunning ? "Running" : "Send"}
+              </button>
+            </form>
+          </section>
+
+          <section className="ollama-panel panel" aria-label="Local Ollama chat">
+            <div className="section-header">
+              <div>
+                <span className="eyebrow">Local LLM</span>
+                <h2>Ollama Chat</h2>
+              </div>
+              <label className="model-control">
+                <span>Model</span>
+                <input
+                  value={ollamaModel}
+                  onChange={(event) => setOllamaModel(event.target.value)}
+                  aria-label="Ollama model"
+                />
+              </label>
+            </div>
+
+            <div className="messages ollama-messages" aria-live="polite">
+              {ollamaMessages.map((message, index) => (
+                <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
+                  <span className="message-label">
+                    {message.role === "user" ? "User" : "Ollama"}
+                  </span>
+                  <p>{message.content}</p>
+                </article>
+              ))}
+            </div>
+
+            <form className="chat-input" onSubmit={submitOllamaMessage}>
+              <input
+                value={ollamaInput}
+                onChange={(event) => setOllamaInput(event.target.value)}
+                placeholder="Ask the local model a demo question"
+                aria-label="Ollama chat input"
+              />
+              <button className="primary-button" type="submit" disabled={isOllamaRunning}>
+                {isOllamaRunning ? "Thinking" : "Ask Ollama"}
               </button>
             </form>
           </section>
@@ -1768,12 +1882,16 @@ function WorkflowInputPanel({
   values,
   onChange,
   onReset,
+  onReview,
+  reviewStatus,
   disabled,
 }: {
   inputs: WorkflowInputSpec[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
   onReset: () => void;
+  onReview: () => void;
+  reviewStatus: PresenterStatus;
   disabled: boolean;
 }) {
   if (!inputs.length) return null;
@@ -1800,6 +1918,14 @@ function WorkflowInputPanel({
             />
           </label>
         ))}
+      </div>
+      <div className="workflow-review-action">
+        <span className={`status-pill ${presenterStatusClass(reviewStatus)}`}>
+          {titleCase(reviewStatus)}
+        </span>
+        <button className="primary-button" type="button" onClick={onReview} disabled={disabled}>
+          {disabled ? "Running" : "Review & Run Demo"}
+        </button>
       </div>
     </section>
   );

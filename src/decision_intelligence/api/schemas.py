@@ -25,6 +25,22 @@ class ChatSessionResponse(BaseModel):
     request: dict[str, Any] | None = None
 
 
+class LLMChatRequest(BaseModel):
+    message: str
+    system: str | None = None
+    provider: str = "openai"
+    model: str | None = None
+    base_url: str | None = None
+    max_tokens: int = Field(default=512, ge=1, le=4096)
+
+
+class LLMChatResponse(BaseModel):
+    provider: str
+    model: str
+    base_url: str | None = None
+    response: str
+
+
 class DirectOptimizationRequest(BaseModel):
     domain: Literal["asset_allocation", "collateral", "money_market", "financing"]
     portfolio_id: str = "PORT_001"

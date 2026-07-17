@@ -151,6 +151,12 @@ h2 {
   min-height: 420px;
 }
 
+.ollama-panel {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
 .section-header,
 .panel-heading {
   display: flex;
@@ -479,6 +485,20 @@ h2 {
   border-color: var(--blue);
 }
 
+.workflow-review-action {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.workflow-review-action .status-pill {
+  justify-self: start;
+}
+
+.workflow-review-action .primary-button {
+  width: 100%;
+}
+
 .run-history-panel {
   display: grid;
   gap: 10px;
@@ -696,6 +716,11 @@ h2 {
   gap: 12px;
 }
 
+.ollama-messages {
+  min-height: 180px;
+  max-height: 320px;
+}
+
 .message {
   width: min(680px, 100%);
   padding: 12px 14px;
@@ -755,6 +780,35 @@ h2 {
   font-weight: 750;
   line-height: 1.35;
   white-space: pre-wrap;
+}
+
+.model-control {
+  min-width: min(260px, 100%);
+  display: grid;
+  gap: 4px;
+}
+
+.model-control span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.model-control input {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  padding: 0 10px;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.model-control input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.22);
+  border-color: var(--blue);
 }
 
 .chat-input {

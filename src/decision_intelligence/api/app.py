@@ -21,6 +21,7 @@ from decision_intelligence.governance import (
     GovernanceController,
 )
 from decision_intelligence.governance.audit import AuditLog
+from decision_intelligence.llm import LLMConfigError, LLMError, resolve_provider
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
     AssetAllocationMVOOptimizer,
@@ -41,6 +42,8 @@ from .schemas import (
     CreateChatSessionRequest,
     DemoPresetCatalogResponse,
     DirectOptimizationRequest,
+    LLMChatRequest,
+    LLMChatResponse,
     OptimizationResponse,
     WorkflowCatalogResponse,
     WorkflowExportPackageRequest,
@@ -116,6 +119,45 @@ def send_chat_message(
         trace=trace,
         result=result,
         request=request,
+    )
+
+
+@app.post("/api/llm/chat", response_model=LLMChatResponse)
+def send_llm_chat_message(payload: LLMChatRequest) -> LLMChatResponse:
+    try:
+        provider = resolve_provider(
+            payload.provider,
+            model=payload.model,
+            base_url=payload.base_url,
+        )
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No LLM provider is configured. For local Ollama, use provider "
+                "'openai' with base_url 'http://localhost:11434/v1'."
+            ),
+        )
+
+    try:
+        response = provider.generate(
+            payload.message,
+            system=payload.system,
+            max_tokens=payload.max_tokens,
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surface local model connection failures
+        raise HTTPException(status_code=502, detail=f"LLM chat failed: {exc}") from exc
+
+    return LLMChatResponse(
+        provider=provider.name,
+        model=provider.model,
+        base_url=payload.base_url,
+        response=response,
     )
 
 

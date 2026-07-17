@@ -1,8 +1,12 @@
 """Tests for the browser-facing FastAPI wrapper."""
 
+import importlib
+
 from fastapi.testclient import TestClient
 
 from decision_intelligence.api.app import app
+
+api_app = importlib.import_module("decision_intelligence.api.app")
 
 client = TestClient(app)
 
@@ -110,6 +114,47 @@ def test_direct_asset_allocation_endpoint():
     assert body["result"]["solver_metadata"]["solver_method"] == "SLSQP"
     assert body["result"]["solver_metadata"]["expected_return"] >= 0.05
     assert body["request"]["context"]["risk_aversion"] == 3.0
+
+
+def test_llm_chat_endpoint_uses_configured_provider(monkeypatch):
+    class FakeProvider:
+        name = "openai"
+        model = "local-test"
+
+        def generate(self, prompt, *, system=None, max_tokens=1024):
+            assert prompt == "Explain this run."
+            assert system == "Use plain English."
+            assert max_tokens == 80
+            return "This is a local model response."
+
+    def fake_resolve_provider(name=None, *, model=None, base_url=None, api_key=None):
+        assert name == "openai"
+        assert model == "local-test"
+        assert base_url == "http://localhost:11434/v1"
+        assert api_key is None
+        return FakeProvider()
+
+    monkeypatch.setattr(api_app, "resolve_provider", fake_resolve_provider)
+
+    response = client.post(
+        "/api/llm/chat",
+        json={
+            "message": "Explain this run.",
+            "system": "Use plain English.",
+            "provider": "openai",
+            "model": "local-test",
+            "base_url": "http://localhost:11434/v1",
+            "max_tokens": 80,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "openai",
+        "model": "local-test",
+        "base_url": "http://localhost:11434/v1",
+        "response": "This is a local model response.",
+    }
 
 
 def test_workflow_catalog_endpoint_lists_registered_workflows():

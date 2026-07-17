@@ -215,9 +215,19 @@ def run_ingestion(pdf_path: Path, provider: Any, seed: int):
     console.print(
         "[green]Dry-run extracted[/green]: "
         f"domain={extracted.domain}, objective={extracted.objective_metric}, "
-        f"scenarios={', '.join(extracted.scenarios) or 'none'}"
+        f"scenarios={_scenario_names(extracted.scenarios) or 'none'}"
     )
     return request
+
+
+def _scenario_names(scenarios: list[Any]) -> str:
+    names = []
+    for scenario in scenarios:
+        if isinstance(scenario, str):
+            names.append(scenario)
+        else:
+            names.append(str(getattr(scenario, "name", scenario)))
+    return ", ".join(names)
 
 
 def run_optimizer(request):

@@ -71,6 +71,9 @@ def test_guided_asset_allocation_mvo_workflow_builds_request():
         response = session.reply(answer)
 
     assert "Confirm" in response.message
+    assert "portfolio notional: $250M" in response.message
+    assert "risk aversion: 3" in response.message
+    assert "risk aversion: 3%" not in response.message
     response = session.reply("yes")
 
     req = response.request
