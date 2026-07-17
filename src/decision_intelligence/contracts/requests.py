@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -10,12 +10,13 @@ from .objectives import Objective
 from .scenarios import Scenario
 
 
-class ExecutionMode(str, Enum):
+class ExecutionMode(StrEnum):
     EXPLAIN = "explain"                    # tier 0 — no changes
     SCENARIO_ANALYSIS = "scenario_analysis"  # tier 1
     RECOMMENDATION = "recommendation"      # tier 2
     STAGE = "stage"                        # tier 3
     EXECUTE = "execute"                    # tier 4
+    CHANGE_CONSTRAINTS = "change_constraints"  # tier 5 — production policy change
 
 
 class OptimizationRequest(BaseModel):
@@ -27,7 +28,7 @@ class OptimizationRequest(BaseModel):
     scenarios: list[Scenario] = Field(default_factory=list)
     execution_mode: ExecutionMode = ExecutionMode.RECOMMENDATION
     requestor: str = "system"
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     context: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"frozen": True}

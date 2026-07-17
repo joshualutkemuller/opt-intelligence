@@ -9,6 +9,7 @@ the handoff document:
     tier 2  recommendation     — produce a recommendation
     tier 3  stage              — stage a transaction   (approval required)
     tier 4  execute            — execute a transaction (approval required)
+    tier 5  change_constraints — production policy / constraint change
 
 Advisory tiers (0–2) are auto-allowed. State-changing tiers (3–4) are gated:
 the optimization math still runs, but the *action* it implies is withheld until
@@ -18,12 +19,12 @@ record of that governance decision, attached to every
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class ApprovalStatus(str, Enum):
+class ApprovalStatus(StrEnum):
     NOT_REQUIRED = "not_required"  # advisory tier — no approval needed
     PENDING = "pending"            # gated tier, awaiting a decision
     APPROVED = "approved"          # gated tier, approved — action performed
@@ -41,6 +42,10 @@ class ApprovalRecord(BaseModel):
     approval_id: str | None = None  # stable id to reference a pending approval
     approver: str | None = None
     reason: str = ""
+    base_tier: int | None = None
+    escalated: bool = False
+    escalation_reason: str = ""
+    governance_factors: dict[str, float | str | bool] = Field(default_factory=dict)
     decided_at: datetime | None = None
 
     model_config = {"frozen": True}

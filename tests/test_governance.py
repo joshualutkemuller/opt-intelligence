@@ -14,6 +14,7 @@ from decision_intelligence.governance import (
     ApprovalDecision,
     ApprovalPolicy,
     ApprovalStore,
+    ApprovalThreshold,
     AuditLog,
     GovernanceController,
 )
@@ -30,6 +31,10 @@ def _req(mode, portfolio="PORT_1"):
         ),
         execution_mode=mode,
     )
+
+
+def _req_with_context(mode, context, portfolio="PORT_1"):
+    return _req(mode, portfolio=portfolio).model_copy(update={"context": context})
 
 
 @pytest.fixture
@@ -50,6 +55,7 @@ def test_policy_gates_only_state_changing_modes():
     assert not p.requires_approval(ExecutionMode.RECOMMENDATION)
     assert p.requires_approval(ExecutionMode.STAGE)
     assert p.requires_approval(ExecutionMode.EXECUTE)
+    assert p.requires_approval(ExecutionMode.CHANGE_CONSTRAINTS)
 
 
 def test_policy_approver_allowlist():
@@ -97,6 +103,98 @@ def test_gated_modes_pending_without_approval(orch, mode):
     # the math still ran — this is a recommendation that is merely withheld
     assert result.status == SolveStatus.OPTIMAL
     assert result.allocations
+
+
+def test_tier_5_constraint_change_mode_is_pending_without_approval(orch):
+    orchestrator, _, _ = orch
+    result = orchestrator.run(_req(ExecutionMode.CHANGE_CONSTRAINTS))
+    g = result.governance
+    assert g.status == ApprovalStatus.PENDING
+    assert g.required is True
+    assert g.tier == 5
+    assert g.action == "change production constraints"
+    assert g.action_performed is False
+
+
+def test_recommendation_escalates_for_production_constraint_change(orch):
+    orchestrator, _, _ = orch
+    request = _req_with_context(
+        ExecutionMode.RECOMMENDATION,
+        {"production_constraint_change": True},
+    )
+
+    result = orchestrator.run(request)
+
+    g = result.governance
+    assert g.status == ApprovalStatus.PENDING
+    assert g.required is True
+    assert g.base_tier == 2
+    assert g.tier == 5
+    assert g.escalated is True
+    assert "production constraint change" in g.escalation_reason
+    assert g.governance_factors["production_constraint_change"] is True
+
+
+def test_recommendation_escalates_for_notional_threshold():
+    audit = AuditLog()
+    policy = ApprovalPolicy(
+        thresholds=[
+            ApprovalThreshold(
+                name="large_notional",
+                context_keys=("notional", "total_funding_need"),
+                threshold=100_000_000,
+                tier=4,
+                description="notional exceeds $100M",
+            )
+        ]
+    )
+    gov = GovernanceController(policy, ApprovalStore(), audit)
+    reg = OptimizerRegistry()
+    reg.register(FinancingOptimizer())
+    orchestrator = OptimizationOrchestrator(reg, audit, gov)
+
+    result = orchestrator.run(
+        _req_with_context(ExecutionMode.RECOMMENDATION, {"notional": 250_000_000})
+    )
+
+    g = result.governance
+    assert g.status == ApprovalStatus.PENDING
+    assert g.required is True
+    assert g.base_tier == 2
+    assert g.tier == 4
+    assert g.escalated is True
+    assert "notional exceeds $100M" in g.escalation_reason
+    assert g.governance_factors["large_notional"] == 250_000_000
+
+
+def test_threshold_escalated_recommendation_can_be_approved():
+    audit = AuditLog()
+    policy = ApprovalPolicy(
+        thresholds=[
+            ApprovalThreshold(
+                name="large_notional",
+                context_keys=("notional",),
+                threshold=100_000_000,
+                tier=4,
+            )
+        ]
+    )
+    gov = GovernanceController(policy, ApprovalStore(), audit)
+    reg = OptimizerRegistry()
+    reg.register(FinancingOptimizer())
+    orchestrator = OptimizationOrchestrator(reg, audit, gov)
+
+    result = orchestrator.run(
+        _req_with_context(ExecutionMode.RECOMMENDATION, {"notional": 250_000_000}),
+        approval=ApprovalDecision(approver="jane", granted=True, reason="material review ok"),
+    )
+
+    g = result.governance
+    assert g.status == ApprovalStatus.APPROVED
+    assert g.action_performed is True
+    assert g.tier == 4
+    assert g.approver == "jane"
+    assert "material_action_approved" in {entry.event for entry in audit.all_entries()}
 
 
 def test_inline_approval_performs_action(orch):
@@ -157,8 +255,15 @@ def test_fingerprint_distinguishes_actions():
     fp_stage = store.fingerprint(_req(ExecutionMode.STAGE))
     fp_exec = store.fingerprint(_req(ExecutionMode.EXECUTE))
     fp_other_portfolio = store.fingerprint(_req(ExecutionMode.STAGE, portfolio="PORT_2"))
+    fp_low_notional = store.fingerprint(
+        _req_with_context(ExecutionMode.RECOMMENDATION, {"notional": 10_000_000})
+    )
+    fp_high_notional = store.fingerprint(
+        _req_with_context(ExecutionMode.RECOMMENDATION, {"notional": 250_000_000})
+    )
     assert fp_stage != fp_exec
     assert fp_stage != fp_other_portfolio
+    assert fp_low_notional != fp_high_notional
 
 
 # --------------------------------------------------------------------------- #

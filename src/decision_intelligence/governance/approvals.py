@@ -28,7 +28,8 @@ import hashlib
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from decision_intelligence.contracts import (
     ApprovalRecord,
@@ -45,6 +46,7 @@ _MODE_TIER: dict[ExecutionMode, int] = {
     ExecutionMode.RECOMMENDATION: 2,
     ExecutionMode.STAGE: 3,
     ExecutionMode.EXECUTE: 4,
+    ExecutionMode.CHANGE_CONSTRAINTS: 5,
 }
 _MODE_ACTION: dict[ExecutionMode, str] = {
     ExecutionMode.EXPLAIN: "analysis",
@@ -52,13 +54,29 @@ _MODE_ACTION: dict[ExecutionMode, str] = {
     ExecutionMode.RECOMMENDATION: "recommendation",
     ExecutionMode.STAGE: "stage transaction",
     ExecutionMode.EXECUTE: "execute transaction",
+    ExecutionMode.CHANGE_CONSTRAINTS: "change production constraints",
 }
 
 # Audit event names recorded when a gated action is actually carried out.
 _PERFORMED_EVENT: dict[ExecutionMode, str] = {
     ExecutionMode.STAGE: "transaction_staged",
     ExecutionMode.EXECUTE: "transaction_executed",
+    ExecutionMode.CHANGE_CONSTRAINTS: "production_constraints_changed",
 }
+
+_MATERIAL_CONTEXT_KEYS = (
+    "notional",
+    "total_notional",
+    "portfolio_notional",
+    "total_cash",
+    "total_funding_need",
+    "estimated_pnl_impact",
+    "pnl_impact",
+    "pnl_at_risk",
+    "production_constraint_change",
+    "change_production_constraints",
+    "changes_production_constraints",
+)
 
 
 @dataclass(frozen=True)
@@ -66,7 +84,29 @@ class ApprovalDecision:
     approver: str
     granted: bool
     reason: str = ""
-    decided_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    decided_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class ApprovalThreshold:
+    """Materiality threshold that can escalate a request's approval tier."""
+
+    name: str
+    context_keys: tuple[str, ...]
+    threshold: float
+    tier: int
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ApprovalRequirement:
+    base_tier: int
+    tier: int
+    action: str
+    required: bool
+    escalated: bool = False
+    reason: str = ""
+    factors: dict[str, float | str | bool] = field(default_factory=dict)
 
 
 class ApprovalPolicy:
@@ -74,10 +114,24 @@ class ApprovalPolicy:
 
     def __init__(
         self,
-        gated_modes: Iterable[ExecutionMode] = (ExecutionMode.STAGE, ExecutionMode.EXECUTE),
+        gated_modes: Iterable[ExecutionMode] = (
+            ExecutionMode.STAGE,
+            ExecutionMode.EXECUTE,
+            ExecutionMode.CHANGE_CONSTRAINTS,
+        ),
+        gated_tiers: Iterable[int] = (3, 4, 5),
+        thresholds: Iterable[ApprovalThreshold] = (),
         authorized_approvers: Iterable[str] | None = None,
+        production_constraint_keys: Iterable[str] = (
+            "production_constraint_change",
+            "change_production_constraints",
+            "changes_production_constraints",
+        ),
     ) -> None:
         self.gated_modes = frozenset(gated_modes)
+        self.gated_tiers = frozenset(gated_tiers)
+        self.thresholds = tuple(thresholds)
+        self.production_constraint_keys = tuple(production_constraint_keys)
         # None → any non-empty approver is allowed (POC default).
         self.authorized_approvers = (
             frozenset(authorized_approvers) if authorized_approvers is not None else None
@@ -93,6 +147,45 @@ class ApprovalPolicy:
             return True
         return approver in self.authorized_approvers
 
+    def requirement(self, request: OptimizationRequest) -> ApprovalRequirement:
+        base_tier = _MODE_TIER.get(request.execution_mode, 0)
+        tier = base_tier
+        action = _MODE_ACTION.get(request.execution_mode, request.execution_mode.value)
+        reasons: list[str] = []
+        factors: dict[str, float | str | bool] = {}
+
+        production_constraint_change = any(
+            _truthy(_get_context_value(request.context, key))
+            for key in self.production_constraint_keys
+        )
+        if production_constraint_change:
+            tier = max(tier, 5)
+            action = "change production constraints"
+            reasons.append("production constraint change")
+            factors["production_constraint_change"] = True
+
+        for threshold in self.thresholds:
+            value, key = _max_abs_context_value(request.context, threshold.context_keys)
+            if value is None or value < threshold.threshold:
+                continue
+            tier = max(tier, threshold.tier)
+            reasons.append(threshold.description or threshold.name)
+            factors[threshold.name] = value
+            factors[f"{threshold.name}_threshold"] = threshold.threshold
+            if key:
+                factors[f"{threshold.name}_source"] = key
+
+        required = request.execution_mode in self.gated_modes or tier in self.gated_tiers
+        return ApprovalRequirement(
+            base_tier=base_tier,
+            tier=tier,
+            action=action,
+            required=required,
+            escalated=tier > base_tier,
+            reason="; ".join(reasons),
+            factors=factors,
+        )
+
 
 class ApprovalStore:
     """In-memory store of approval decisions keyed by a stable action fingerprint."""
@@ -104,6 +197,11 @@ class ApprovalStore:
     @staticmethod
     def fingerprint(request: OptimizationRequest) -> str:
         """Stable id for the *action*, independent of the auto-generated request_id."""
+        material_context = [
+            f"{key}={_get_context_value(request.context, key)}"
+            for key in _MATERIAL_CONTEXT_KEYS
+            if _get_context_value(request.context, key) is not None
+        ]
         parts = "|".join(
             [
                 request.domain,
@@ -111,6 +209,7 @@ class ApprovalStore:
                 request.execution_mode.value,
                 request.objective.metric,
                 request.objective.direction.value,
+                *material_context,
             ]
         )
         return hashlib.sha256(parts.encode()).hexdigest()[:16]
@@ -165,15 +264,16 @@ class GovernanceController:
     ) -> ApprovalRecord:
         """Produce the governance record for a request, enforcing the policy."""
         mode = request.execution_mode
-        tier = _MODE_TIER.get(mode, 0)
-        action = _MODE_ACTION.get(mode, mode.value)
+        requirement = self.policy.requirement(request)
+        tier = requirement.tier
+        action = requirement.action
 
         # Advisory tier — nothing to gate.
-        if not self.policy.requires_approval(mode):
+        if not requirement.required:
             self.audit.record(
                 "governance_auto_allowed",
                 request.request_id,
-                {"mode": mode.value, "tier": tier},
+                {"mode": mode.value, "tier": tier, "factors": requirement.factors},
             )
             return ApprovalRecord(
                 request_id=request.request_id,
@@ -183,6 +283,10 @@ class GovernanceController:
                 required=False,
                 status=ApprovalStatus.NOT_REQUIRED,
                 action_performed=True,
+                base_tier=requirement.base_tier,
+                escalated=requirement.escalated,
+                escalation_reason=requirement.reason,
+                governance_factors=requirement.factors,
             )
 
         # Gated tier — need a decision (inline or previously stored).
@@ -194,7 +298,13 @@ class GovernanceController:
             self.audit.record(
                 "approval_pending",
                 request.request_id,
-                {"mode": mode.value, "tier": tier, "approval_id": approval_id},
+                {
+                    "mode": mode.value,
+                    "tier": tier,
+                    "approval_id": approval_id,
+                    "escalation_reason": requirement.reason,
+                    "factors": requirement.factors,
+                },
             )
             return ApprovalRecord(
                 request_id=request.request_id,
@@ -205,6 +315,10 @@ class GovernanceController:
                 status=ApprovalStatus.PENDING,
                 action_performed=False,
                 approval_id=approval_id,
+                base_tier=requirement.base_tier,
+                escalated=requirement.escalated,
+                escalation_reason=requirement.reason,
+                governance_factors=requirement.factors,
             )
 
         # Reject decisions from unauthorized approvers.
@@ -224,14 +338,24 @@ class GovernanceController:
                 action_performed=False,
                 approver=decision.approver,
                 reason=f"Approver '{decision.approver}' is not authorized for tier {tier}.",
+                base_tier=requirement.base_tier,
+                escalated=requirement.escalated,
+                escalation_reason=requirement.reason,
+                governance_factors=requirement.factors,
                 decided_at=decision.decided_at,
             )
 
         if decision.granted:
             self.audit.record(
-                _PERFORMED_EVENT.get(mode, "action_performed"),
+                _PERFORMED_EVENT.get(mode, "material_action_approved"),
                 request.request_id,
-                {"mode": mode.value, "tier": tier, "approver": decision.approver},
+                {
+                    "mode": mode.value,
+                    "tier": tier,
+                    "approver": decision.approver,
+                    "escalation_reason": requirement.reason,
+                    "factors": requirement.factors,
+                },
             )
             return ApprovalRecord(
                 request_id=request.request_id,
@@ -243,6 +367,10 @@ class GovernanceController:
                 action_performed=True,
                 approver=decision.approver,
                 reason=decision.reason,
+                base_tier=requirement.base_tier,
+                escalated=requirement.escalated,
+                escalation_reason=requirement.reason,
+                governance_factors=requirement.factors,
                 decided_at=decision.decided_at,
             )
 
@@ -262,5 +390,42 @@ class GovernanceController:
             action_performed=False,
             approver=decision.approver,
             reason=decision.reason or "Rejected by approver.",
+            base_tier=requirement.base_tier,
+            escalated=requirement.escalated,
+            escalation_reason=requirement.reason,
+            governance_factors=requirement.factors,
             decided_at=decision.decided_at,
         )
+
+
+def _get_context_value(context: dict[str, Any], key: str) -> Any:
+    current: Any = context
+    for part in key.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
+def _max_abs_context_value(
+    context: dict[str, Any],
+    keys: Iterable[str],
+) -> tuple[float | None, str | None]:
+    best_value: float | None = None
+    best_key: str | None = None
+    for key in keys:
+        raw = _get_context_value(context, key)
+        try:
+            value = abs(float(raw))
+        except (TypeError, ValueError):
+            continue
+        if best_value is None or value > best_value:
+            best_value = value
+            best_key = key
+    return best_value, best_key

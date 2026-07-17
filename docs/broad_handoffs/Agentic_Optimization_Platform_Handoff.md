@@ -413,7 +413,7 @@ Recommendation
   2      Recommendation                   ✅ enforced
   3      Stage transaction                ✅ enforced (approval-gated)
   4      Execute                          ✅ enforced (approval-gated)
-  5      Change production constraints    ⬜ not yet
+  5      Change production constraints    ✅ enforced (approval-gated)
 
 **Implemented (POC):** `governance/approvals.py` provides an `ApprovalPolicy`
 (which tiers are gated + approver allowlist), an `ApprovalStore` (decisions
@@ -425,9 +425,19 @@ transition is recorded in the append-only audit log, and each result carries an
 immutable `ApprovalRecord`. Approvals can be supplied inline (one-shot) or via a
 two-phase submit-then-rerun flow.
 
-**Next:** tier 5 (production-constraint changes), notional/PnL-threshold policies
-that escalate approval level by transaction size, and real approver identity /
-SSO instead of a name string.
+**Implemented (POC):** tier 5 is now represented by
+`ExecutionMode.CHANGE_CONSTRAINTS` and is approval-gated by default. Governance
+records also carry `base_tier`, `escalated`, `escalation_reason`, and
+`governance_factors`, so downstream UI/API consumers can explain why a request
+was gated. `ApprovalPolicy` supports configurable `ApprovalThreshold` rules
+over context values such as notional, total funding need, or PnL-at-risk; these
+rules can escalate advisory recommendations into gated approval tiers when the
+materiality threshold is crossed. Requests that explicitly flag production
+constraint changes are escalated to tier 5 even if the execution mode starts as
+`recommendation`.
+
+**Next:** real approver identity / SSO instead of a name string, persisted
+approval storage, and UI controls for materiality-threshold review.
 
 ------------------------------------------------------------------------
 
