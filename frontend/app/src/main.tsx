@@ -256,6 +256,27 @@ type DemoPresetCatalogApiResponse = {
   presets: DemoPresetCatalogItem[];
 };
 
+type PresenterStatus = "ready" | "review" | "blocked";
+
+type PresenterIssue = {
+  severity: "warning" | "error";
+  field: string;
+  message: string;
+};
+
+type PresenterChange = {
+  key: string;
+  label: string;
+  from: string;
+  to: string;
+};
+
+type PresenterReview = {
+  status: PresenterStatus;
+  issues: PresenterIssue[];
+  changes: PresenterChange[];
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -358,6 +379,7 @@ function App() {
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [presenterReviewOpen, setPresenterReviewOpen] = useState(false);
   const didCreateSession = useRef(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
@@ -525,6 +547,7 @@ function App() {
     setResult(null);
     setWorkflowRun(null);
     setLatestPayload(null);
+    setPresenterReviewOpen(false);
     void createSession();
   }
 
@@ -541,8 +564,34 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
+  function openPresenterReview() {
+    setPresenterReviewOpen(true);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          presenterReview.status === "blocked"
+            ? "Presenter review is blocked. Fix the highlighted inputs before running this demo."
+            : "Presenter review is ready. Confirm the preset, changed fields, and guardrails before running.",
+      },
+    ]);
+  }
+
   async function runSequentialWorkflow() {
     if (isWorkflowRunning) return;
+    if (presenterReview.status === "blocked") {
+      setPresenterReviewOpen(true);
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content:
+            "This workflow is blocked by presenter guardrails. Fix the input errors, then run again.",
+        },
+      ]);
+      return;
+    }
     const selectedWorkflow = workflowCatalog.find(
       (item) => item.workflow_id === selectedWorkflowId,
     ) || fallbackWorkflowCatalog[0];
@@ -582,6 +631,7 @@ function App() {
       if (!response.ok) throw new Error(String(response.status));
       const body = (await response.json()) as WorkflowRunApiResponse;
       const finalStep = [...body.result.step_results].reverse()[0];
+      setPresenterReviewOpen(false);
       setWorkflowRun(body.result);
       if (finalStep?.result) {
         setResult(finalStep.result);
@@ -616,6 +666,14 @@ function App() {
   const selectedPreset = demoPresets.find(
     (item) => item.preset_id === selectedDemoPresetId,
   ) || fallbackDemoPresets[0];
+  const presenterReview = useMemo(
+    () => validatePresenterInputs(
+      selectedWorkflow.inputs,
+      workflowInputValues,
+      selectedPreset,
+    ),
+    [selectedPreset, selectedWorkflow.inputs, workflowInputValues],
+  );
   const latestAssistantPrompt =
     [...messages].reverse().find((message) => message.role === "assistant")?.content || "";
 
@@ -757,10 +815,10 @@ function App() {
                 <button
                   className="secondary-button"
                   type="button"
-                  onClick={runSequentialWorkflow}
+                  onClick={openPresenterReview}
                   disabled={isWorkflowRunning}
                 >
-                  {isWorkflowRunning ? "Running" : "Workflow"}
+                  {isWorkflowRunning ? "Running" : "Review"}
                 </button>
               </div>
             </div>
@@ -804,6 +862,18 @@ function App() {
             selectedWorkflow={selectedWorkflow}
             selectedPreset={selectedPreset}
           />
+
+          {presenterReviewOpen ? (
+            <PresenterReviewPanel
+              review={presenterReview}
+              selectedWorkflow={selectedWorkflow}
+              selectedPreset={selectedPreset}
+              solverProfile={solverProfile}
+              onRun={runSequentialWorkflow}
+              onClose={() => setPresenterReviewOpen(false)}
+              disabled={isWorkflowRunning}
+            />
+          ) : null}
 
           <WorkflowExplanationPanel workflowRun={workflowRun} />
 
@@ -919,6 +989,197 @@ function buildWorkflowInputValues(
   );
 }
 
+function validatePresenterInputs(
+  inputs: WorkflowInputSpec[],
+  values: Record<string, string>,
+  preset: DemoPresetCatalogItem,
+): PresenterReview {
+  const issues: PresenterIssue[] = [];
+  const changes = changedWorkflowInputs(inputs, values, preset);
+
+  for (const input of inputs) {
+    const raw = values[input.key] ?? "";
+    if (input.required && raw.trim() === "") {
+      issues.push({
+        severity: "error",
+        field: input.label,
+        message: `${input.label} is required.`,
+      });
+      continue;
+    }
+
+    if (raw.trim() === "") continue;
+    if (inputType(input.type) === "number") {
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric)) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} must be a valid number.`,
+        });
+        continue;
+      }
+      if (input.type === "integer" && !Number.isInteger(numeric)) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} must be a whole number.`,
+        });
+      }
+      if (input.type === "currency" && numeric <= 0) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} must be greater than zero.`,
+        });
+      }
+      if (input.type === "currency" && numeric > 2_000_000_000) {
+        issues.push({
+          severity: "warning",
+          field: input.label,
+          message: `${input.label} is unusually large for this demo preset.`,
+        });
+      }
+      if (input.type === "fraction" && (numeric <= 0 || numeric > 2)) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} should be a decimal multiplier between 0 and 2.`,
+        });
+      }
+      if (input.type === "percent" && (numeric < 0 || numeric > 100)) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} should be between 0 and 100.`,
+        });
+      }
+    }
+  }
+
+  const compiled = compileWorkflowInputs(inputs, values, preset);
+  const context = deepMerge(toRecord(preset.context), compiled.context);
+  addWorkflowGuardrails(context, issues);
+
+  return {
+    status: issues.some((issue) => issue.severity === "error")
+      ? "blocked"
+      : issues.length
+        ? "review"
+        : "ready",
+    issues,
+    changes,
+  };
+}
+
+function changedWorkflowInputs(
+  inputs: WorkflowInputSpec[],
+  values: Record<string, string>,
+  preset: DemoPresetCatalogItem,
+): PresenterChange[] {
+  return inputs.flatMap((input) => {
+    const original = valueForWorkflowInput(input, preset);
+    const current = values[input.key] ?? "";
+    const originalText = original === undefined || original === null ? "" : String(original);
+    if (current === originalText) return [];
+    return [{
+      key: input.key,
+      label: input.label,
+      from: originalText || "blank",
+      to: current || "blank",
+    }];
+  });
+}
+
+function addWorkflowGuardrails(
+  context: Record<string, unknown>,
+  issues: PresenterIssue[],
+): void {
+  const moneyMarket = toRecord(context.money_market);
+  const financing = toRecord(context.financing);
+  const collateral = toRecord(context.collateral);
+
+  const dailyLiquidity = optionalNumber(moneyMarket.daily_liquidity_req);
+  const weeklyLiquidity = optionalNumber(moneyMarket.weekly_liquidity_req);
+  const totalCash = optionalNumber(moneyMarket.total_cash);
+  const maxPrime = optionalNumber(moneyMarket.max_prime_fraction);
+  const maxWam = optionalNumber(moneyMarket.max_wam_days);
+  const fundingNeed = optionalNumber(financing.total_funding_need);
+  const capacityScale = optionalNumber(financing.capacity_scale);
+  const obligationScale = optionalNumber(collateral.obligation_scale);
+
+  if (dailyLiquidity !== undefined && weeklyLiquidity !== undefined) {
+    if (dailyLiquidity > weeklyLiquidity) {
+      issues.push({
+        severity: "error",
+        field: "Liquidity requirements",
+        message: "Daily liquidity cannot exceed weekly liquidity.",
+      });
+    }
+    if (dailyLiquidity > 0.85 || weeklyLiquidity > 0.95) {
+      issues.push({
+        severity: "warning",
+        field: "Liquidity requirements",
+        message: "Liquidity requirements are very high; confirm this is intentional.",
+      });
+    }
+  }
+
+  if (totalCash !== undefined && totalCash < 50_000_000) {
+    issues.push({
+      severity: "warning",
+      field: "Money-market cash",
+      message: "Cash is low for a stakeholder demo and may reduce allocation variety.",
+    });
+  }
+
+  if (maxPrime !== undefined && (maxPrime < 0 || maxPrime > 1)) {
+    issues.push({
+      severity: "error",
+      field: "Prime concentration",
+      message: "Prime concentration must be between 0 and 1.",
+    });
+  }
+
+  if (maxWam !== undefined && (maxWam <= 0 || maxWam > 120)) {
+    issues.push({
+      severity: "error",
+      field: "WAM limit",
+      message: "WAM limit must be between 1 and 120 days.",
+    });
+  }
+
+  if (fundingNeed !== undefined && totalCash !== undefined && fundingNeed > totalCash * 1.5) {
+    issues.push({
+      severity: "warning",
+      field: "Funding need",
+      message: "Funding need is much larger than cash reserves; explain this stress framing.",
+    });
+  }
+
+  if (capacityScale !== undefined && capacityScale < 0.25) {
+    issues.push({
+      severity: "warning",
+      field: "Capacity scale",
+      message: "Capacity is extremely constrained and may create a severe stress story.",
+    });
+  }
+
+  if (obligationScale !== undefined && obligationScale > 1.9) {
+    issues.push({
+      severity: "warning",
+      field: "Obligation scale",
+      message: "Collateral obligations are near the upper demo range.",
+    });
+  }
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
 function valueForWorkflowInput(input: WorkflowInputSpec, preset?: DemoPresetCatalogItem): unknown {
   if (input.key === "portfolio_id") return preset?.portfolio_id ?? input.default;
   if (input.key === "seed") return preset?.seed ?? input.default;
@@ -955,6 +1216,32 @@ function parseWorkflowInputValue(value: unknown, type: string): unknown {
   if (type === "integer") return Math.trunc(Number(value));
   if (["number", "currency", "fraction", "percent"].includes(type)) return Number(value);
   return value;
+}
+
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const output = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    const existing = output[key];
+    if (
+      existing &&
+      value &&
+      typeof existing === "object" &&
+      typeof value === "object" &&
+      !Array.isArray(existing) &&
+      !Array.isArray(value)
+    ) {
+      output[key] = deepMerge(
+        existing as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
+    } else {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 function getNestedValue(source: Record<string, unknown>, path: string): unknown {
@@ -1135,6 +1422,94 @@ function WorkflowSelector({
       ) : null}
     </section>
   );
+}
+
+function PresenterReviewPanel({
+  review,
+  selectedWorkflow,
+  selectedPreset,
+  solverProfile,
+  onRun,
+  onClose,
+  disabled,
+}: {
+  review: PresenterReview;
+  selectedWorkflow: WorkflowCatalogItem;
+  selectedPreset: DemoPresetCatalogItem;
+  solverProfile: { label: string; backend: string; problem: string; method: string };
+  onRun: () => void;
+  onClose: () => void;
+  disabled: boolean;
+}) {
+  const runDisabled = disabled || review.status === "blocked";
+  return (
+    <section className="panel presenter-review-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Presenter Review</span>
+          <h2>Confirm the demo run</h2>
+        </div>
+        <span className={`status-pill ${presenterStatusClass(review.status)}`}>
+          {titleCase(review.status)}
+        </span>
+      </div>
+
+      <div className="presenter-context-grid">
+        <Metric label="Preset" value={selectedPreset.name} note={selectedPreset.audience} />
+        <Metric label="Workflow" value={selectedWorkflow.name} note={selectedWorkflow.workflow_id} />
+        <Metric label="Portfolio" value={selectedPreset.portfolio_id} note={`Seed ${selectedPreset.seed}`} />
+        <Metric label="Solver" value={solverProfile.label} note={`${solverProfile.backend}/${solverProfile.problem}`} />
+      </div>
+
+      <div className="presenter-review-grid">
+        <div>
+          <h3>Changed Fields</h3>
+          {review.changes.length ? (
+            <ul className="presenter-list">
+              {review.changes.map((change) => (
+                <li key={change.key}>
+                  <strong>{change.label}</strong>
+                  <span>{change.from} to {change.to}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No preset fields changed.</p>
+          )}
+        </div>
+        <div>
+          <h3>Guardrails</h3>
+          {review.issues.length ? (
+            <ul className="presenter-list">
+              {review.issues.map((issue) => (
+                <li className={issue.severity} key={`${issue.field}-${issue.message}`}>
+                  <strong>{issue.field}</strong>
+                  <span>{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>All inputs are in the expected demo range.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="presenter-actions">
+        <button className="secondary-button" type="button" onClick={onClose} disabled={disabled}>
+          Close
+        </button>
+        <button className="primary-button" type="button" onClick={onRun} disabled={runDisabled}>
+          {review.status === "blocked" ? "Fix Inputs" : disabled ? "Running" : "Run Demo"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function presenterStatusClass(status: PresenterStatus): string {
+  if (status === "ready") return "status-optimal";
+  if (status === "blocked") return "status-error";
+  return "status-ready";
 }
 
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {

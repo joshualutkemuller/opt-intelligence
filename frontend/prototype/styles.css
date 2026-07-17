@@ -479,6 +479,78 @@ h2 {
   border-color: var(--blue);
 }
 
+.presenter-review-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.presenter-context-grid,
+.presenter-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.presenter-review-grid > div {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-strong);
+  padding: 10px;
+}
+
+.presenter-review-grid h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.presenter-review-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.presenter-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.presenter-list li {
+  display: grid;
+  gap: 2px;
+  padding-left: 9px;
+  border-left: 3px solid var(--blue);
+}
+
+.presenter-list li.warning {
+  border-color: var(--amber);
+}
+
+.presenter-list li.error {
+  border-color: #b91c1c;
+}
+
+.presenter-list strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.presenter-list span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.presenter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .select-input {
   width: 100%;
   min-height: 36px;

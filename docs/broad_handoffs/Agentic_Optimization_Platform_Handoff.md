@@ -550,8 +550,12 @@ decision-intelligence-platform/
 -   ✅ **Editable Workflow Inputs (POC)** — the browser demo now renders
     workflow catalog `inputs` as editable preset fields, prefills them from the
     selected demo preset, and compiles edits into the workflow run payload.
--   Next: add preset input validation and presenter-mode guardrails before
-    workflow execution.
+-   ✅ **Presenter Guardrails (POC)** — editable preset inputs now validate
+    required fields, numeric formats, sensible ranges, and workflow-specific
+    stress consistency before execution. The browser demo opens a presenter
+    review panel showing Ready/Review/Blocked status, changed fields, selected
+    context, warnings, and a final Run Demo action.
+-   Next: add persisted run history and demo replay/export packages.
 
 ## Phase 6
 

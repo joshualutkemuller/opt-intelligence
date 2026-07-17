@@ -87,7 +87,9 @@ GET /api/demo-presets
 
 The sidebar renders editable **Preset Inputs** from the selected workflow's
 catalog `inputs`. These values are prefilled from the selected preset and are
-compiled into the workflow run payload before execution.
+compiled into the workflow run payload before execution. Click **Review** to
+open the presenter guardrail panel, confirm changed fields and warnings, then
+click **Run Demo**.
 
 The run action calls:
 
