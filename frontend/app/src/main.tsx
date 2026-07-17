@@ -368,6 +368,14 @@ type ChatApiResponse = {
   request: Record<string, unknown> | null;
 };
 
+type ApprovalDecisionApiResponse = {
+  approval_id: string;
+  fingerprint: string;
+  status: "approved" | "rejected";
+  approver: string;
+  reason: string;
+};
+
 type LlmChatApiResponse = {
   provider: string;
   model: string;
@@ -792,6 +800,73 @@ function App() {
       );
     } finally {
       setIsOllamaRunning(false);
+    }
+  }
+
+  async function submitApprovalDecisions(
+    approvalIds: string[],
+    granted: boolean,
+    approver: string,
+    reason: string,
+  ) {
+    if (!approvalIds.length) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "No pending approval IDs are available for this workflow run.",
+        },
+      ]);
+      return;
+    }
+    if (!approver.trim()) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "Enter an approver name before submitting an approval decision.",
+        },
+      ]);
+      return;
+    }
+
+    try {
+      const responses = await Promise.all(
+        approvalIds.map(async (approvalId) => {
+          const response = await fetchWithTimeout(
+            `${API_BASE}/api/approvals/decisions`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                approval_id: approvalId,
+                approver,
+                reason,
+                granted,
+              }),
+            },
+            10000,
+          );
+          if (!response.ok) throw new Error(await response.text());
+          return (await response.json()) as ApprovalDecisionApiResponse;
+        }),
+      );
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `${granted ? "Approved" : "Rejected"} ${responses.length} governance decision${responses.length === 1 ? "" : "s"}. Rerun the workflow to apply the decision state.`,
+        },
+      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `Approval decision did not submit (${detail}).`,
+        },
+      ]);
     }
   }
 
@@ -1335,6 +1410,9 @@ function App() {
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
             inputValues={workflowInputValues}
+            onDecision={submitApprovalDecisions}
+            onRerun={runSequentialWorkflow}
+            disabled={isWorkflowRunning}
           />
 
           <WorkflowComparisonPanel workflowRun={workflowRun} />
@@ -2448,12 +2526,29 @@ function GovernanceReviewPanel({
   workflowRun,
   selectedWorkflow,
   inputValues,
+  onDecision,
+  onRerun,
+  disabled,
 }: {
   workflowRun: WorkflowRunResult | null;
   selectedWorkflow: WorkflowCatalogItem;
   inputValues: Record<string, string>;
+  onDecision: (
+    approvalIds: string[],
+    granted: boolean,
+    approver: string,
+    reason: string,
+  ) => void;
+  onRerun: () => void;
+  disabled: boolean;
 }) {
+  const [approver, setApprover] = useState("demo.approver");
+  const [reason, setReason] = useState("Reviewed materiality and controls.");
   const governance = highestGovernanceRecord(workflowRun);
+  const pendingRecords = pendingGovernanceRecords(workflowRun);
+  const pendingApprovalIds = pendingRecords.flatMap((record) =>
+    record.approval_id ? [record.approval_id] : [],
+  );
   const executionMode = inputValues.execution_mode || "recommendation";
   const materialityNotional = inputValues["governance.materiality_notional"] || "";
   const pnlImpact = inputValues["governance.estimated_pnl_impact"] || "";
@@ -2531,6 +2626,57 @@ function GovernanceReviewPanel({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {governance?.required ? (
+        <div className="approval-decision-box">
+          <div className="approval-decision-fields">
+            <label>
+              <span>Approver</span>
+              <input
+                value={approver}
+                onChange={(event) => setApprover(event.target.value)}
+                disabled={disabled || pendingApprovalIds.length === 0}
+                aria-label="Approver name"
+              />
+            </label>
+            <label>
+              <span>Reason</span>
+              <input
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={disabled || pendingApprovalIds.length === 0}
+                aria-label="Approval reason"
+              />
+            </label>
+          </div>
+          <div className="approval-actions">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => onDecision(pendingApprovalIds, true, approver, reason)}
+              disabled={disabled || pendingApprovalIds.length === 0}
+            >
+              Approve
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => onDecision(pendingApprovalIds, false, approver, reason)}
+              disabled={disabled || pendingApprovalIds.length === 0}
+            >
+              Reject
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onRerun}
+              disabled={disabled || !workflowRun}
+            >
+              Rerun
+            </button>
+          </div>
+        </div>
       ) : null}
     </section>
   );
@@ -2797,6 +2943,13 @@ function highestGovernanceRecord(workflowRun: WorkflowRunResult | null): Approva
     .map((step) => step.result.governance)
     .filter((record): record is ApprovalRecord => Boolean(record)) || [];
   return records.sort((left, right) => right.tier - left.tier)[0] || null;
+}
+
+function pendingGovernanceRecords(workflowRun: WorkflowRunResult | null): ApprovalRecord[] {
+  return workflowRun?.step_results
+    .map((step) => step.result.governance)
+    .filter((record): record is ApprovalRecord => Boolean(record))
+    .filter((record) => record.status === "pending" && Boolean(record.approval_id)) || [];
 }
 
 function formatGovernanceFactor(value: string | number | boolean): string {

@@ -446,8 +446,15 @@ approval status, approval ID, and governance factors after a run. Dedicated
 demo presets cover a normal non-escalated recommendation, a large-notional
 approval review, and a Tier 5 production-constraint-change review.
 
-**Next:** real approver identity / SSO instead of a name string, persisted
-approval storage, and UI controls for submitting/approving pending decisions.
+**Approval workflow status (POC):** the demo API now keeps an in-memory
+approval store across workflow reruns and exposes endpoints to list pending
+approvals and submit approve/reject decisions by `approval_id`. The browser
+Governance Review panel can submit decisions with approver/reason fields and
+rerun the same workflow so pending approvals become approved or rejected in the
+result governance record.
+
+**Next:** real approver identity / SSO instead of a name string, durable
+approval storage, and role/authority policies by approval tier.
 
 ------------------------------------------------------------------------
 

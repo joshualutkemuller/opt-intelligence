@@ -16,6 +16,7 @@ from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.export import generate_workflow_demo_package
 from decision_intelligence.governance import (
+    ApprovalDecision,
     ApprovalPolicy,
     ApprovalStore,
     ApprovalThreshold,
@@ -38,6 +39,8 @@ from decision_intelligence.workflows import (
 )
 
 from .schemas import (
+    ApprovalDecisionRequest,
+    ApprovalDecisionResponse,
     ChatMessageRequest,
     ChatSessionResponse,
     CreateChatSessionRequest,
@@ -46,6 +49,7 @@ from .schemas import (
     LLMChatRequest,
     LLMChatResponse,
     OptimizationResponse,
+    PendingApprovalsResponse,
     WorkflowCatalogResponse,
     WorkflowExportPackageRequest,
     WorkflowExportPackageResponse,
@@ -68,6 +72,8 @@ app.add_middleware(
 )
 
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
+_APPROVAL_STORE = ApprovalStore()
+_APPROVAL_AUDIT = AuditLog()
 
 
 @app.get("/api/health")
@@ -207,6 +213,49 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))
 
 
+@app.get("/api/approvals/pending", response_model=PendingApprovalsResponse)
+def list_pending_approvals() -> PendingApprovalsResponse:
+    return PendingApprovalsResponse(approvals=_pending_approval_items())
+
+
+@app.post("/api/approvals/decisions", response_model=ApprovalDecisionResponse)
+def submit_approval_decision(
+    payload: ApprovalDecisionRequest,
+) -> ApprovalDecisionResponse:
+    if not payload.approver.strip():
+        raise HTTPException(status_code=400, detail="Approver is required.")
+
+    decision = ApprovalDecision(
+        approver=payload.approver.strip(),
+        granted=payload.granted,
+        reason=payload.reason,
+    )
+    fingerprint = _APPROVAL_STORE.submit_for_approval_id(payload.approval_id, decision)
+    if fingerprint is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown approval_id: {payload.approval_id}",
+        )
+
+    _APPROVAL_AUDIT.record(
+        "approval_decision_submitted",
+        payload.approval_id,
+        {
+            "fingerprint": fingerprint,
+            "approver": decision.approver,
+            "granted": decision.granted,
+            "reason": decision.reason,
+        },
+    )
+    return ApprovalDecisionResponse(
+        approval_id=payload.approval_id,
+        fingerprint=fingerprint,
+        status="approved" if decision.granted else "rejected",
+        approver=decision.approver,
+        reason=decision.reason,
+    )
+
+
 @app.post("/api/workflows/export-package", response_model=WorkflowExportPackageResponse)
 def export_workflow_package(
     payload: WorkflowExportPackageRequest,
@@ -271,13 +320,13 @@ def _run_request(request: OptimizationRequest):
 
 
 def _build_orchestrator() -> tuple[OptimizationOrchestrator, AuditLog]:
-    audit = AuditLog()
+    audit = _APPROVAL_AUDIT
     registry = OptimizerRegistry()
     registry.register(AssetAllocationMVOOptimizer())
     registry.register(CollateralOptimizer())
     registry.register(MoneyMarketOptimizer())
     registry.register(FinancingOptimizer())
-    governance = GovernanceController(_demo_approval_policy(), ApprovalStore(), audit)
+    governance = GovernanceController(_demo_approval_policy(), _APPROVAL_STORE, audit)
     return OptimizationOrchestrator(registry, audit, governance), audit
 
 
@@ -315,6 +364,27 @@ def _demo_approval_policy() -> ApprovalPolicy:
 
 def _json(value: Any) -> dict[str, Any]:
     return jsonable_encoder(value)
+
+
+def _pending_approval_items() -> list[dict[str, Any]]:
+    items = []
+    for item in _APPROVAL_STORE.list_approvals():
+        decision = item["decision"]
+        items.append(
+            {
+                "approval_id": item["approval_id"],
+                "fingerprint": item["fingerprint"],
+                "status": (
+                    "pending"
+                    if decision is None
+                    else "approved" if decision.granted else "rejected"
+                ),
+                "approver": decision.approver if decision else None,
+                "reason": decision.reason if decision else "",
+                "decided_at": decision.decided_at.isoformat() if decision else None,
+            }
+        )
+    return items
 
 
 def _safe_filename(value: str) -> str:

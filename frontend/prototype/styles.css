@@ -1253,6 +1253,53 @@ h2 {
   margin-top: 2px;
 }
 
+.approval-decision-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.approval-decision-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.5fr) minmax(220px, 1fr);
+  gap: 10px;
+}
+
+.approval-decision-fields label {
+  display: grid;
+  gap: 4px;
+}
+
+.approval-decision-fields span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.approval-decision-fields input {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  padding: 0 10px;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.approval-decision-fields input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.22);
+  border-color: var(--blue);
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .workflow-comparison-panel {
   padding: 16px;
   display: grid;
@@ -1611,6 +1658,7 @@ tbody tr:hover {
   .governance-metric-grid,
   .governance-detail-grid,
   .governance-factor-list,
+  .approval-decision-fields,
   .workflow-comparison-grid,
   .workflow-impact-row,
   .risk-return-card,

@@ -120,6 +120,25 @@ class WorkflowRunResponse(BaseModel):
     result: dict[str, Any]
 
 
+class ApprovalDecisionRequest(BaseModel):
+    approval_id: str
+    approver: str
+    reason: str = ""
+    granted: bool = True
+
+
+class ApprovalDecisionResponse(BaseModel):
+    approval_id: str
+    fingerprint: str
+    status: Literal["approved", "rejected"]
+    approver: str
+    reason: str = ""
+
+
+class PendingApprovalsResponse(BaseModel):
+    approvals: list[dict[str, Any]]
+
+
 class WorkflowExportPackageRequest(BaseModel):
     response: dict[str, Any]
     payload: dict[str, Any] = Field(default_factory=dict)

@@ -326,6 +326,7 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
 
 
 def test_workflow_endpoint_surfaces_governance_threshold_escalation():
+    api_app._APPROVAL_STORE.clear()
     response = client.post(
         "/api/workflows/run",
         json={
@@ -353,6 +354,96 @@ def test_workflow_endpoint_surfaces_governance_threshold_escalation():
     assert governance["escalated"] is True
     assert "notional exposure exceeds $1B" in governance["escalation_reason"]
     assert governance["governance_factors"]["large_notional"] == 1_500_000_000
+
+
+def test_approval_decision_endpoint_approves_pending_workflow_on_rerun():
+    api_app._APPROVAL_STORE.clear()
+    payload = {
+        "workflow": "funding_capacity_shock",
+        "portfolio_id": "PORT_APPROVE",
+        "seed": 29,
+        "execution_mode": "recommendation",
+        "context": {
+            "governance": {
+                "materiality_notional": 1_500_000_000,
+                "estimated_pnl_impact": 2_500_000,
+                "production_constraint_change": False,
+            },
+            "financing": {"total_funding_need": 375_000_000},
+        },
+    }
+
+    first = client.post("/api/workflows/run", json=payload)
+    assert first.status_code == 200
+    pending_ids = _pending_approval_ids(first.json())
+    assert len(pending_ids) == 2
+
+    pending_response = client.get("/api/approvals/pending")
+    assert pending_response.status_code == 200
+    assert {item["approval_id"] for item in pending_response.json()["approvals"]} >= set(
+        pending_ids
+    )
+
+    for approval_id in pending_ids:
+        decision_response = client.post(
+            "/api/approvals/decisions",
+            json={
+                "approval_id": approval_id,
+                "approver": "jane",
+                "reason": "Materiality reviewed.",
+                "granted": True,
+            },
+        )
+        assert decision_response.status_code == 200
+        assert decision_response.json()["status"] == "approved"
+
+    second = client.post("/api/workflows/run", json=payload)
+    assert second.status_code == 200
+    governance_records = _governance_records(second.json())
+    assert [record["status"] for record in governance_records] == ["approved", "approved"]
+    assert all(record["action_performed"] is True for record in governance_records)
+
+
+def test_approval_decision_endpoint_rejects_pending_workflow_on_rerun():
+    api_app._APPROVAL_STORE.clear()
+    payload = {
+        "workflow": "funding_capacity_shock",
+        "portfolio_id": "PORT_REJECT",
+        "seed": 31,
+        "execution_mode": "recommendation",
+        "context": {
+            "governance": {
+                "materiality_notional": 1_500_000_000,
+                "estimated_pnl_impact": 2_500_000,
+                "production_constraint_change": False,
+            },
+            "financing": {"total_funding_need": 375_000_000},
+        },
+    }
+
+    first = client.post("/api/workflows/run", json=payload)
+    assert first.status_code == 200
+    pending_ids = _pending_approval_ids(first.json())
+    assert len(pending_ids) == 2
+
+    for approval_id in pending_ids:
+        decision_response = client.post(
+            "/api/approvals/decisions",
+            json={
+                "approval_id": approval_id,
+                "approver": "jane",
+                "reason": "Rejecting materiality.",
+                "granted": False,
+            },
+        )
+        assert decision_response.status_code == 200
+        assert decision_response.json()["status"] == "rejected"
+
+    second = client.post("/api/workflows/run", json=payload)
+    assert second.status_code == 200
+    governance_records = _governance_records(second.json())
+    assert [record["status"] for record in governance_records] == ["rejected", "rejected"]
+    assert all(record["action_performed"] is False for record in governance_records)
 
 
 def test_workflow_export_package_endpoint_returns_shareable_html():
@@ -420,3 +511,19 @@ def test_unknown_workflow_returns_400():
 def test_unknown_chat_session_returns_404():
     response = client.post("/api/chat/sessions/missing/messages", json={"message": "hello"})
     assert response.status_code == 404
+
+
+def _governance_records(body):
+    return [
+        step["result"]["governance"]
+        for step in body["result"]["step_results"]
+        if step["result"].get("governance")
+    ]
+
+
+def _pending_approval_ids(body):
+    return [
+        record["approval_id"]
+        for record in _governance_records(body)
+        if record["status"] == "pending" and record["approval_id"]
+    ]

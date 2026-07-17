@@ -224,11 +224,45 @@ class ApprovalStore:
             self._pending_ids[fingerprint] = f"appr_{uuid.uuid4().hex[:12]}"
         return self._pending_ids[fingerprint]
 
+    def fingerprint_for_approval_id(self, approval_id: str) -> str | None:
+        for fingerprint, stored_id in self._pending_ids.items():
+            if stored_id == approval_id:
+                return fingerprint
+        return None
+
     def submit(self, fingerprint: str, decision: ApprovalDecision) -> None:
         self._decisions[fingerprint] = decision
 
+    def submit_for_approval_id(
+        self,
+        approval_id: str,
+        decision: ApprovalDecision,
+    ) -> str | None:
+        fingerprint = self.fingerprint_for_approval_id(approval_id)
+        if fingerprint is None:
+            return None
+        self.submit(fingerprint, decision)
+        return fingerprint
+
     def get(self, fingerprint: str) -> ApprovalDecision | None:
         return self._decisions.get(fingerprint)
+
+    def list_approvals(self) -> list[dict[str, Any]]:
+        items = []
+        for fingerprint, approval_id in self._pending_ids.items():
+            decision = self.get(fingerprint)
+            items.append(
+                {
+                    "approval_id": approval_id,
+                    "fingerprint": fingerprint,
+                    "decision": decision,
+                }
+            )
+        return items
+
+    def clear(self) -> None:
+        self._decisions.clear()
+        self._pending_ids.clear()
 
 
 class GovernanceController:
