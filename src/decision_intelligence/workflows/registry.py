@@ -24,6 +24,7 @@ from .types import WorkflowPlan
 
 WorkflowBuilder = Callable[..., WorkflowPlan]
 DEFAULT_WORKFLOW_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config" / "workflows"
+DEFAULT_DEMO_PRESET_DIR = Path(__file__).resolve().parents[3] / "config" / "demo_presets"
 
 
 @dataclass(frozen=True)

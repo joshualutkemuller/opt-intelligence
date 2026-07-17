@@ -387,6 +387,98 @@ h2 {
   line-height: 1.4;
 }
 
+.preset-meta {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-strong);
+}
+
+.preset-meta strong,
+.preset-meta span {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.preset-meta strong {
+  color: var(--text);
+}
+
+.preset-meta span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.preset-points {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.preset-points li {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.workflow-input-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--blue-deep);
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.text-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.workflow-input-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-input-field {
+  display: grid;
+  gap: 4px;
+}
+
+.workflow-input-field span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.workflow-input-field input {
+  width: 100%;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.workflow-input-field input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.22);
+  border-color: var(--blue);
+}
+
 .select-input {
   width: 100%;
   min-height: 36px;

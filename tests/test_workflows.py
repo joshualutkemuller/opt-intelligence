@@ -17,11 +17,13 @@ from decision_intelligence.workflows import (
     WorkflowRegistry,
     WorkflowTemplate,
     build_liquidity_stress_funding_workflow,
+    load_demo_presets,
     load_workflow_config,
     load_workflow_configs,
 )
 
 WORKFLOW_CONFIG_DIR = "config/workflows"
+DEMO_PRESET_CONFIG_DIR = "config/demo_presets"
 
 
 @pytest.fixture
@@ -123,6 +125,27 @@ def test_loads_workflow_template_configs():
     assert liquidity.steps[-1].dependency_rules[0].rule_type == (
         "funding_pressure_liquidity_buffer"
     )
+
+
+def test_loads_demo_presets_for_registered_workflows():
+    presets = load_demo_presets(
+        DEMO_PRESET_CONFIG_DIR,
+        known_workflow_ids=set(DEFAULT_WORKFLOW_REGISTRY.list_ids()),
+    )
+
+    assert [preset.preset_id for preset in presets] == [
+        "collateral_pressure_review",
+        "executive_liquidity_stress",
+        "funding_capacity_crisis",
+    ]
+    executive = next(
+        preset for preset in presets if preset.preset_id == "executive_liquidity_stress"
+    )
+    assert executive.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
+    assert executive.portfolio_id == "PORT_EXEC_001"
+    assert executive.context["financing"]["capacity_scale"] == 0.55
+    assert executive.talking_points
+    assert executive.success_criteria
 
 
 def test_load_workflow_config_rejects_invalid_dependency(tmp_path):

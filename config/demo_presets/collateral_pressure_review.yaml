@@ -1,0 +1,32 @@
+preset_id: collateral_pressure_review
+version: 1
+name: Collateral Pressure Review
+description: >
+  Operations-focused walkthrough showing collateral coverage pressure and its
+  effect on the required cash liquidity buffer.
+audience: Collateral operations, treasury, and risk control
+workflow_id: collateral_liquidity_review
+portfolio_id: PORT_COLLAT_118
+seed: 19
+duration_minutes: 5
+context:
+  scenario: collateral_pressure_review
+  solver_backend: scipy
+  problem_type: lp
+  collateral:
+    obligation_scale: 1.75
+    concentration_limit: 0.50
+  money_market:
+    total_cash: 475000000
+    daily_liquidity_req: 0.36
+    weekly_liquidity_req: 0.66
+    max_prime_fraction: 0.38
+    max_wam_days: 52
+talking_points:
+  - Begin with collateral obligations and eligibility limits.
+  - Show inventory, coverage, and concentration constraints.
+  - Demonstrate how collateral pressure adjusts downstream liquidity needs.
+success_criteria:
+  - Collateral and money-market steps complete.
+  - Coverage pressure is reflected in dependency effects.
+  - Final explanation identifies operational risks and next actions.

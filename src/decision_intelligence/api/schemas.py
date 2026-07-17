@@ -62,6 +62,25 @@ class WorkflowCatalogResponse(BaseModel):
     workflows: list[WorkflowCatalogItem]
 
 
+class DemoPresetCatalogItem(BaseModel):
+    preset_id: str
+    version: int
+    name: str
+    description: str
+    audience: str
+    workflow_id: str
+    portfolio_id: str
+    seed: int
+    duration_minutes: int
+    context: dict[str, Any] = Field(default_factory=dict)
+    talking_points: list[str] = Field(default_factory=list)
+    success_criteria: list[str] = Field(default_factory=list)
+
+
+class DemoPresetCatalogResponse(BaseModel):
+    presets: list[DemoPresetCatalogItem]
+
+
 class WorkflowRunRequest(BaseModel):
     workflow: str = "liquidity_stress_funding_workflow"
     portfolio_id: str = "PORT_001"

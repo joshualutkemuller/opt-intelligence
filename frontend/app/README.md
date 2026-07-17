@@ -76,6 +76,19 @@ Registered workflows can be listed with:
 GET /api/workflows
 ```
 
+For repeatable stakeholder walkthroughs, choose a named **Demo Preset** before
+running the workflow. Presets package the workflow id, portfolio id, seed,
+context overrides, talking points, and success criteria. Registered presets can
+be listed with:
+
+```text
+GET /api/demo-presets
+```
+
+The sidebar renders editable **Preset Inputs** from the selected workflow's
+catalog `inputs`. These values are prefilled from the selected preset and are
+compiled into the workflow run payload before execution.
+
 The run action calls:
 
 ```text
@@ -102,8 +115,16 @@ The corresponding YAML template configs live in:
 config/workflows/
 ```
 
+Preset YAML configs live in:
+
+```text
+config/demo_presets/
+```
+
 `decision_intelligence.workflows.config_loader` validates those configs for
 metadata, default context, inputs, steps, and dependency rules.
+`decision_intelligence.workflows.demo_presets` validates the repeatable demo
+walkthrough package.
 
 ## Build Check
 

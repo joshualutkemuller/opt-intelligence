@@ -27,14 +27,17 @@ from decision_intelligence.optimizers import (
     MoneyMarketOptimizer,
 )
 from decision_intelligence.workflows import (
+    DEFAULT_DEMO_PRESET_DIR,
     DEFAULT_WORKFLOW_REGISTRY,
     SequentialWorkflowRunner,
+    load_demo_presets,
 )
 
 from .schemas import (
     ChatMessageRequest,
     ChatSessionResponse,
     CreateChatSessionRequest,
+    DemoPresetCatalogResponse,
     DirectOptimizationRequest,
     OptimizationResponse,
     WorkflowCatalogResponse,
@@ -121,6 +124,17 @@ def run_optimization(payload: DirectOptimizationRequest) -> OptimizationResponse
 @app.get("/api/workflows", response_model=WorkflowCatalogResponse)
 def list_workflows() -> WorkflowCatalogResponse:
     return WorkflowCatalogResponse(workflows=DEFAULT_WORKFLOW_REGISTRY.list_catalog())
+
+
+@app.get("/api/demo-presets", response_model=DemoPresetCatalogResponse)
+def list_demo_presets() -> DemoPresetCatalogResponse:
+    presets = load_demo_presets(
+        DEFAULT_DEMO_PRESET_DIR,
+        known_workflow_ids=set(DEFAULT_WORKFLOW_REGISTRY.list_ids()),
+    )
+    return DemoPresetCatalogResponse(
+        presets=[preset.catalog_item() for preset in presets]
+    )
 
 
 @app.post("/api/workflows/run", response_model=WorkflowRunResponse)

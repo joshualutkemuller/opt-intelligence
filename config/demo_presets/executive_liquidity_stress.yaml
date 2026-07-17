@@ -1,0 +1,38 @@
+preset_id: executive_liquidity_stress
+version: 1
+name: Executive Liquidity Stress
+description: >
+  Board-level walkthrough showing how funding pressure and collateral pressure
+  flow into a stressed money-market liquidity allocation.
+audience: Executive treasury and risk stakeholders
+workflow_id: liquidity_stress_funding_workflow
+portfolio_id: PORT_EXEC_001
+seed: 7
+duration_minutes: 8
+context:
+  scenario: executive_liquidity_stress
+  solver_backend: scipy
+  problem_type: lp
+  financing:
+    total_funding_need: 325000000
+    spread_shift: 1.65
+    capacity_scale: 0.55
+    max_cp_concentration: 0.35
+  collateral:
+    obligation_scale: 1.55
+    concentration_limit: 0.55
+  money_market:
+    total_cash: 500000000
+    daily_liquidity_req: 0.40
+    weekly_liquidity_req: 0.70
+    max_prime_fraction: 0.35
+    max_wam_days: 55
+talking_points:
+  - Run financing first to identify capacity and cost pressure.
+  - Show collateral coverage as a second operational constraint.
+  - Explain how both upstream steps raise downstream liquidity requirements.
+  - Use the final recommendation as a board-safe risk narrative.
+success_criteria:
+  - Workflow completes all three optimizer steps.
+  - Dependency effects are visible on the money-market step.
+  - Aggregate validation passes with no blocking violations.

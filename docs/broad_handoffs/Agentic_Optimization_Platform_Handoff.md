@@ -544,7 +544,14 @@ decision-intelligence-platform/
 -   ✅ **Config Inputs in Workflow Catalog (POC)** — `GET /api/workflows` now
     exposes config `version` and user-facing `inputs` for every registered
     workflow template.
--   Next: package demo presets for repeatable stakeholder walkthroughs.
+-   ✅ **Demo Presets (POC)** — repeatable stakeholder walkthroughs are now
+    packaged in `config/demo_presets`, exposed through `GET /api/demo-presets`,
+    and selectable in the browser demo before executing a workflow.
+-   ✅ **Editable Workflow Inputs (POC)** — the browser demo now renders
+    workflow catalog `inputs` as editable preset fields, prefills them from the
+    selected demo preset, and compiles edits into the workflow run payload.
+-   Next: add preset input validation and presenter-mode guardrails before
+    workflow execution.
 
 ## Phase 6
 

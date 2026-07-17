@@ -1,0 +1,34 @@
+preset_id: funding_capacity_crisis
+version: 1
+name: Funding Capacity Crisis
+description: >
+  Treasury desk scenario focused on reduced counterparty capacity, wider
+  spreads, and the liquidity reserve response.
+audience: Treasury funding desk and liquidity management
+workflow_id: funding_capacity_shock
+portfolio_id: PORT_FUND_204
+seed: 11
+duration_minutes: 6
+context:
+  scenario: funding_capacity_crisis
+  solver_backend: scipy
+  problem_type: lp
+  financing:
+    total_funding_need: 375000000
+    spread_shift: 1.9
+    capacity_scale: 0.42
+    max_cp_concentration: 0.32
+  money_market:
+    total_cash: 425000000
+    daily_liquidity_req: 0.36
+    weekly_liquidity_req: 0.66
+    max_prime_fraction: 0.32
+    max_wam_days: 50
+talking_points:
+  - Start with the funding need and constrained counterparty capacity.
+  - Highlight which capacity or concentration constraints bind.
+  - Show how funding pressure changes the liquidity reserve allocation.
+success_criteria:
+  - Financing and money-market steps both complete.
+  - Funding-pressure dependency effects are recorded.
+  - Result explains cost pressure and liquidity buffer tradeoffs.

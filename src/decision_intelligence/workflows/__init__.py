@@ -5,6 +5,11 @@ from .config_loader import (
     load_workflow_config,
     load_workflow_configs,
 )
+from .demo_presets import (
+    DemoPresetConfig,
+    load_demo_preset,
+    load_demo_presets,
+)
 from .explanation import build_workflow_explanation_report
 from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
@@ -15,6 +20,7 @@ from .library import (
     build_liquidity_stress_funding_workflow,
 )
 from .registry import (
+    DEFAULT_DEMO_PRESET_DIR,
     DEFAULT_WORKFLOW_REGISTRY,
     WorkflowRegistry,
     WorkflowTemplate,
@@ -35,7 +41,9 @@ from .types import (
 __all__ = [
     "LIQUIDITY_STRESS_WORKFLOW_ID",
     "COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID",
+    "DEFAULT_DEMO_PRESET_DIR",
     "DEFAULT_WORKFLOW_REGISTRY",
+    "DemoPresetConfig",
     "DependencyEffect",
     "FUNDING_CAPACITY_SHOCK_WORKFLOW_ID",
     "SequentialWorkflowRunner",
@@ -50,6 +58,8 @@ __all__ = [
     "WorkflowStepResult",
     "WorkflowTraceEvent",
     "build_workflow_explanation_report",
+    "load_demo_preset",
+    "load_demo_presets",
     "load_workflow_config",
     "load_workflow_configs",
     "build_collateral_liquidity_review_workflow",

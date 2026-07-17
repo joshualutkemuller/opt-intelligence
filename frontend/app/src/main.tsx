@@ -216,15 +216,44 @@ type WorkflowRunApiResponse = {
 
 type WorkflowCatalogItem = {
   workflow_id: string;
+  version: number;
   name: string;
   description: string;
   domains: string[];
   tags: string[];
   default_context: Record<string, unknown>;
+  inputs: WorkflowInputSpec[];
+};
+
+type WorkflowInputSpec = {
+  key: string;
+  label: string;
+  type: string;
+  default: unknown;
+  required: boolean;
 };
 
 type WorkflowCatalogApiResponse = {
   workflows: WorkflowCatalogItem[];
+};
+
+type DemoPresetCatalogItem = {
+  preset_id: string;
+  version: number;
+  name: string;
+  description: string;
+  audience: string;
+  workflow_id: string;
+  portfolio_id: string;
+  seed: number;
+  duration_minutes: number;
+  context: Record<string, unknown>;
+  talking_points: string[];
+  success_criteria: string[];
+};
+
+type DemoPresetCatalogApiResponse = {
+  presets: DemoPresetCatalogItem[];
 };
 
 type ChatApiResponse = {
@@ -252,7 +281,9 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
       "Runs collateral coverage first, then adjusts money-market liquidity requirements.",
     domains: ["collateral", "money_market"],
     tags: ["collateral", "liquidity", "review", "demo"],
+    version: 1,
     default_context: {},
+    inputs: [],
   },
   {
     workflow_id: "funding_capacity_shock",
@@ -261,7 +292,9 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
       "Runs stressed financing capacity first, then adjusts money-market reserves.",
     domains: ["financing", "money_market"],
     tags: ["funding", "capacity", "stress", "demo"],
+    version: 1,
     default_context: {},
+    inputs: [],
   },
   {
     workflow_id: "liquidity_stress_funding_workflow",
@@ -270,7 +303,35 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
       "Runs financing, collateral, and money-market optimizers under a shared liquidity stress context.",
     domains: ["financing", "collateral", "money_market"],
     tags: ["liquidity", "stress", "funding", "demo"],
+    version: 1,
     default_context: {},
+    inputs: [],
+  },
+];
+
+const fallbackDemoPresets: DemoPresetCatalogItem[] = [
+  {
+    preset_id: "executive_liquidity_stress",
+    version: 1,
+    name: "Executive Liquidity Stress",
+    description:
+      "Board-level walkthrough showing funding and collateral pressure flowing into liquidity allocation.",
+    audience: "Executive treasury and risk stakeholders",
+    workflow_id: "liquidity_stress_funding_workflow",
+    portfolio_id: "PORT_EXEC_001",
+    seed: 7,
+    duration_minutes: 8,
+    context: {
+      scenario: "executive_liquidity_stress",
+      financing: { total_funding_need: 325_000_000, spread_shift: 1.65, capacity_scale: 0.55 },
+      collateral: { obligation_scale: 1.55, concentration_limit: 0.55 },
+      money_market: { total_cash: 500_000_000, daily_liquidity_req: 0.4, weekly_liquidity_req: 0.7 },
+    },
+    talking_points: [
+      "Run financing first to identify capacity and cost pressure.",
+      "Show how upstream stress raises downstream liquidity requirements.",
+    ],
+    success_criteria: ["Workflow completes all three optimizer steps."],
   },
 ];
 
@@ -284,9 +345,15 @@ function App() {
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
   const [workflowCatalog, setWorkflowCatalog] =
     useState<WorkflowCatalogItem[]>(fallbackWorkflowCatalog);
+  const [demoPresets, setDemoPresets] =
+    useState<DemoPresetCatalogItem[]>(fallbackDemoPresets);
+  const [selectedDemoPresetId, setSelectedDemoPresetId] = useState(
+    fallbackDemoPresets[0].preset_id,
+  );
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(
     "liquidity_stress_funding_workflow",
   );
+  const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
   const [solver, setSolver] = useState("scipy-lp");
   const [isRunning, setIsRunning] = useState(false);
@@ -299,6 +366,7 @@ function App() {
     didCreateSession.current = true;
     void createSession();
     void loadWorkflowCatalog();
+    void loadDemoPresets();
   }, []);
 
   useEffect(() => {
@@ -307,6 +375,16 @@ function App() {
       messagePane.scrollTop = messagePane.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const selectedWorkflow = workflowCatalog.find(
+      (item) => item.workflow_id === selectedWorkflowId,
+    ) || fallbackWorkflowCatalog[0];
+    const selectedPreset = demoPresets.find(
+      (item) => item.preset_id === selectedDemoPresetId,
+    ) || fallbackDemoPresets[0];
+    setWorkflowInputValues(buildWorkflowInputValues(selectedWorkflow.inputs, selectedPreset));
+  }, [demoPresets, selectedDemoPresetId, selectedWorkflowId, workflowCatalog]);
 
   async function createSession() {
     try {
@@ -359,6 +437,33 @@ function App() {
       }
     } catch {
       setWorkflowCatalog(fallbackWorkflowCatalog);
+    }
+  }
+
+  async function loadDemoPresets() {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/demo-presets`,
+        { method: "GET" },
+        5000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as DemoPresetCatalogApiResponse;
+      if (body.presets.length) {
+        setDemoPresets(body.presets);
+        setSelectedDemoPresetId((current) =>
+          body.presets.some((item) => item.preset_id === current)
+            ? current
+            : body.presets[0].preset_id,
+        );
+        setSelectedWorkflowId((current) => {
+          const preset = body.presets.find((item) => item.preset_id === selectedDemoPresetId)
+            || body.presets[0];
+          return current === preset.workflow_id ? current : preset.workflow_id;
+        });
+      }
+    } catch {
+      setDemoPresets(fallbackDemoPresets);
     }
   }
 
@@ -441,13 +546,16 @@ function App() {
     const selectedWorkflow = workflowCatalog.find(
       (item) => item.workflow_id === selectedWorkflowId,
     ) || fallbackWorkflowCatalog[0];
+    const selectedPreset = demoPresets.find(
+      (item) => item.preset_id === selectedDemoPresetId,
+    ) || fallbackDemoPresets[0];
     setIsWorkflowRunning(true);
     setMessages((items) => [
       ...items,
-      { role: "user", content: `Run ${selectedWorkflow.name}.` },
+      { role: "user", content: `Run ${selectedPreset.name}.` },
       {
         role: "assistant",
-        content: `Running ${selectedWorkflow.name} in sequence...`,
+        content: `Running ${selectedPreset.name} in sequence...`,
         pending: true,
       },
     ]);
@@ -463,6 +571,9 @@ function App() {
               selectedWorkflow.workflow_id,
               workflow?.collected || {},
               solverProfiles[solver],
+              selectedPreset,
+              workflowInputValues,
+              selectedWorkflow.inputs,
             ),
           ),
         },
@@ -502,6 +613,9 @@ function App() {
   const selectedWorkflow = workflowCatalog.find(
     (item) => item.workflow_id === selectedWorkflowId,
   ) || fallbackWorkflowCatalog[0];
+  const selectedPreset = demoPresets.find(
+    (item) => item.preset_id === selectedDemoPresetId,
+  ) || fallbackDemoPresets[0];
   const latestAssistantPrompt =
     [...messages].reverse().find((message) => message.role === "assistant")?.content || "";
 
@@ -542,10 +656,37 @@ function App() {
             </dl>
           </section>
 
+          <DemoPresetSelector
+            presets={demoPresets}
+            selectedPresetId={selectedDemoPresetId}
+            onChange={(presetId) => {
+              setSelectedDemoPresetId(presetId);
+              const preset = demoPresets.find((item) => item.preset_id === presetId);
+              if (preset) setSelectedWorkflowId(preset.workflow_id);
+            }}
+            disabled={isWorkflowRunning}
+          />
+
           <WorkflowSelector
             workflows={workflowCatalog}
             selectedWorkflowId={selectedWorkflowId}
-            onChange={setSelectedWorkflowId}
+            onChange={(workflowId) => {
+              setSelectedWorkflowId(workflowId);
+              const preset = demoPresets.find((item) => item.workflow_id === workflowId);
+              if (preset) setSelectedDemoPresetId(preset.preset_id);
+            }}
+            disabled={isWorkflowRunning}
+          />
+
+          <WorkflowInputPanel
+            inputs={selectedWorkflow.inputs}
+            values={workflowInputValues}
+            onChange={(key, value) =>
+              setWorkflowInputValues((current) => ({ ...current, [key]: value }))
+            }
+            onReset={() =>
+              setWorkflowInputValues(buildWorkflowInputValues(selectedWorkflow.inputs, selectedPreset))
+            }
             disabled={isWorkflowRunning}
           />
 
@@ -661,6 +802,7 @@ function App() {
           <WorkflowTimelinePanel
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
+            selectedPreset={selectedPreset}
           />
 
           <WorkflowExplanationPanel workflowRun={workflowRun} />
@@ -708,23 +850,246 @@ function buildWorkflowPayload(
   workflowId: string,
   collected: Record<string, unknown>,
   solverProfile: { backend: string; problem: string; method: string },
+  preset?: DemoPresetCatalogItem,
+  inputValues: Record<string, string> = {},
+  workflowInputs: WorkflowInputSpec[] = [],
 ) {
+  const presetContext = toRecord(preset?.context);
+  const presetMoneyMarket = toRecord(presetContext.money_market);
+  const compiled = compileWorkflowInputs(workflowInputs, inputValues, preset);
+  const compiledContext = toRecord(compiled.context);
+  const compiledMoneyMarket = toRecord(compiledContext.money_market);
+
   return {
-    workflow: workflowId,
-    portfolio_id: String(collected.portfolio_id || "PORT_204"),
-    seed: Number(collected.seed || 42),
+    workflow: preset?.workflow_id || workflowId,
+    portfolio_id: String(compiled.portfolio_id || collected.portfolio_id || preset?.portfolio_id || "PORT_204"),
+    seed: Number(compiled.seed || collected.seed || preset?.seed || 42),
     context: {
+      ...presetContext,
+      ...compiledContext,
       solver_backend: solverProfile.backend,
       problem_type: solverProfile.problem,
       money_market: {
-        total_cash: Number(collected.total_cash || 500_000_000),
-        daily_liquidity_req: Number(collected.daily_liquidity_req || 0.4),
-        weekly_liquidity_req: Number(collected.weekly_liquidity_req || 0.7),
-        max_prime_fraction: Number(collected.max_prime_fraction || 0.4),
-        max_wam_days: Number(collected.max_wam_days || 60),
+        ...presetMoneyMarket,
+        ...compiledMoneyMarket,
+        total_cash: numberFrom(
+          compiledMoneyMarket.total_cash,
+          collected.total_cash,
+          presetMoneyMarket.total_cash,
+          500_000_000,
+        ),
+        daily_liquidity_req: numberFrom(
+          compiledMoneyMarket.daily_liquidity_req,
+          collected.daily_liquidity_req,
+          presetMoneyMarket.daily_liquidity_req,
+          0.4,
+        ),
+        weekly_liquidity_req: numberFrom(
+          compiledMoneyMarket.weekly_liquidity_req,
+          collected.weekly_liquidity_req,
+          presetMoneyMarket.weekly_liquidity_req,
+          0.7,
+        ),
+        max_prime_fraction: numberFrom(
+          compiledMoneyMarket.max_prime_fraction,
+          collected.max_prime_fraction,
+          presetMoneyMarket.max_prime_fraction,
+          0.4,
+        ),
+        max_wam_days: numberFrom(
+          compiledMoneyMarket.max_wam_days,
+          collected.max_wam_days,
+          presetMoneyMarket.max_wam_days,
+          60,
+        ),
       },
     },
   };
+}
+
+function buildWorkflowInputValues(
+  inputs: WorkflowInputSpec[],
+  preset?: DemoPresetCatalogItem,
+): Record<string, string> {
+  return Object.fromEntries(
+    inputs.map((input) => {
+      const value = valueForWorkflowInput(input, preset);
+      return [input.key, value === undefined || value === null ? "" : String(value)];
+    }),
+  );
+}
+
+function valueForWorkflowInput(input: WorkflowInputSpec, preset?: DemoPresetCatalogItem): unknown {
+  if (input.key === "portfolio_id") return preset?.portfolio_id ?? input.default;
+  if (input.key === "seed") return preset?.seed ?? input.default;
+  const contextValue = getNestedValue(toRecord(preset?.context), input.key);
+  return contextValue ?? input.default;
+}
+
+function compileWorkflowInputs(
+  inputs: WorkflowInputSpec[],
+  values: Record<string, string>,
+  preset?: DemoPresetCatalogItem,
+): { portfolio_id?: string; seed?: number; context: Record<string, unknown> } {
+  const compiled: { portfolio_id?: string; seed?: number; context: Record<string, unknown> } = {
+    context: {},
+  };
+  for (const input of inputs) {
+    const raw = values[input.key];
+    const fallback = valueForWorkflowInput(input, preset);
+    const value = parseWorkflowInputValue(raw === "" ? fallback : raw, input.type);
+    if (value === undefined || value === null || value === "") continue;
+
+    if (input.key === "portfolio_id") {
+      compiled.portfolio_id = String(value);
+    } else if (input.key === "seed") {
+      compiled.seed = Number(value);
+    } else {
+      setNestedValue(compiled.context, input.key, value);
+    }
+  }
+  return compiled;
+}
+
+function parseWorkflowInputValue(value: unknown, type: string): unknown {
+  if (type === "integer") return Math.trunc(Number(value));
+  if (["number", "currency", "fraction", "percent"].includes(type)) return Number(value);
+  return value;
+}
+
+function getNestedValue(source: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, part) => {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, source);
+}
+
+function setNestedValue(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let cursor = target;
+  parts.slice(0, -1).forEach((part) => {
+    if (!cursor[part] || typeof cursor[part] !== "object" || Array.isArray(cursor[part])) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part] as Record<string, unknown>;
+  });
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function numberFrom(...values: unknown[]): number {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") {
+      return Number(value);
+    }
+  }
+  return 0;
+}
+
+function DemoPresetSelector({
+  presets,
+  selectedPresetId,
+  onChange,
+  disabled,
+}: {
+  presets: DemoPresetCatalogItem[];
+  selectedPresetId: string;
+  onChange: (presetId: string) => void;
+  disabled: boolean;
+}) {
+  const selected = presets.find((item) => item.preset_id === selectedPresetId) || presets[0];
+  return (
+    <section className="panel compact workflow-selector">
+      <div className="panel-heading">
+        <span className="eyebrow">Demo Preset</span>
+        <span className="status-pill">{selected?.duration_minutes || 0} min</span>
+      </div>
+      <select
+        className="select-input"
+        value={selectedPresetId}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        aria-label="Demo preset"
+      >
+        {presets.map((item) => (
+          <option value={item.preset_id} key={item.preset_id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+      {selected ? (
+        <>
+          <p>{selected.description}</p>
+          <div className="preset-meta">
+            <strong>{selected.audience}</strong>
+            <span>{selected.portfolio_id}</span>
+          </div>
+          <ul className="preset-points">
+            {selected.talking_points.slice(0, 2).map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function WorkflowInputPanel({
+  inputs,
+  values,
+  onChange,
+  onReset,
+  disabled,
+}: {
+  inputs: WorkflowInputSpec[];
+  values: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+  onReset: () => void;
+  disabled: boolean;
+}) {
+  if (!inputs.length) return null;
+
+  return (
+    <section className="panel compact workflow-input-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Preset Inputs</span>
+        <button className="text-button" type="button" onClick={onReset} disabled={disabled}>
+          Reset
+        </button>
+      </div>
+      <div className="workflow-input-grid">
+        {inputs.map((input) => (
+          <label className="workflow-input-field" key={input.key}>
+            <span>{input.label}</span>
+            <input
+              value={values[input.key] ?? ""}
+              onChange={(event) => onChange(input.key, event.target.value)}
+              type={inputType(input.type)}
+              inputMode={numericInputMode(input.type)}
+              disabled={disabled}
+              aria-label={input.label}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function inputType(type: string): "number" | "text" {
+  return ["integer", "number", "currency", "fraction", "percent"].includes(type)
+    ? "number"
+    : "text";
+}
+
+function numericInputMode(type: string): "decimal" | "numeric" | "text" {
+  if (type === "integer") return "numeric";
+  return inputType(type) === "number" ? "decimal" : "text";
 }
 
 function WorkflowSelector({
@@ -822,9 +1187,11 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
 function WorkflowTimelinePanel({
   workflowRun,
   selectedWorkflow,
+  selectedPreset,
 }: {
   workflowRun: WorkflowRunResult | null;
   selectedWorkflow: WorkflowCatalogItem;
+  selectedPreset: DemoPresetCatalogItem;
 }) {
   const summary = workflowRun?.validation_summary;
   return (
@@ -940,8 +1307,8 @@ function WorkflowTimelinePanel({
         </>
       ) : (
         <p className="workflow-empty">
-          Run the workflow action to execute {selectedWorkflow.name} as one
-          sequential demo.
+          Run the workflow action to execute {selectedPreset.name} using the
+          {selectedWorkflow.name} template.
         </p>
       )}
     </section>

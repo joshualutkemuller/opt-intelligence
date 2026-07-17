@@ -123,6 +123,24 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
     ]
 
 
+def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
+    response = client.get("/api/demo-presets")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["preset_id"] for item in body["presets"]] == [
+        "collateral_pressure_review",
+        "executive_liquidity_stress",
+        "funding_capacity_crisis",
+    ]
+    executive = body["presets"][1]
+    assert executive["workflow_id"] == "liquidity_stress_funding_workflow"
+    assert executive["portfolio_id"] == "PORT_EXEC_001"
+    assert executive["context"]["financing"]["capacity_scale"] == 0.55
+    assert executive["talking_points"]
+    assert executive["success_criteria"]
+
+
 def test_workflow_endpoint_runs_liquidity_stress_workflow():
     response = client.post(
         "/api/workflows/run",
