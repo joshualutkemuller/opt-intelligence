@@ -30,6 +30,27 @@ inputs:
     label: Money-market cash
     type: currency
     default: 500000000
+  - key: execution_mode
+    label: Execution mode
+    type: select
+    default: recommendation
+    options:
+      - recommendation
+      - stage
+      - execute
+      - change_constraints
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 500000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
 steps:
   - step_id: financing_001
     domain: financing

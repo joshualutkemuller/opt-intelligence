@@ -446,6 +446,7 @@ def _request(
     metric: str,
     context: dict[str, Any],
 ) -> OptimizationRequest:
+    execution_mode = ExecutionMode(context.get("execution_mode", ExecutionMode.RECOMMENDATION))
     return OptimizationRequest(
         domain=domain,
         portfolio_id=portfolio_id,
@@ -454,7 +455,7 @@ def _request(
             direction=direction,
             metric=metric,
         ),
-        execution_mode=ExecutionMode.RECOMMENDATION,
+        execution_mode=execution_mode,
         context=context,
         requestor="workflow",
     )

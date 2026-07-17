@@ -97,6 +97,24 @@ type ValidationReport = {
   policy_status: string | null;
 };
 
+type ApprovalRecord = {
+  request_id: string;
+  execution_mode: string;
+  tier: number;
+  action: string;
+  required: boolean;
+  status: string;
+  action_performed: boolean;
+  approval_id: string | null;
+  approver: string | null;
+  reason: string;
+  base_tier: number | null;
+  escalated: boolean;
+  escalation_reason: string;
+  governance_factors: Record<string, string | number | boolean>;
+  decided_at: string | null;
+};
+
 type OptimizationResult = {
   domain?: string;
   status: string;
@@ -109,6 +127,7 @@ type OptimizationResult = {
   binding_constraints: string[];
   validation_report?: ValidationReport | null;
   explanation_report?: ExplanationReport | null;
+  governance?: ApprovalRecord | null;
   solver_metadata: Record<string, unknown>;
   agent_trace?: AgentTraceEvent[];
 };
@@ -268,6 +287,7 @@ type WorkflowInputSpec = {
   type: string;
   default: unknown;
   required: boolean;
+  options?: string[];
 };
 
 type WorkflowCatalogApiResponse = {
@@ -318,6 +338,7 @@ type WorkflowRunPayload = {
   workflow: string;
   portfolio_id: string;
   seed: number;
+  execution_mode?: string;
   context: Record<string, unknown>;
 };
 
@@ -1310,6 +1331,12 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
+          <GovernanceReviewPanel
+            workflowRun={workflowRun}
+            selectedWorkflow={selectedWorkflow}
+            inputValues={workflowInputValues}
+          />
+
           <WorkflowComparisonPanel workflowRun={workflowRun} />
 
           {presenterReviewOpen ? (
@@ -1481,6 +1508,7 @@ function buildWorkflowPayload(
     workflow: preset?.workflow_id || workflowId,
     portfolio_id: String(compiled.portfolio_id || collected.portfolio_id || preset?.portfolio_id || "PORT_204"),
     seed: Number(compiled.seed || collected.seed || preset?.seed || 42),
+    execution_mode: compiled.execution_mode || "recommendation",
     context: {
       ...mergedContext,
       solver_backend: solverProfile.backend,
@@ -1774,8 +1802,18 @@ function compileWorkflowInputs(
   inputs: WorkflowInputSpec[],
   values: Record<string, string>,
   preset?: DemoPresetCatalogItem,
-): { portfolio_id?: string; seed?: number; context: Record<string, unknown> } {
-  const compiled: { portfolio_id?: string; seed?: number; context: Record<string, unknown> } = {
+): {
+  portfolio_id?: string;
+  seed?: number;
+  execution_mode?: string;
+  context: Record<string, unknown>;
+} {
+  const compiled: {
+    portfolio_id?: string;
+    seed?: number;
+    execution_mode?: string;
+    context: Record<string, unknown>;
+  } = {
     context: {},
   };
   for (const input of inputs) {
@@ -1788,6 +1826,8 @@ function compileWorkflowInputs(
       compiled.portfolio_id = String(value);
     } else if (input.key === "seed") {
       compiled.seed = Number(value);
+    } else if (input.key === "execution_mode") {
+      compiled.execution_mode = String(value);
     } else {
       setNestedValue(compiled.context, input.key, value);
     }
@@ -1798,6 +1838,10 @@ function compileWorkflowInputs(
 function parseWorkflowInputValue(value: unknown, type: string): unknown {
   if (type === "integer") return Math.trunc(Number(value));
   if (["number", "currency", "fraction", "percent"].includes(type)) return Number(value);
+  if (type === "boolean") {
+    if (typeof value === "boolean") return value;
+    return String(value).trim().toLowerCase() === "true";
+  }
   return value;
 }
 
@@ -1940,14 +1984,37 @@ function WorkflowInputPanel({
         {inputs.map((input) => (
           <label className="workflow-input-field" key={input.key}>
             <span>{input.label}</span>
-            <input
-              value={values[input.key] ?? ""}
-              onChange={(event) => onChange(input.key, event.target.value)}
-              type={inputType(input.type)}
-              inputMode={numericInputMode(input.type)}
-              disabled={disabled}
-              aria-label={input.label}
-            />
+            {input.type === "select" ? (
+              <select
+                value={values[input.key] ?? ""}
+                onChange={(event) => onChange(input.key, event.target.value)}
+                disabled={disabled}
+                aria-label={input.label}
+              >
+                {(input.options || []).map((option) => (
+                  <option value={option} key={option}>
+                    {titleCase(option.replaceAll("_", " "))}
+                  </option>
+                ))}
+              </select>
+            ) : input.type === "boolean" ? (
+              <input
+                checked={(values[input.key] ?? "").toLowerCase() === "true"}
+                onChange={(event) => onChange(input.key, event.target.checked ? "true" : "false")}
+                type="checkbox"
+                disabled={disabled}
+                aria-label={input.label}
+              />
+            ) : (
+              <input
+                value={values[input.key] ?? ""}
+                onChange={(event) => onChange(input.key, event.target.value)}
+                type={inputType(input.type)}
+                inputMode={numericInputMode(input.type)}
+                disabled={disabled}
+                aria-label={input.label}
+              />
+            )}
           </label>
         ))}
       </div>
@@ -2377,6 +2444,98 @@ function WorkflowTimelinePanel({
   );
 }
 
+function GovernanceReviewPanel({
+  workflowRun,
+  selectedWorkflow,
+  inputValues,
+}: {
+  workflowRun: WorkflowRunResult | null;
+  selectedWorkflow: WorkflowCatalogItem;
+  inputValues: Record<string, string>;
+}) {
+  const governance = highestGovernanceRecord(workflowRun);
+  const executionMode = inputValues.execution_mode || "recommendation";
+  const materialityNotional = inputValues["governance.materiality_notional"] || "";
+  const pnlImpact = inputValues["governance.estimated_pnl_impact"] || "";
+  const productionChange = inputValues["governance.production_constraint_change"] === "true";
+  const status = governance?.status || (productionChange ? "review" : "not_required");
+
+  return (
+    <section className="panel governance-review-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Governance Review</span>
+          <h2>Approval and materiality controls</h2>
+        </div>
+        <span className={`status-pill ${governanceStatusClass(status)}`}>
+          {titleCase(status.replaceAll("_", " "))}
+        </span>
+      </div>
+
+      <div className="governance-metric-grid">
+        <Metric
+          label="Execution mode"
+          value={titleCase((governance?.execution_mode || executionMode).replaceAll("_", " "))}
+          note={selectedWorkflow.name}
+        />
+        <Metric
+          label="Tier"
+          value={governance ? String(governance.tier) : productionChange ? "5" : "2"}
+          note={
+            governance?.escalated
+              ? `Escalated from ${governance.base_tier}`
+              : "Current setting"
+          }
+        />
+        <Metric
+          label="Materiality"
+          value={materialityNotional ? formatCurrency(materialityNotional) : "n/a"}
+          note={pnlImpact ? `${formatCurrency(pnlImpact)} PnL impact` : "PnL impact optional"}
+        />
+      </div>
+
+      <div className="governance-detail-grid">
+        <div className="governance-card">
+          <strong>{governance?.action || "recommendation"}</strong>
+          <span>
+            {governance
+              ? governance.action_performed
+                ? "Action is allowed or completed."
+                : "Action is withheld pending approval."
+              : productionChange
+                ? "Production constraint changes will require Tier 5 approval."
+                : "Run the workflow to evaluate approval requirements."}
+          </span>
+        </div>
+        <div className="governance-card">
+          <strong>Escalation</strong>
+          <span>
+            {governance?.escalation_reason ||
+              (productionChange
+                ? "production constraint change"
+                : "No escalation reason yet.")}
+          </span>
+        </div>
+        <div className="governance-card">
+          <strong>Approval</strong>
+          <span>{governance?.approval_id || "No approval ID issued yet."}</span>
+        </div>
+      </div>
+
+      {governance && Object.keys(governance.governance_factors).length ? (
+        <ul className="governance-factor-list">
+          {Object.entries(governance.governance_factors).map(([key, value]) => (
+            <li key={key}>
+              <strong>{titleCase(key.replaceAll("_", " "))}</strong>
+              <span>{formatGovernanceFactor(value)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function WorkflowComparisonPanel({
   workflowRun,
 }: {
@@ -2625,6 +2784,28 @@ function workflowStatusClass(status: WorkflowRunResult["status"] | undefined) {
   if (status === "partial") return "status-ready";
   if (status === "complete") return "status-optimal";
   return "";
+}
+
+function governanceStatusClass(status: string | undefined) {
+  if (status === "pending" || status === "review") return "status-ready";
+  if (status === "rejected") return "status-error";
+  return "status-optimal";
+}
+
+function highestGovernanceRecord(workflowRun: WorkflowRunResult | null): ApprovalRecord | null {
+  const records = workflowRun?.step_results
+    .map((step) => step.result.governance)
+    .filter((record): record is ApprovalRecord => Boolean(record)) || [];
+  return records.sort((left, right) => right.tier - left.tier)[0] || null;
+}
+
+function formatGovernanceFactor(value: string | number | boolean): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    if (Math.abs(value) >= 1_000_000) return formatCurrency(value);
+    return value.toLocaleString();
+  }
+  return value;
 }
 
 function stepStatusClass(status: string) {

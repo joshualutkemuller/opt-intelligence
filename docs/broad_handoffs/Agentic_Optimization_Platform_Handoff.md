@@ -436,8 +436,18 @@ materiality threshold is crossed. Requests that explicitly flag production
 constraint changes are escalated to tier 5 even if the execution mode starts as
 `recommendation`.
 
+**UI/demo status (POC):** workflow templates now expose execution mode,
+materiality notional, estimated PnL impact, and production-constraint-change
+inputs in the browser demo. The workflow run payload carries those controls
+into the API, where configured approval thresholds can escalate otherwise
+advisory recommendations. The browser demo also includes a Governance Review
+panel that shows selected mode, materiality, approval tier, escalation reason,
+approval status, approval ID, and governance factors after a run. Dedicated
+demo presets cover a normal non-escalated recommendation, a large-notional
+approval review, and a Tier 5 production-constraint-change review.
+
 **Next:** real approver identity / SSO instead of a name string, persisted
-approval storage, and UI controls for materiality-threshold review.
+approval storage, and UI controls for submitting/approving pending decisions.
 
 ------------------------------------------------------------------------
 

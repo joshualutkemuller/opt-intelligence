@@ -45,6 +45,27 @@ inputs:
     label: Minimum cash weight
     type: fraction
     default: 0.02
+  - key: execution_mode
+    label: Execution mode
+    type: select
+    default: recommendation
+    options:
+      - recommendation
+      - stage
+      - execute
+      - change_constraints
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 250000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
 steps:
   - step_id: asset_allocation_001
     domain: asset_allocation

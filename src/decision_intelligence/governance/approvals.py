@@ -71,9 +71,12 @@ _MATERIAL_CONTEXT_KEYS = (
     "total_cash",
     "total_funding_need",
     "estimated_pnl_impact",
+    "governance.estimated_pnl_impact",
     "pnl_impact",
     "pnl_at_risk",
+    "governance.materiality_notional",
     "production_constraint_change",
+    "governance.production_constraint_change",
     "change_production_constraints",
     "changes_production_constraints",
 )
@@ -124,6 +127,7 @@ class ApprovalPolicy:
         authorized_approvers: Iterable[str] | None = None,
         production_constraint_keys: Iterable[str] = (
             "production_constraint_change",
+            "governance.production_constraint_change",
             "change_production_constraints",
             "changes_production_constraints",
         ),

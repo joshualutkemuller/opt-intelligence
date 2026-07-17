@@ -467,7 +467,8 @@ h2 {
   font-weight: 800;
 }
 
-.workflow-input-field input {
+.workflow-input-field input,
+.workflow-input-field select {
   width: 100%;
   min-height: 34px;
   border-radius: 7px;
@@ -480,7 +481,16 @@ h2 {
   font-weight: 750;
 }
 
-.workflow-input-field input:focus {
+.workflow-input-field input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  justify-self: start;
+  padding: 0;
+  accent-color: var(--blue);
+}
+
+.workflow-input-field input:focus,
+.workflow-input-field select:focus {
   outline: 2px solid rgba(37, 99, 235, 0.22);
   border-color: var(--blue);
 }
@@ -1169,6 +1179,80 @@ h2 {
   padding-top: 2px;
 }
 
+.governance-review-panel {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.governance-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.governance-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.governance-card {
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.governance-card strong,
+.governance-card span {
+  display: block;
+}
+
+.governance-card strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.governance-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+.governance-factor-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.governance-factor-list li {
+  padding: 9px;
+  border: 1px solid #b8c8f7;
+  border-radius: 7px;
+  background: #eef4ff;
+}
+
+.governance-factor-list strong,
+.governance-factor-list span {
+  display: block;
+}
+
+.governance-factor-list strong {
+  font-size: 12px;
+}
+
+.governance-factor-list span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
 .workflow-comparison-panel {
   padding: 16px;
   display: grid;
@@ -1524,6 +1608,9 @@ tbody tr:hover {
   .workflow-validation-strip,
   .workflow-step-metrics,
   .workflow-trace-grid,
+  .governance-metric-grid,
+  .governance-detail-grid,
+  .governance-factor-list,
   .workflow-comparison-grid,
   .workflow-impact-row,
   .risk-return-card,

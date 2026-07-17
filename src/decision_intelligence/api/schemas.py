@@ -58,9 +58,19 @@ class OptimizationResponse(BaseModel):
 class WorkflowCatalogInput(BaseModel):
     key: str
     label: str
-    type: Literal["string", "integer", "number", "currency", "fraction", "percent"]
+    type: Literal[
+        "string",
+        "integer",
+        "number",
+        "currency",
+        "fraction",
+        "percent",
+        "boolean",
+        "select",
+    ]
     default: Any = None
     required: bool = True
+    options: list[str] = Field(default_factory=list)
 
 
 class WorkflowCatalogItem(BaseModel):
@@ -101,6 +111,7 @@ class WorkflowRunRequest(BaseModel):
     workflow: str = "liquidity_stress_funding_workflow"
     portfolio_id: str = "PORT_001"
     seed: int = 42
+    execution_mode: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)
 
 

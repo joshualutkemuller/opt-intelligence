@@ -80,6 +80,7 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         "type": "string",
         "default": "PORT_001",
         "required": True,
+        "options": [],
     }
     assert liquidity["inputs"][2]["key"] == "money_market.total_cash"
     assert liquidity["inputs"][2]["default"] == 500_000_000
@@ -126,7 +127,18 @@ def test_loads_workflow_template_configs():
         "portfolio_id",
         "seed",
         "money_market.total_cash",
+        "execution_mode",
+        "governance.materiality_notional",
+        "governance.estimated_pnl_impact",
+        "governance.production_constraint_change",
     ]
+    execution_mode = next(
+        workflow_input
+        for workflow_input in liquidity.inputs
+        if workflow_input.key == "execution_mode"
+    )
+    assert execution_mode.type == "select"
+    assert execution_mode.options == ["recommendation", "stage", "execute", "change_constraints"]
     assert [step.domain for step in liquidity.steps] == [
         "financing",
         "collateral",
@@ -148,6 +160,9 @@ def test_loads_demo_presets_for_registered_workflows():
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",
+        "governed_recommendation_baseline",
+        "large_notional_approval_review",
+        "production_constraint_change_review",
     ]
     executive = next(
         preset for preset in presets if preset.preset_id == "executive_liquidity_stress"
@@ -157,6 +172,14 @@ def test_loads_demo_presets_for_registered_workflows():
     assert executive.context["financing"]["capacity_scale"] == 0.55
     assert executive.talking_points
     assert executive.success_criteria
+    large = next(
+        preset for preset in presets if preset.preset_id == "large_notional_approval_review"
+    )
+    assert large.context["governance"]["materiality_notional"] == 1_500_000_000
+    tier5 = next(
+        preset for preset in presets if preset.preset_id == "production_constraint_change_review"
+    )
+    assert tier5.context["governance"]["production_constraint_change"] is True
 
 
 def test_portfolio_rebalance_mvo_workflow_runs(orchestrator):
@@ -183,6 +206,26 @@ def test_portfolio_rebalance_mvo_workflow_runs(orchestrator):
     assert step_result.status.value == "optimal"
     assert step_result.solver_metadata["solver_method"] == "SLSQP"
     assert step_result.solver_metadata["expected_return"] >= 0.05
+
+
+def test_workflow_builder_applies_execution_mode_to_steps():
+    plan = build_liquidity_stress_funding_workflow(
+        portfolio_id="PORT_GOV",
+        seed=42,
+        context={
+            "execution_mode": "change_constraints",
+            "governance": {"production_constraint_change": True},
+        },
+    )
+
+    assert all(
+        step.request.execution_mode.value == "change_constraints"
+        for step in plan.steps
+    )
+    assert all(
+        step.request.context["governance"]["production_constraint_change"] is True
+        for step in plan.steps
+    )
 
 
 def test_load_workflow_config_rejects_invalid_dependency(tmp_path):

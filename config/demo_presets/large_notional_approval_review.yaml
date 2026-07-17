@@ -1,0 +1,39 @@
+preset_id: large_notional_approval_review
+version: 1
+name: Large Notional Approval Review
+description: >
+  Materiality walkthrough showing a recommendation that escalates into approval
+  review because notional exposure exceeds the demo threshold.
+audience: Desk heads, treasury risk, and approval committee reviewers
+workflow_id: funding_capacity_shock
+portfolio_id: PORT_GOV_NOTIONAL
+seed: 29
+duration_minutes: 6
+context:
+  scenario: large_notional_approval_review
+  solver_backend: scipy
+  problem_type: lp
+  execution_mode: recommendation
+  governance:
+    materiality_notional: 1500000000
+    estimated_pnl_impact: 2500000
+    production_constraint_change: false
+  financing:
+    total_funding_need: 375000000
+    spread_shift: 1.75
+    capacity_scale: 0.50
+    max_cp_concentration: 0.35
+  money_market:
+    total_cash: 600000000
+    daily_liquidity_req: 0.38
+    weekly_liquidity_req: 0.68
+    max_prime_fraction: 0.35
+    max_wam_days: 55
+talking_points:
+  - Keep execution mode as recommendation.
+  - Show that large notional exposure still triggers approval review.
+  - Explain the difference between advisory mode and materiality escalation.
+success_criteria:
+  - Governance panel shows escalation from tier 2 to tier 4.
+  - Approval status is pending and action is withheld.
+  - Escalation reason references notional exposure.

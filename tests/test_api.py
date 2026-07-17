@@ -176,6 +176,7 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
             "type": "string",
             "default": "PORT_001",
             "required": True,
+            "options": [],
         },
         {
             "key": "collateral.obligation_scale",
@@ -183,6 +184,7 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
             "type": "fraction",
             "default": 1.65,
             "required": True,
+            "options": [],
         },
         {
             "key": "money_market.total_cash",
@@ -190,6 +192,39 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
             "type": "currency",
             "default": 450_000_000,
             "required": True,
+            "options": [],
+        },
+        {
+            "key": "execution_mode",
+            "label": "Execution mode",
+            "type": "select",
+            "default": "recommendation",
+            "required": True,
+            "options": ["recommendation", "stage", "execute", "change_constraints"],
+        },
+        {
+            "key": "governance.materiality_notional",
+            "label": "Materiality notional",
+            "type": "currency",
+            "default": 450_000_000,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "governance.estimated_pnl_impact",
+            "label": "Estimated PnL impact",
+            "type": "currency",
+            "default": 0,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "governance.production_constraint_change",
+            "label": "Production constraint change",
+            "type": "boolean",
+            "default": False,
+            "required": True,
+            "options": [],
         },
     ]
     assert body["workflows"][2]["domains"] == [
@@ -208,6 +243,10 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
         "asset_allocation.risk_aversion",
         "asset_allocation.max_single_asset_weight",
         "asset_allocation.min_cash_weight",
+        "execution_mode",
+        "governance.materiality_notional",
+        "governance.estimated_pnl_impact",
+        "governance.production_constraint_change",
     ]
 
 
@@ -221,6 +260,9 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",
+        "governed_recommendation_baseline",
+        "large_notional_approval_review",
+        "production_constraint_change_review",
     ]
     mvo = body["presets"][0]
     assert mvo["workflow_id"] == "portfolio_rebalance_mvo"
@@ -233,6 +275,14 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
     assert executive["context"]["financing"]["capacity_scale"] == 0.55
     assert executive["talking_points"]
     assert executive["success_criteria"]
+    large = next(
+        item for item in body["presets"] if item["preset_id"] == "large_notional_approval_review"
+    )
+    assert large["context"]["governance"]["materiality_notional"] == 1_500_000_000
+    tier5 = next(item for item in body["presets"] if item["preset_id"] == (
+        "production_constraint_change_review"
+    ))
+    assert tier5["context"]["governance"]["production_constraint_change"] is True
 
 
 def test_workflow_endpoint_runs_liquidity_stress_workflow():
@@ -273,6 +323,36 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["explanation_report"]["dependency_changes"]
     assert body["result"]["step_results"][-1]["dependency_effects"]
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
+
+
+def test_workflow_endpoint_surfaces_governance_threshold_escalation():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "funding_capacity_shock",
+            "portfolio_id": "PORT_GOV",
+            "seed": 29,
+            "execution_mode": "recommendation",
+            "context": {
+                "governance": {
+                    "materiality_notional": 1_500_000_000,
+                    "estimated_pnl_impact": 2_500_000,
+                    "production_constraint_change": False,
+                },
+                "financing": {"total_funding_need": 375_000_000},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    governance = body["result"]["step_results"][0]["result"]["governance"]
+    assert governance["status"] == "pending"
+    assert governance["base_tier"] == 2
+    assert governance["tier"] == 4
+    assert governance["escalated"] is True
+    assert "notional exposure exceeds $1B" in governance["escalation_reason"]
+    assert governance["governance_factors"]["large_notional"] == 1_500_000_000
 
 
 def test_workflow_export_package_endpoint_returns_shareable_html():

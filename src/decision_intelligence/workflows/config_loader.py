@@ -10,7 +10,16 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from .types import DependencyRuleType
 
-InputType = Literal["string", "integer", "number", "currency", "fraction", "percent"]
+InputType = Literal[
+    "string",
+    "integer",
+    "number",
+    "currency",
+    "fraction",
+    "percent",
+    "boolean",
+    "select",
+]
 ObjectiveDirectionName = Literal["minimize", "maximize"]
 
 
@@ -20,6 +29,7 @@ class WorkflowInputConfig(BaseModel):
     type: InputType
     default: Any = None
     required: bool = True
+    options: list[str] = Field(default_factory=list)
 
 
 class WorkflowDependencyRuleConfig(BaseModel):

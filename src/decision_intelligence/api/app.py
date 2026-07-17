@@ -18,6 +18,7 @@ from decision_intelligence.export import generate_workflow_demo_package
 from decision_intelligence.governance import (
     ApprovalPolicy,
     ApprovalStore,
+    ApprovalThreshold,
     GovernanceController,
 )
 from decision_intelligence.governance.audit import AuditLog
@@ -186,14 +187,19 @@ def list_demo_presets() -> DemoPresetCatalogResponse:
 
 @app.post("/api/workflows/run", response_model=WorkflowRunResponse)
 def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
+    context = dict(payload.context)
+    if payload.execution_mode:
+        context["execution_mode"] = payload.execution_mode
     try:
         plan = DEFAULT_WORKFLOW_REGISTRY.build(
             payload.workflow,
             portfolio_id=payload.portfolio_id,
             seed=payload.seed,
-            context=payload.context,
+            context=context,
         )
     except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     orchestrator, _audit = _build_orchestrator()
@@ -271,8 +277,40 @@ def _build_orchestrator() -> tuple[OptimizationOrchestrator, AuditLog]:
     registry.register(CollateralOptimizer())
     registry.register(MoneyMarketOptimizer())
     registry.register(FinancingOptimizer())
-    governance = GovernanceController(ApprovalPolicy(), ApprovalStore(), audit)
+    governance = GovernanceController(_demo_approval_policy(), ApprovalStore(), audit)
     return OptimizationOrchestrator(registry, audit, governance), audit
+
+
+def _demo_approval_policy() -> ApprovalPolicy:
+    return ApprovalPolicy(
+        thresholds=[
+            ApprovalThreshold(
+                name="large_notional",
+                context_keys=(
+                    "governance.materiality_notional",
+                    "materiality_notional",
+                    "notional",
+                    "total_funding_need",
+                    "portfolio_notional",
+                ),
+                threshold=1_000_000_000,
+                tier=4,
+                description="notional exposure exceeds $1B",
+            ),
+            ApprovalThreshold(
+                name="pnl_impact",
+                context_keys=(
+                    "governance.estimated_pnl_impact",
+                    "estimated_pnl_impact",
+                    "pnl_impact",
+                    "pnl_at_risk",
+                ),
+                threshold=5_000_000,
+                tier=4,
+                description="estimated PnL impact exceeds $5M",
+            ),
+        ]
+    )
 
 
 def _json(value: Any) -> dict[str, Any]:

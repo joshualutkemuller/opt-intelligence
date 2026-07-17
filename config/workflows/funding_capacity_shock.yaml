@@ -29,6 +29,27 @@ inputs:
     label: Capacity scale
     type: fraction
     default: 0.45
+  - key: execution_mode
+    label: Execution mode
+    type: select
+    default: recommendation
+    options:
+      - recommendation
+      - stage
+      - execute
+      - change_constraints
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 350000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
 steps:
   - step_id: financing_001
     domain: financing
