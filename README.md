@@ -83,6 +83,8 @@ make demo-ui
 
 This launches the local FastAPI backend at `http://127.0.0.1:8000` and the
 React/Vite UI at `http://127.0.0.1:5173/`. Stop both with `Ctrl+C`.
+The browser workflow selector includes the **Portfolio Rebalance MVO** demo
+alongside the funding, collateral, and money-market workflows.
 
 For the original terminal demo:
 

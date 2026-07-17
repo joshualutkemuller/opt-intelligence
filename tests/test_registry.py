@@ -4,6 +4,7 @@ import pytest
 
 from decision_intelligence.optimization.registry import OptimizerRegistry
 from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
     CollateralOptimizer,
     FinancingOptimizer,
     MoneyMarketOptimizer,
@@ -12,6 +13,7 @@ from decision_intelligence.optimizers import (
 
 def make_registry() -> OptimizerRegistry:
     reg = OptimizerRegistry()
+    reg.register(AssetAllocationMVOOptimizer())
     reg.register(CollateralOptimizer())
     reg.register(MoneyMarketOptimizer())
     reg.register(FinancingOptimizer())
@@ -20,7 +22,12 @@ def make_registry() -> OptimizerRegistry:
 
 def test_register_and_list():
     reg = make_registry()
-    assert set(reg.list_domains()) == {"collateral", "money_market", "financing"}
+    assert set(reg.list_domains()) == {
+        "asset_allocation",
+        "collateral",
+        "financing",
+        "money_market",
+    }
 
 
 def test_get_known_domain():
@@ -51,4 +58,4 @@ def test_contains():
 
 def test_len():
     reg = make_registry()
-    assert len(reg) == 3
+    assert len(reg) == 4

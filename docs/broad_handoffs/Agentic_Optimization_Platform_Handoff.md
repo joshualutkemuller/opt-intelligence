@@ -566,8 +566,13 @@ decision-intelligence-platform/
 -   ✅ **One-Command Local Demo Startup (POC)** — `make demo-ui` now launches the
     local FastAPI backend and React/Vite frontend together through
     `scripts/run_demo_ui.sh`, with cleanup on exit.
--   Next: surface the Asset Allocation MVO optimizer in the browser workflow
-    selector with a demo preset and editable inputs.
+-   ✅ **Asset Allocation MVO Browser Workflow (POC)** — the
+    `portfolio_rebalance_mvo` workflow template and `balanced_mvo_rebalance`
+    demo preset now surface the Asset Allocation MVO optimizer in the browser
+    workflow selector with editable inputs for notional, target return,
+    risk-aversion, single-asset cap, and cash floor.
+-   Next: add a visual efficient-frontier / risk-return comparison view for
+    the MVO demo.
 
 ## Phase 6
 

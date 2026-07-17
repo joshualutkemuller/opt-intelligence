@@ -4,6 +4,7 @@ import pytest
 
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
     CollateralOptimizer,
     FinancingOptimizer,
     MoneyMarketOptimizer,
@@ -13,10 +14,12 @@ from decision_intelligence.workflows import (
     DEFAULT_WORKFLOW_REGISTRY,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
     LIQUIDITY_STRESS_WORKFLOW_ID,
+    PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     SequentialWorkflowRunner,
     WorkflowRegistry,
     WorkflowTemplate,
     build_liquidity_stress_funding_workflow,
+    build_portfolio_rebalance_mvo_workflow,
     load_demo_presets,
     load_workflow_config,
     load_workflow_configs,
@@ -29,6 +32,7 @@ DEMO_PRESET_CONFIG_DIR = "config/demo_presets"
 @pytest.fixture
 def orchestrator():
     registry = OptimizerRegistry()
+    registry.register(AssetAllocationMVOOptimizer())
     registry.register(CollateralOptimizer())
     registry.register(MoneyMarketOptimizer())
     registry.register(FinancingOptimizer())
@@ -61,20 +65,24 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     ]
-    assert catalog[-1]["domains"] == ["financing", "collateral", "money_market"]
-    assert catalog[-1]["version"] == 1
-    assert catalog[-1]["default_context"]["scenario"] == "stress"
-    assert "liquidity" in catalog[-1]["tags"]
-    assert catalog[-1]["inputs"][0] == {
+    liquidity = next(
+        item for item in catalog if item["workflow_id"] == LIQUIDITY_STRESS_WORKFLOW_ID
+    )
+    assert liquidity["domains"] == ["financing", "collateral", "money_market"]
+    assert liquidity["version"] == 1
+    assert liquidity["default_context"]["scenario"] == "stress"
+    assert "liquidity" in liquidity["tags"]
+    assert liquidity["inputs"][0] == {
         "key": "portfolio_id",
         "label": "Portfolio ID",
         "type": "string",
         "default": "PORT_001",
         "required": True,
     }
-    assert catalog[-1]["inputs"][2]["key"] == "money_market.total_cash"
-    assert catalog[-1]["inputs"][2]["default"] == 500_000_000
+    assert liquidity["inputs"][2]["key"] == "money_market.total_cash"
+    assert liquidity["inputs"][2]["default"] == 500_000_000
 
     plan = DEFAULT_WORKFLOW_REGISTRY.build(
         LIQUIDITY_STRESS_WORKFLOW_ID,
@@ -91,6 +99,7 @@ def test_default_workflow_registry_builds_all_templates():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID: ["collateral", "money_market"],
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID: ["financing", "money_market"],
         LIQUIDITY_STRESS_WORKFLOW_ID: ["financing", "collateral", "money_market"],
+        PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID: ["asset_allocation"],
     }
 
     for workflow_id, domains in expected_domains.items():
@@ -106,6 +115,7 @@ def test_loads_workflow_template_configs():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     ]
     liquidity = next(
         config for config in configs if config.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
@@ -134,6 +144,7 @@ def test_loads_demo_presets_for_registered_workflows():
     )
 
     assert [preset.preset_id for preset in presets] == [
+        "balanced_mvo_rebalance",
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",
@@ -146,6 +157,32 @@ def test_loads_demo_presets_for_registered_workflows():
     assert executive.context["financing"]["capacity_scale"] == 0.55
     assert executive.talking_points
     assert executive.success_criteria
+
+
+def test_portfolio_rebalance_mvo_workflow_runs(orchestrator):
+    plan = build_portfolio_rebalance_mvo_workflow(
+        portfolio_id="PORT_MVO_001",
+        seed=42,
+        context={
+            "asset_allocation": {
+                "portfolio_notional": 250_000_000,
+                "target_return": 0.05,
+                "risk_aversion": 3.0,
+                "max_single_asset_weight": 0.45,
+                "min_cash_weight": 0.02,
+            }
+        },
+    )
+
+    result = SequentialWorkflowRunner(orchestrator).run(plan)
+
+    assert result.status == "complete"
+    assert result.workflow_id == PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID
+    assert [step.domain for step in result.step_results] == ["asset_allocation"]
+    step_result = result.step_results[0].result
+    assert step_result.status.value == "optimal"
+    assert step_result.solver_metadata["solver_method"] == "SLSQP"
+    assert step_result.solver_metadata["expected_return"] >= 0.05
 
 
 def test_load_workflow_config_rejects_invalid_dependency(tmp_path):

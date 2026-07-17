@@ -12,6 +12,7 @@ from .types import WorkflowDependencyRule, WorkflowPlan, WorkflowStep
 LIQUIDITY_STRESS_WORKFLOW_ID = "liquidity_stress_funding_workflow"
 FUNDING_CAPACITY_SHOCK_WORKFLOW_ID = "funding_capacity_shock"
 COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID = "collateral_liquidity_review"
+PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID = "portfolio_rebalance_mvo"
 
 
 def build_liquidity_stress_funding_workflow(
@@ -331,6 +332,62 @@ def build_collateral_liquidity_review_workflow(
     )
 
 
+def build_portfolio_rebalance_mvo_workflow(
+    *,
+    portfolio_id: str = "PORT_001",
+    seed: int = 42,
+    context: dict[str, Any] | None = None,
+) -> WorkflowPlan:
+    """Build a one-step multi-asset MVO rebalance workflow."""
+
+    overrides = dict(context or {})
+    workflow_context = _workflow_context(portfolio_id, seed, overrides, "mvo_rebalance")
+    workflow_context["problem_type"] = overrides.get("problem_type", "qp")
+    asset_context = _domain_context(
+        overrides,
+        "asset_allocation",
+        PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
+        {
+            "portfolio_notional": 250_000_000,
+            "target_return": 0.05,
+            "risk_aversion": 3.0,
+            "max_single_asset_weight": 0.45,
+            "min_cash_weight": 0.02,
+            "solver_backend": "scipy",
+            "problem_type": "qp",
+        },
+        workflow_context,
+    )
+
+    return WorkflowPlan(
+        workflow_id=PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
+        name="Portfolio Rebalance MVO",
+        description=(
+            "Runs a constrained mean-variance optimizer for a multi-asset "
+            "portfolio rebalance."
+        ),
+        context=workflow_context,
+        steps=[
+            WorkflowStep(
+                step_id="asset_allocation_001",
+                domain="asset_allocation",
+                name="Multi-asset MVO rebalance",
+                description=(
+                    "Allocate capital across asset classes using expected return, "
+                    "covariance, target return, and concentration limits."
+                ),
+                request=_request(
+                    domain="asset_allocation",
+                    portfolio_id=portfolio_id,
+                    direction=ObjectiveDirection.MAXIMIZE,
+                    metric="utility",
+                    context=asset_context,
+                ),
+            ),
+        ],
+    )
+
+
 def _workflow_context(
     portfolio_id: str,
     seed: int,
@@ -361,6 +418,7 @@ def _domain_context(
             "financing",
             "collateral",
             "money_market",
+            "asset_allocation",
             "scenario",
         }
     }

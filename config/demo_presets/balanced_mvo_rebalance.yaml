@@ -1,0 +1,31 @@
+preset_id: balanced_mvo_rebalance
+version: 1
+name: Balanced MVO Rebalance
+description: >
+  Portfolio-construction walkthrough showing how risk aversion, target return,
+  cash floor, and concentration limits shape a multi-asset rebalance.
+audience: Portfolio managers, CIO office, investment risk, and advisory teams
+workflow_id: portfolio_rebalance_mvo
+portfolio_id: PORT_MVO_001
+seed: 42
+duration_minutes: 5
+context:
+  scenario: balanced_mvo_rebalance
+  solver_backend: scipy
+  problem_type: qp
+  asset_allocation:
+    portfolio_notional: 250000000
+    target_return: 0.05
+    risk_aversion: 3.0
+    max_single_asset_weight: 0.45
+    min_cash_weight: 0.02
+talking_points:
+  - Start with a balanced multi-asset portfolio construction question.
+  - Show how target return and risk aversion change the optimizer's tradeoff.
+  - Highlight concentration caps and the cash floor as visible guardrails.
+  - Use expected return, volatility, and Sharpe as simple stakeholder metrics.
+success_criteria:
+  - Asset allocation step completes successfully.
+  - Expected return meets or exceeds the target return.
+  - Allocation weights sum to 100% and respect the single-asset cap.
+  - Export package captures the allocation, risk metrics, and audit payload.

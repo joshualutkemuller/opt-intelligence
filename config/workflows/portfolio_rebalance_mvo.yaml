@@ -1,0 +1,61 @@
+workflow_id: portfolio_rebalance_mvo
+version: 1
+name: Portfolio Rebalance MVO
+description: >
+  Runs a single-step mean-variance optimizer for a multi-asset portfolio
+  rebalance with target return, risk-aversion, concentration, and cash controls.
+domains:
+  - asset_allocation
+tags:
+  - asset-allocation
+  - mvo
+  - portfolio
+  - rebalance
+  - demo
+default_context:
+  scenario: mvo_rebalance
+  solver_backend: scipy
+  problem_type: qp
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_MVO_001
+  - key: seed
+    label: Simulation seed
+    type: integer
+    default: 42
+  - key: asset_allocation.portfolio_notional
+    label: Portfolio notional
+    type: currency
+    default: 250000000
+  - key: asset_allocation.target_return
+    label: Target annual return
+    type: fraction
+    default: 0.05
+  - key: asset_allocation.risk_aversion
+    label: Risk aversion lambda
+    type: number
+    default: 3.0
+  - key: asset_allocation.max_single_asset_weight
+    label: Max single asset weight
+    type: fraction
+    default: 0.45
+  - key: asset_allocation.min_cash_weight
+    label: Minimum cash weight
+    type: fraction
+    default: 0.02
+steps:
+  - step_id: asset_allocation_001
+    domain: asset_allocation
+    name: Multi-asset MVO rebalance
+    objective_metric: utility
+    objective_direction: maximize
+    context:
+      portfolio_notional: 250000000
+      target_return: 0.05
+      risk_aversion: 3.0
+      max_single_asset_weight: 0.45
+      min_cash_weight: 0.02
+      solver_backend: scipy
+      problem_type: qp

@@ -149,9 +149,16 @@ actions from the top-level `explanation_report`.
 
 Registered demo templates:
 
+- Portfolio Rebalance MVO
 - Liquidity Stress Funding Workflow
 - Funding Capacity Shock
 - Collateral Liquidity Review
+
+The **Balanced MVO Rebalance** preset demonstrates the Asset Allocation MVO
+optimizer in the same browser workflow shell, with editable inputs for
+portfolio notional, target annual return, risk aversion, max single asset
+weight, and minimum cash weight. MVO results show expected return, volatility,
+and Sharpe in the recommendation metrics.
 
 The corresponding YAML template configs live in:
 

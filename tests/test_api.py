@@ -120,7 +120,8 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
     assert [item["workflow_id"] for item in body["workflows"]] == [
         "collateral_liquidity_review",
         "funding_capacity_shock",
-        "liquidity_stress_funding_workflow"
+        "liquidity_stress_funding_workflow",
+        "portfolio_rebalance_mvo",
     ]
     assert body["workflows"][0]["version"] == 1
     assert body["workflows"][0]["inputs"] == [
@@ -146,10 +147,22 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
             "required": True,
         },
     ]
-    assert body["workflows"][-1]["domains"] == [
+    assert body["workflows"][2]["domains"] == [
         "financing",
         "collateral",
         "money_market",
+    ]
+    mvo = body["workflows"][-1]
+    assert mvo["domains"] == ["asset_allocation"]
+    assert mvo["default_context"]["problem_type"] == "qp"
+    assert [item["key"] for item in mvo["inputs"]] == [
+        "portfolio_id",
+        "seed",
+        "asset_allocation.portfolio_notional",
+        "asset_allocation.target_return",
+        "asset_allocation.risk_aversion",
+        "asset_allocation.max_single_asset_weight",
+        "asset_allocation.min_cash_weight",
     ]
 
 
@@ -159,11 +172,17 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
     assert response.status_code == 200
     body = response.json()
     assert [item["preset_id"] for item in body["presets"]] == [
+        "balanced_mvo_rebalance",
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",
     ]
-    executive = body["presets"][1]
+    mvo = body["presets"][0]
+    assert mvo["workflow_id"] == "portfolio_rebalance_mvo"
+    assert mvo["context"]["asset_allocation"]["target_return"] == 0.05
+    executive = next(
+        item for item in body["presets"] if item["preset_id"] == "executive_liquidity_stress"
+    )
     assert executive["workflow_id"] == "liquidity_stress_funding_workflow"
     assert executive["portfolio_id"] == "PORT_EXEC_001"
     assert executive["context"]["financing"]["capacity_scale"] == 0.55

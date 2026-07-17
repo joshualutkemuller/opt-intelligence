@@ -98,6 +98,7 @@ type ValidationReport = {
 };
 
 type OptimizationResult = {
+  domain?: string;
   status: string;
   objective_value: number;
   baseline_value: number;
@@ -329,6 +330,55 @@ const MAX_RUN_HISTORY = 12;
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
   {
+    workflow_id: "portfolio_rebalance_mvo",
+    name: "Portfolio Rebalance MVO",
+    description:
+      "Runs a constrained mean-variance optimizer for a multi-asset portfolio rebalance.",
+    domains: ["asset_allocation"],
+    tags: ["asset-allocation", "mvo", "portfolio", "rebalance", "demo"],
+    version: 1,
+    default_context: { scenario: "mvo_rebalance", solver_backend: "scipy", problem_type: "qp" },
+    inputs: [
+      { key: "portfolio_id", label: "Portfolio ID", type: "string", default: "PORT_MVO_001", required: true },
+      { key: "seed", label: "Simulation seed", type: "integer", default: 42, required: true },
+      {
+        key: "asset_allocation.portfolio_notional",
+        label: "Portfolio notional",
+        type: "currency",
+        default: 250_000_000,
+        required: true,
+      },
+      {
+        key: "asset_allocation.target_return",
+        label: "Target annual return",
+        type: "fraction",
+        default: 0.05,
+        required: true,
+      },
+      {
+        key: "asset_allocation.risk_aversion",
+        label: "Risk aversion lambda",
+        type: "number",
+        default: 3.0,
+        required: true,
+      },
+      {
+        key: "asset_allocation.max_single_asset_weight",
+        label: "Max single asset weight",
+        type: "fraction",
+        default: 0.45,
+        required: true,
+      },
+      {
+        key: "asset_allocation.min_cash_weight",
+        label: "Minimum cash weight",
+        type: "fraction",
+        default: 0.02,
+        required: true,
+      },
+    ],
+  },
+  {
     workflow_id: "collateral_liquidity_review",
     name: "Collateral Liquidity Review",
     description:
@@ -364,6 +414,35 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
 ];
 
 const fallbackDemoPresets: DemoPresetCatalogItem[] = [
+  {
+    preset_id: "balanced_mvo_rebalance",
+    version: 1,
+    name: "Balanced MVO Rebalance",
+    description:
+      "Portfolio-construction walkthrough showing how target return and risk controls shape a multi-asset rebalance.",
+    audience: "Portfolio managers, CIO office, investment risk, and advisory teams",
+    workflow_id: "portfolio_rebalance_mvo",
+    portfolio_id: "PORT_MVO_001",
+    seed: 42,
+    duration_minutes: 5,
+    context: {
+      scenario: "balanced_mvo_rebalance",
+      solver_backend: "scipy",
+      problem_type: "qp",
+      asset_allocation: {
+        portfolio_notional: 250_000_000,
+        target_return: 0.05,
+        risk_aversion: 3.0,
+        max_single_asset_weight: 0.45,
+        min_cash_weight: 0.02,
+      },
+    },
+    talking_points: [
+      "Start with a balanced multi-asset portfolio construction question.",
+      "Show expected return, volatility, and Sharpe as stakeholder metrics.",
+    ],
+    success_criteria: ["Asset allocation step completes and meets the target return."],
+  },
   {
     preset_id: "executive_liquidity_stress",
     version: 1,
@@ -405,7 +484,7 @@ function App() {
     fallbackDemoPresets[0].preset_id,
   );
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(
-    "liquidity_stress_funding_workflow",
+    fallbackDemoPresets[0].workflow_id,
   );
   const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
   const [historyInputOverride, setHistoryInputOverride] =
@@ -414,7 +493,7 @@ function App() {
   const [latestWorkflowRunPayload, setLatestWorkflowRunPayload] =
     useState<WorkflowRunPayload | null>(null);
   const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory());
-  const [solver, setSolver] = useState("scipy-lp");
+  const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
@@ -932,7 +1011,10 @@ function App() {
             onChange={(presetId) => {
               setSelectedDemoPresetId(presetId);
               const preset = demoPresets.find((item) => item.preset_id === presetId);
-              if (preset) setSelectedWorkflowId(preset.workflow_id);
+              if (preset) {
+                setSelectedWorkflowId(preset.workflow_id);
+                setSolver(solverKeyForWorkflow(preset.workflow_id));
+              }
             }}
             disabled={isWorkflowRunning}
           />
@@ -942,6 +1024,7 @@ function App() {
             selectedWorkflowId={selectedWorkflowId}
             onChange={(workflowId) => {
               setSelectedWorkflowId(workflowId);
+              setSolver(solverKeyForWorkflow(workflowId));
               const preset = demoPresets.find((item) => item.workflow_id === workflowId);
               if (preset) setSelectedDemoPresetId(preset.preset_id);
             }}
@@ -1415,6 +1498,7 @@ function addWorkflowGuardrails(
   const moneyMarket = toRecord(context.money_market);
   const financing = toRecord(context.financing);
   const collateral = toRecord(context.collateral);
+  const assetAllocation = toRecord(context.asset_allocation);
 
   const dailyLiquidity = optionalNumber(moneyMarket.daily_liquidity_req);
   const weeklyLiquidity = optionalNumber(moneyMarket.weekly_liquidity_req);
@@ -1424,6 +1508,10 @@ function addWorkflowGuardrails(
   const fundingNeed = optionalNumber(financing.total_funding_need);
   const capacityScale = optionalNumber(financing.capacity_scale);
   const obligationScale = optionalNumber(collateral.obligation_scale);
+  const targetReturn = optionalNumber(assetAllocation.target_return);
+  const riskAversion = optionalNumber(assetAllocation.risk_aversion);
+  const maxSingleAsset = optionalNumber(assetAllocation.max_single_asset_weight);
+  const minCashWeight = optionalNumber(assetAllocation.min_cash_weight);
 
   if (dailyLiquidity !== undefined && weeklyLiquidity !== undefined) {
     if (dailyLiquidity > weeklyLiquidity) {
@@ -1487,6 +1575,38 @@ function addWorkflowGuardrails(
       severity: "warning",
       field: "Obligation scale",
       message: "Collateral obligations are near the upper demo range.",
+    });
+  }
+
+  if (targetReturn !== undefined && (targetReturn <= 0 || targetReturn > 0.15)) {
+    issues.push({
+      severity: targetReturn > 0.15 ? "error" : "warning",
+      field: "Target return",
+      message: "Target return should be a realistic annual decimal for this MVO demo.",
+    });
+  }
+
+  if (riskAversion !== undefined && (riskAversion < 0 || riskAversion > 10)) {
+    issues.push({
+      severity: "error",
+      field: "Risk aversion",
+      message: "Risk aversion should be between 0 and 10.",
+    });
+  }
+
+  if (maxSingleAsset !== undefined && (maxSingleAsset < 0.20 || maxSingleAsset > 1)) {
+    issues.push({
+      severity: "error",
+      field: "Single asset cap",
+      message: "Single asset cap should be between 20% and 100%.",
+    });
+  }
+
+  if (minCashWeight !== undefined && (minCashWeight < 0 || minCashWeight > 0.30)) {
+    issues.push({
+      severity: "error",
+      field: "Cash floor",
+      message: "Cash floor should be between 0% and 30% for this demo.",
     });
   }
 }
@@ -2319,6 +2439,7 @@ function StateRow({ label, value }: { label: string; value: string }) {
 }
 
 function ResultPanel({ result }: { result: OptimizationResult }) {
+  const metrics = resultPanelMetrics(result);
   return (
     <section className="panel result-panel">
       <div className="section-header">
@@ -2330,14 +2451,15 @@ function ResultPanel({ result }: { result: OptimizationResult }) {
       </div>
 
       <div className="metric-grid">
-        <Metric label="Optimized yield" value={`${result.objective_value.toFixed(4)}%`} note="Net annualized" />
-        <Metric label="Baseline yield" value={`${result.baseline_value.toFixed(4)}%`} note="Current allocation" />
-        <Metric
-          label="Improvement"
-          value={`${result.improvement >= 0 ? "+" : ""}${(result.improvement * 100).toFixed(2)} bps`}
-          note={`${result.improvement_pct.toFixed(2)}%`}
-          accent
-        />
+        {metrics.map((metric) => (
+          <Metric
+            label={metric.label}
+            value={metric.value}
+            note={metric.note}
+            accent={metric.accent}
+            key={metric.label}
+          />
+        ))}
       </div>
 
       <div className="allocation-bars" aria-label="Allocation chart">
@@ -2356,6 +2478,54 @@ function ResultPanel({ result }: { result: OptimizationResult }) {
       </div>
     </section>
   );
+}
+
+function resultPanelMetrics(
+  result: OptimizationResult,
+): Array<{ label: string; value: string; note: string; accent?: boolean }> {
+  const expectedReturn = optionalNumber(result.solver_metadata.expected_return);
+  const volatility = optionalNumber(result.solver_metadata.volatility);
+  const sharpe = optionalNumber(result.solver_metadata.sharpe);
+
+  if (result.domain === "asset_allocation" || expectedReturn !== undefined) {
+    return [
+      {
+        label: "Expected return",
+        value: expectedReturn !== undefined ? formatPercent(expectedReturn) : "n/a",
+        note: "Annualized",
+      },
+      {
+        label: "Volatility",
+        value: volatility !== undefined ? formatPercent(volatility) : "n/a",
+        note: "Annualized risk",
+      },
+      {
+        label: "Sharpe",
+        value: sharpe !== undefined ? sharpe.toFixed(2) : "n/a",
+        note: `Utility ${result.objective_value.toFixed(4)}`,
+        accent: true,
+      },
+    ];
+  }
+
+  return [
+    {
+      label: "Optimized yield",
+      value: `${result.objective_value.toFixed(4)}%`,
+      note: "Net annualized",
+    },
+    {
+      label: "Baseline yield",
+      value: `${result.baseline_value.toFixed(4)}%`,
+      note: "Current allocation",
+    },
+    {
+      label: "Improvement",
+      value: `${result.improvement >= 0 ? "+" : ""}${(result.improvement * 100).toFixed(2)} bps`,
+      note: `${result.improvement_pct.toFixed(2)}%`,
+      accent: true,
+    },
+  ];
 }
 
 function Metric({
@@ -2497,6 +2667,10 @@ function formatCurrency(value: unknown) {
   return `$${number.toLocaleString()}`;
 }
 
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(2)}%`;
+}
+
 function formatFraction(value: unknown) {
   const number = Number(value);
   if (Number.isNaN(number)) return String(value || "-");
@@ -2532,6 +2706,12 @@ function titleCase(value: string) {
 
 const solverProfiles: Record<string, { label: string; backend: string; problem: string; method: string }> = {
   "scipy-lp": { label: "SciPy LP", backend: "scipy", problem: "lp", method: "HiGHS" },
+  "scipy-qp": {
+    label: "SciPy QP",
+    backend: "scipy",
+    problem: "qp",
+    method: "SLSQP",
+  },
   "scipy-milp": {
     label: "SciPy MILP",
     backend: "scipy",
@@ -2540,6 +2720,10 @@ const solverProfiles: Record<string, { label: string; backend: string; problem: 
   },
   "cvxpy-lp": { label: "CVXPY LP", backend: "cvxpy", problem: "lp", method: "CLARABEL" },
 };
+
+function solverKeyForWorkflow(workflowId: string): string {
+  return workflowId === "portfolio_rebalance_mvo" ? "scipy-qp" : "scipy-lp";
+}
 
 const mockResult: OptimizationResult = {
   status: "optimal",
