@@ -3,6 +3,7 @@
 
 from .loaders import (
     DataSourceError,
+    load_asset_allocation,
     load_collateral,
     load_dataclass_csv,
     load_financing,
@@ -11,6 +12,7 @@ from .loaders import (
 
 __all__ = [
     "DataSourceError",
+    "load_asset_allocation",
     "load_collateral",
     "load_financing",
     "load_money_market",

@@ -108,7 +108,8 @@ class ChatSession:
             domain = intent.domain or detect_domain(prompt)
             if domain is None:
                 return ChatResponse(
-                    "Tell me which workflow you want: collateral, money market, or financing."
+                    "Tell me which workflow you want: asset allocation, collateral, "
+                    "money market, or financing."
                 )
             return self._start(domain, prompt, intent)
 

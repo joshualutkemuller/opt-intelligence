@@ -26,7 +26,7 @@ class ChatSessionResponse(BaseModel):
 
 
 class DirectOptimizationRequest(BaseModel):
-    domain: Literal["collateral", "money_market", "financing"]
+    domain: Literal["asset_allocation", "collateral", "money_market", "financing"]
     portfolio_id: str = "PORT_001"
     objective_metric: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)

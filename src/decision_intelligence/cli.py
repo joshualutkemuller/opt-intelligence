@@ -46,6 +46,7 @@ from decision_intelligence.governance import (
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
     CollateralOptimizer,
     FinancingOptimizer,
     MoneyMarketOptimizer,
@@ -61,6 +62,19 @@ app = typer.Typer(
 console = Console()
 
 _DOMAIN_INFO = {
+    "asset_allocation": {
+        "desc": "Maximize mean-variance utility across asset classes subject to weight limits and optional target return.",
+        "objective": "utility",
+        "direction": ObjectiveDirection.MAXIMIZE,
+        "metrics": ["utility", "risk_adjusted_return", "sharpe", "volatility"],
+        "default_context": {
+            "seed": 42,
+            "portfolio_notional": 100_000_000,
+            "risk_aversion": 3.0,
+            "target_return": None,
+            "problem_type": "qp",
+        },
+    },
     "collateral": {
         "desc": "Minimize funding cost across collateral assets subject to eligibility, haircut coverage, inventory, and concentration constraints.",
         "objective": "funding_cost",
@@ -89,21 +103,34 @@ _SCENARIO_PRESETS = {
         "collateral":   {"obligation_scale": 1.5},
         "money_market": {"daily_liquidity_req": 0.40, "weekly_liquidity_req": 0.70},
         "financing":    {"spread_shift": 1.5, "capacity_scale": 0.6},
+        "asset_allocation": {
+            "equity_return_shift": -0.025,
+            "volatility_scale": 1.35,
+            "min_cash_weight": 0.05,
+        },
     },
     "credit_stress": {
         "collateral":   {"obligation_scale": 1.3},
         "money_market": {"daily_liquidity_req": 0.45, "yield_shift": 0.92},
         "financing":    {"spread_shift": 1.5, "capacity_scale": 0.6},
+        "asset_allocation": {
+            "equity_return_shift": -0.035,
+            "bond_return_shift": -0.005,
+            "volatility_scale": 1.50,
+            "min_cash_weight": 0.06,
+        },
     },
     "downside": {
         "collateral":   {"inventory_scale": 0.7},
         "money_market": {"yield_shift": 0.9},
         "financing":    {"spread_shift": 1.2, "capacity_scale": 0.8},
+        "asset_allocation": {"return_shift": -0.01, "volatility_scale": 1.20},
     },
     "inventory": {
         "collateral":   {"inventory_scale": 0.7},
         "money_market": {},
         "financing":    {},
+        "asset_allocation": {},
     },
 }
 
@@ -117,12 +144,18 @@ _DOMAIN_ALIASES = {
     "financing": "financing",
     "funding": "financing",
     "repo": "financing",
+    "asset allocation": "asset_allocation",
+    "asset_allocation": "asset_allocation",
+    "allocation": "asset_allocation",
+    "mvo": "asset_allocation",
+    "portfolio": "asset_allocation",
 }
 
 
 def _build_registry() -> tuple[OptimizationOrchestrator, AuditLog]:
     audit = AuditLog()
     reg = OptimizerRegistry()
+    reg.register(AssetAllocationMVOOptimizer())
     reg.register(CollateralOptimizer())
     reg.register(MoneyMarketOptimizer())
     reg.register(FinancingOptimizer())
@@ -174,12 +207,14 @@ def _print_chat_help() -> None:
     console.print(Panel(
         "[bold blue]CHAT DEMO[/bold blue]\n\n"
         "Guided workflows:\n"
+        "  Optimize a multi-asset allocation with MVO\n"
         "  I want to optimize money market cash\n"
         "  Help me source financing\n"
         "  Guide a collateral optimization\n\n"
         "Quick commands:\n"
         "Try prompts like:\n"
         "  list domains\n"
+        "  optimize asset allocation under stress\n"
         "  tell me about collateral\n"
         "  optimize money market under stress\n"
         "  run financing with credit stress\n"
@@ -248,8 +283,9 @@ def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
     domain = _detect_domain(prompt)
     if not domain:
         console.print(
-            "[bold blue]assistant[/bold blue] I can route collateral, money market, "
-            "or financing requests. Type [bold]help[/bold] for examples."
+            "[bold blue]assistant[/bold blue] I can route asset allocation, "
+            "collateral, money market, or financing requests. Type [bold]help[/bold] "
+            "for examples."
         )
         return True
 
@@ -333,7 +369,10 @@ def cmd_info(domain: str = typer.Argument(..., help="Optimizer domain")):
 
 @app.command("run")
 def cmd_run(
-    domain: str = typer.Argument(..., help="Optimizer domain (collateral, money_market, financing)"),
+    domain: str = typer.Argument(
+        ...,
+        help="Optimizer domain (asset_allocation, collateral, money_market, financing)",
+    ),
     portfolio: str = typer.Option("PORT_001", "--portfolio", "-p", help="Portfolio identifier"),
     objective: Optional[str] = typer.Option(None, "--objective", "-o", help="Objective metric (default: domain's standard metric)"),
     scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario preset(s): stress, downside, inventory (comma-separated)"),

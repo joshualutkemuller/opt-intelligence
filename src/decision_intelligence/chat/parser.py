@@ -14,6 +14,11 @@ DOMAIN_ALIASES = {
     "financing": "financing",
     "funding": "financing",
     "repo": "financing",
+    "asset allocation": "asset_allocation",
+    "asset_allocation": "asset_allocation",
+    "allocation": "asset_allocation",
+    "mvo": "asset_allocation",
+    "portfolio": "asset_allocation",
 }
 
 _AMOUNT_RE = re.compile(r"\$?\s*([\d,.]+)\s*([kmb]|thousand|million|billion)?", re.I)
@@ -99,6 +104,13 @@ def parse_percent_points(text: str) -> float:
     if value <= 1 and "%" not in raw:
         value *= 100
     return value
+
+
+def parse_float(text: str) -> float:
+    match = re.search(r"-?[\d.]+", text.replace(",", ""))
+    if not match:
+        raise ValueError("Enter a number.")
+    return float(match.group(0))
 
 
 def parse_scenario_names(text: str) -> list[str]:

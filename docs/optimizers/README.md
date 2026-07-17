@@ -6,6 +6,7 @@ used by the workflow engine:
 
 | Domain | Optimizer | Problem family | Primary decision |
 |---|---|---|---|
+| `asset_allocation` | Asset Allocation MVO Optimizer | Convex QP via SciPy SLSQP | Allocate capital across major asset classes |
 | `money_market` | Money Market Optimizer | LP, optional MILP | Allocate cash across money market funds |
 | `collateral` | Collateral Optimizer | LP | Allocate collateral inventory to obligations |
 | `financing` | Financing Optimizer | LP | Source funding from counterparties |
@@ -23,12 +24,14 @@ context = {
 }
 ```
 
-The money market optimizer can also build a true MILP when
+The asset allocation optimizer uses SciPy SLSQP for a constrained
+mean-variance objective. The money market optimizer can also build a true MILP when
 `problem_type = "milp"` so it can enforce fund-selection binary variables. The
 collateral and financing optimizers currently build continuous LPs.
 
 ## Pages
 
+- [Asset Allocation MVO Optimizer](asset_allocation.md)
 - [Money Market Optimizer](money_market.md)
 - [Collateral Optimizer](collateral.md)
 - [Financing Optimizer](financing.md)

@@ -82,6 +82,36 @@ def test_direct_optimization_endpoint():
     assert body["request"]["portfolio_id"] == "PORT_204"
 
 
+def test_direct_asset_allocation_endpoint():
+    response = client.post(
+        "/api/optimizations/run",
+        json={
+            "domain": "asset_allocation",
+            "portfolio_id": "PORT_MVO",
+            "objective_metric": "utility",
+            "context": {
+                "seed": 42,
+                "portfolio_notional": 250_000_000,
+                "risk_aversion": 3.0,
+                "target_return": 0.05,
+                "max_single_asset_weight": 0.45,
+                "solver_backend": "scipy",
+                "problem_type": "qp",
+            },
+            "scenarios": ["stress"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["domain"] == "asset_allocation"
+    assert body["result"]["status"] == "optimal"
+    assert len(body["result"]["allocations"]) == 6
+    assert body["result"]["solver_metadata"]["solver_method"] == "SLSQP"
+    assert body["result"]["solver_metadata"]["expected_return"] >= 0.05
+    assert body["request"]["context"]["risk_aversion"] == 3.0
+
+
 def test_workflow_catalog_endpoint_lists_registered_workflows():
     response = client.get("/api/workflows")
 

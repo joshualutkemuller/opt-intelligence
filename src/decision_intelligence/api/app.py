@@ -23,6 +23,7 @@ from decision_intelligence.governance import (
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
     CollateralOptimizer,
     FinancingOptimizer,
     MoneyMarketOptimizer,
@@ -78,7 +79,8 @@ def create_chat_session(payload: CreateChatSessionRequest) -> ChatSessionRespons
     return ChatSessionResponse(
         session_id=session_id,
         assistant_message=(
-            "Tell me which workflow you want: collateral, money market, or financing."
+            "Tell me which workflow you want: asset allocation, collateral, "
+            "money market, or financing."
         ),
         state=session.snapshot(),
         trace=session.snapshot().get("trace", []),
@@ -223,6 +225,7 @@ def _run_request(request: OptimizationRequest):
 def _build_orchestrator() -> tuple[OptimizationOrchestrator, AuditLog]:
     audit = AuditLog()
     registry = OptimizerRegistry()
+    registry.register(AssetAllocationMVOOptimizer())
     registry.register(CollateralOptimizer())
     registry.register(MoneyMarketOptimizer())
     registry.register(FinancingOptimizer())

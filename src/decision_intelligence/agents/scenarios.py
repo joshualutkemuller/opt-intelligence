@@ -33,6 +33,21 @@ class ScenarioAgent:
 
 
 def _base_suggestions(domain: str | None) -> list[ScenarioSuggestion]:
+    if domain == "asset_allocation":
+        return [
+            ScenarioSuggestion(
+                name="stress",
+                reason="Tests lower equity returns and higher cross-asset volatility.",
+            ),
+            ScenarioSuggestion(
+                name="credit_stress",
+                reason="Tests equity drawdown, credit pressure, and higher volatility.",
+            ),
+            ScenarioSuggestion(
+                name="downside",
+                reason="Tests a broad lower-return and higher-volatility environment.",
+            ),
+        ]
     if domain == "money_market":
         return [
             ScenarioSuggestion(

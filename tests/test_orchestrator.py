@@ -3,8 +3,6 @@
 import pytest
 
 from decision_intelligence.contracts import (
-    Constraint,
-    ConstraintType,
     Objective,
     ObjectiveDirection,
     OptimizationRequest,
@@ -14,6 +12,7 @@ from decision_intelligence.contracts import (
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
     CollateralOptimizer,
     FinancingOptimizer,
     MoneyMarketOptimizer,
@@ -23,6 +22,7 @@ from decision_intelligence.optimizers import (
 @pytest.fixture
 def orchestrator():
     reg = OptimizerRegistry()
+    reg.register(AssetAllocationMVOOptimizer())
     reg.register(CollateralOptimizer())
     reg.register(MoneyMarketOptimizer())
     reg.register(FinancingOptimizer())
@@ -31,9 +31,15 @@ def orchestrator():
 
 def _req(domain: str, metric: str = "funding_cost", **ctx):
     direction = (
-        ObjectiveDirection.MAXIMIZE if domain == "money_market" else ObjectiveDirection.MINIMIZE
+        ObjectiveDirection.MAXIMIZE
+        if domain in {"asset_allocation", "money_market"}
+        else ObjectiveDirection.MINIMIZE
     )
-    metric_map = {"money_market": "yield", "financing": "funding_spread"}
+    metric_map = {
+        "asset_allocation": "utility",
+        "money_market": "yield",
+        "financing": "funding_spread",
+    }
     actual_metric = metric_map.get(domain, metric)
     return OptimizationRequest(
         domain=domain,
@@ -70,6 +76,25 @@ def test_money_market_optimal(orchestrator):
     assert result.objective_value > 0
     assert len(result.allocations) > 0
     assert result.validation.passed
+
+
+def test_asset_allocation_mvo_optimal(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "asset_allocation",
+            portfolio_notional=250_000_000,
+            risk_aversion=3.0,
+            target_return=0.05,
+            max_single_asset_weight=0.45,
+        )
+    )
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.objective_value > result.baseline_value
+    assert len(result.allocations) == 6
+    assert abs(sum(item.allocated_fraction for item in result.allocations) - 1.0) < 1e-5
+    assert result.validation.passed
+    assert result.solver_metadata["solver_method"] == "SLSQP"
+    assert result.solver_metadata["expected_return"] >= 0.05
 
 
 def test_financing_optimal(orchestrator):
@@ -132,7 +157,7 @@ def test_audit_log_populated(orchestrator):
     assert "optimization_complete" in events
 
 
-def test_all_three_domains(orchestrator):
-    for domain in ["collateral", "money_market", "financing"]:
+def test_all_enabled_domains(orchestrator):
+    for domain in ["asset_allocation", "collateral", "money_market", "financing"]:
         result = orchestrator.run(_req(domain))
         assert result.status == SolveStatus.OPTIMAL, f"Domain {domain} failed: {result.explanation}"

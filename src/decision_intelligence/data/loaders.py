@@ -35,6 +35,10 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from decision_intelligence.contracts import OptimizationRequest
+from decision_intelligence.optimizers.asset_allocation.data import (
+    AssetClassAssumption,
+    simulate_asset_universe,
+)
 from decision_intelligence.optimizers.collateral.data import (
     CollateralAsset,
     CollateralObligation,
@@ -213,6 +217,25 @@ def load_financing(
     raise DataSourceError(f"Unknown data_source type '{src['type']}' for financing.")
 
 
+def load_asset_allocation(
+    request: OptimizationRequest,
+) -> tuple[list[AssetClassAssumption], Any]:
+    src = _source(request)
+    if src["type"] == "simulated":
+        return simulate_asset_universe(
+            seed=request.context.get("seed", 42),
+            context_overrides=request.context,
+        )
+    if src["type"] == "csv":
+        assets = load_dataclass_csv(
+            _require(src, "assets", "asset_allocation"),
+            AssetClassAssumption,
+        )
+        covariance = _load_covariance_csv(_require(src, "covariance", "asset_allocation"))
+        return assets, covariance
+    raise DataSourceError(f"Unknown data_source type '{src['type']}' for asset_allocation.")
+
+
 def _build_cash_position(
     request: OptimizationRequest,
     src: dict[str, Any],
@@ -248,3 +271,21 @@ def _build_cash_position(
         daily_liquidity_requirement=ctx.get("daily_liquidity_req", 0.30),
         weekly_liquidity_requirement=ctx.get("weekly_liquidity_req", 0.60),
     )
+
+
+def _load_covariance_csv(path: str | Path) -> Any:
+    import numpy as np
+
+    rows: list[list[float]] = []
+    p = Path(path)
+    if not p.exists():
+        raise DataSourceError(f"covariance CSV not found: {p}")
+    with p.open(newline="") as fh:
+        reader = csv.reader(fh)
+        for row in reader:
+            if row:
+                rows.append([float(value) for value in row])
+    covariance = np.array(rows, dtype=float)
+    if covariance.ndim != 2 or covariance.shape[0] != covariance.shape[1]:
+        raise DataSourceError("asset_allocation covariance CSV must be square.")
+    return covariance

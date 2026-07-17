@@ -10,6 +10,7 @@ from decision_intelligence.contracts import ObjectiveDirection
 
 from .parser import (
     parse_amount,
+    parse_float,
     parse_fraction,
     parse_int,
     parse_percent_points,
@@ -52,21 +53,34 @@ SCENARIO_PRESETS: dict[str, dict[str, dict[str, Any]]] = {
         "collateral": {"obligation_scale": 1.5},
         "money_market": {"daily_liquidity_req": 0.40, "weekly_liquidity_req": 0.70},
         "financing": {"spread_shift": 1.5, "capacity_scale": 0.6},
+        "asset_allocation": {
+            "equity_return_shift": -0.025,
+            "volatility_scale": 1.35,
+            "min_cash_weight": 0.05,
+        },
     },
     "credit_stress": {
         "collateral": {"obligation_scale": 1.3},
         "money_market": {"daily_liquidity_req": 0.45, "yield_shift": 0.92},
         "financing": {"spread_shift": 1.5, "capacity_scale": 0.6},
+        "asset_allocation": {
+            "equity_return_shift": -0.035,
+            "bond_return_shift": -0.005,
+            "volatility_scale": 1.50,
+            "min_cash_weight": 0.06,
+        },
     },
     "downside": {
         "collateral": {"inventory_scale": 0.7},
         "money_market": {"yield_shift": 0.9},
         "financing": {"spread_shift": 1.2, "capacity_scale": 0.8},
+        "asset_allocation": {"return_shift": -0.01, "volatility_scale": 1.20},
     },
     "inventory": {
         "collateral": {"inventory_scale": 0.7},
         "money_market": {},
         "financing": {},
+        "asset_allocation": {},
     },
 }
 
@@ -76,6 +90,12 @@ def _identity(text: str) -> str:
     if not value:
         raise ValueError("Enter a value.")
     return value
+
+
+def _parse_optional_fraction(text: str) -> float | None:
+    if text.strip().lower() in {"none", "no"}:
+        return None
+    return parse_fraction(text)
 
 
 SOLVER_FIELDS = (
@@ -97,6 +117,68 @@ SOLVER_FIELDS = (
 
 
 WORKFLOWS: dict[str, WorkflowSpec] = {
+    "asset_allocation": WorkflowSpec(
+        domain="asset_allocation",
+        title="Asset Allocation MVO",
+        intro="I will guide a multi-asset mean-variance allocation workflow.",
+        objective_metric="utility",
+        direction=ObjectiveDirection.MAXIMIZE,
+        base_context={},
+        fields=(
+            FieldSpec(
+                "portfolio_id",
+                "What portfolio ID should I use?",
+                _identity,
+                "PORT_001",
+                "portfolio",
+                "portfolio",
+            ),
+            FieldSpec(
+                "portfolio_notional",
+                "What portfolio notional should I allocate?",
+                parse_amount,
+                100_000_000,
+                label="portfolio notional",
+            ),
+            FieldSpec(
+                "target_return",
+                "Target annual return? Type none, or a value like 5%.",
+                _parse_optional_fraction,
+                None,
+                label="target return",
+            ),
+            FieldSpec(
+                "risk_aversion",
+                "Risk aversion lambda? Use 3 for balanced, lower for aggressive.",
+                parse_float,
+                3.0,
+                label="risk aversion",
+            ),
+            FieldSpec(
+                "max_single_asset_weight",
+                "Maximum single asset-class weight? (for example 45%)",
+                parse_fraction,
+                0.45,
+                label="single asset cap",
+            ),
+            FieldSpec(
+                "min_cash_weight",
+                "Minimum cash allocation? (for example 2%)",
+                parse_fraction,
+                0.02,
+                label="cash floor",
+            ),
+            *SOLVER_FIELDS,
+            FieldSpec(
+                "scenario_names",
+                "Scenario to include? Type none, stress, credit stress, or downside.",
+                parse_scenario_names,
+                [],
+                "scenarios",
+                "scenarios",
+            ),
+        ),
+    ),
     "money_market": WorkflowSpec(
         domain="money_market",
         title="Money Market Optimization",
