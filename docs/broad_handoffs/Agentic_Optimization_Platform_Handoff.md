@@ -724,6 +724,19 @@ extracted fields for human review before they are applied.
 mandate can be onboarded in minutes instead of days, with an auditable
 extraction trace.
 
+**Status:** ✅ **Policy Ingestion Agent (POC implemented)** — the API now
+exposes `/api/policy/ingest`, which accepts pasted policy/IPS text or a base64
+PDF payload, extracts workflow-ready input values, returns evidence snippets and
+confidence scores for presenter review, and emits a nested `context_patch` that
+can be applied to registered workflow templates before execution. The first
+deterministic extraction map covers liquidity stress funding, funding capacity,
+collateral liquidity review, and portfolio rebalance MVO workflows.
+
+**Next:** wire the browser "Upload IPS" affordance to this endpoint, add
+LLM-assisted extraction behind the same response contract for less formulaic
+policy language, and persist the reviewed extraction into the run evidence
+packet.
+
 ---
 
 ## 5. Portfolio Drift Monitoring + Proactive Re-triggering

@@ -158,6 +158,28 @@ def test_llm_chat_endpoint_uses_configured_provider(monkeypatch):
     }
 
 
+def test_policy_ingestion_endpoint_returns_workflow_patch():
+    response = client.post(
+        "/api/policy/ingest",
+        json={
+            "workflow_id": "portfolio_rebalance_mvo",
+            "text": (
+                "Portfolio PORT_MVO_900 has portfolio notional $250 million. "
+                "Target annual return should be 5%. Risk aversion lambda is 3."
+            ),
+            "filename": "ips.txt",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["workflow_id"] == "portfolio_rebalance_mvo"
+    assert body["input_values"]["portfolio_id"] == "PORT_MVO_900"
+    assert body["context_patch"]["asset_allocation"]["target_return"] == 0.05
+    assert body["context_patch"]["policy_ingestion"]["filename"] == "ips.txt"
+    assert body["review_summary"]["ready"] is True
+
+
 def test_workflow_catalog_endpoint_lists_registered_workflows():
     response = client.get("/api/workflows")
 

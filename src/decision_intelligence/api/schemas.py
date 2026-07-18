@@ -43,6 +43,22 @@ class LLMChatResponse(BaseModel):
     response: str
 
 
+class PolicyIngestionRequest(BaseModel):
+    workflow_id: str
+    text: str | None = None
+    pdf_base64: str | None = None
+    filename: str | None = None
+
+
+class PolicyIngestionResponse(BaseModel):
+    workflow_id: str
+    source_type: str
+    input_values: dict[str, str] = Field(default_factory=dict)
+    context_patch: dict[str, Any] = Field(default_factory=dict)
+    extracted_fields: list[dict[str, Any]] = Field(default_factory=list)
+    review_summary: dict[str, Any] = Field(default_factory=dict)
+
+
 class DirectOptimizationRequest(BaseModel):
     domain: Literal["asset_allocation", "collateral", "money_market", "financing"]
     portfolio_id: str = "PORT_001"

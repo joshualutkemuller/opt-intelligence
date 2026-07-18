@@ -29,6 +29,7 @@ from decision_intelligence.governance import (
     GovernanceController,
 )
 from decision_intelligence.governance.audit import AuditLog
+from decision_intelligence.ingestion import IngestionError, ingest_policy_document
 from decision_intelligence.llm import LLMConfigError, LLMError, resolve_provider
 from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
 from decision_intelligence.optimizers import (
@@ -57,6 +58,8 @@ from .schemas import (
     LLMChatResponse,
     OptimizationResponse,
     PendingApprovalsResponse,
+    PolicyIngestionRequest,
+    PolicyIngestionResponse,
     WorkflowCatalogResponse,
     WorkflowEvidenceExportRequest,
     WorkflowEvidenceExportResponse,
@@ -157,6 +160,21 @@ def send_chat_message(
         workflow_plan=workflow_plan,
         workflow_result=workflow_result,
     )
+
+
+@app.post("/api/policy/ingest", response_model=PolicyIngestionResponse)
+def ingest_policy(payload: PolicyIngestionRequest) -> PolicyIngestionResponse:
+    try:
+        result = ingest_policy_document(
+            workflow_id=payload.workflow_id,
+            text=payload.text,
+            pdf_base64=payload.pdf_base64,
+            filename=payload.filename,
+        )
+    except IngestionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PolicyIngestionResponse(**_json(result))
 
 
 @app.post("/api/llm/chat", response_model=LLMChatResponse)

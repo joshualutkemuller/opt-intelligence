@@ -1,6 +1,12 @@
 """PDF ingestion — parse a document into a validated OptimizationRequest."""
 
 from .mapper import IngestionError, to_optimization_request
+from .ips import (
+    PolicyFieldExtraction,
+    PolicyIngestionResult,
+    ingest_policy_document,
+    supported_policy_workflows,
+)
 from .pdf_ingest import (
     extract_heuristic,
     extract_text,
@@ -12,6 +18,10 @@ from .schema import ExtractedConstraint, ExtractedRequest, ExtractedScenario
 
 __all__ = [
     "IngestionError",
+    "PolicyFieldExtraction",
+    "PolicyIngestionResult",
+    "ingest_policy_document",
+    "supported_policy_workflows",
     "to_optimization_request",
     "ingest_pdf",
     "llm_available",
