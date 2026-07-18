@@ -8,11 +8,11 @@ platform.
 | File | Purpose |
 |---|---|
 | `decision-intelligence-demo.mp4` | Primary proof-of-concept video path. |
-| `decision-intelligence-demo.webm` | Browser-friendly copy of the primary demo. |
-| `governed-mvo-presentation-example.gif` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
-| `liquidity-stress-orchestration-example.webm` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
-| `mvo-constraint-negotiation-example.webm` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
-| `policy-to-audit-evidence-example.webm` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
+| `governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
+| `ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
+| `liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
+| `mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
+| `policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
 
 ## Regenerate Compelling WebM Examples
 
@@ -21,8 +21,20 @@ node scripts/generate_compelling_video_examples.mjs
 ```
 
 The WebM generator uses local Playwright Chromium to record deterministic
-1280x720 canvas animations. Each clip is designed for a 1 to 1.5 minute
+1280x720 canvas animations. Convert generated WebM files to MP4 before checking
+them into `video_examples/`. Each clip is designed for a 1 to 1.5 minute
 presentation slot and uses a compressed 1.25x demo pacing.
+
+## Regenerate IPS Analytics MP4
+
+```bash
+node scripts/generate_ips_optimization_analytics_video.mjs
+```
+
+This generator records a temporary browser canvas stream, converts it to MP4,
+and removes the temporary source file. It focuses on before/after portfolio
+analytics so the IPS ingestion workflow shows investment impact as well as
+evidence controls.
 
 ## Regenerate Governed MVO Example
 
@@ -30,6 +42,6 @@ presentation slot and uses a compressed 1.25x demo pacing.
 .venv/bin/python scripts/generate_presentation_video_example.py
 ```
 
-The generator uses real local optimizer output, renders an animated GIF with
-Pillow, and attempts to convert the GIF to MP4 with macOS `avconvert` when that
-local tool accepts the generated source format.
+The generator uses real local optimizer output and renders an animated GIF with
+Pillow. Encode the generated GIF to MP4 before checking the presentation clip
+into `video_examples/`.
