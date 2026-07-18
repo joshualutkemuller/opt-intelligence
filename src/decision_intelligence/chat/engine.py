@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -11,10 +12,12 @@ from decision_intelligence.agents import (
     ExecutionPlan,
     IntentAgent,
     PlanningAgent,
+    PlanStep,
 )
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY, WorkflowPlan
 
 from .parser import detect_domain, detect_scenarios, is_no, is_yes
 from .workflows import SCENARIO_PRESETS, WORKFLOWS, FieldSpec, WorkflowSpec
@@ -24,6 +27,7 @@ from .workflows import SCENARIO_PRESETS, WORKFLOWS, FieldSpec, WorkflowSpec
 class ChatResponse:
     message: str
     request: OptimizationRequest | None = None
+    workflow_plan: WorkflowPlan | None = None
     should_exit: bool = False
 
 
@@ -105,11 +109,13 @@ class ChatSession:
                 "Detected user intent from the opening message.",
                 intent=intent.model_dump(),
             )
+            if intent.action == "multi_domain_workflow" and intent.workflow_id:
+                return self._start_multi_domain_workflow(prompt, intent)
             domain = intent.domain or detect_domain(prompt)
             if domain is None:
                 return ChatResponse(
                     "Tell me which workflow you want: asset allocation, collateral, "
-                    "money market, or financing."
+                    "money market, financing, or a full sequential workflow."
                 )
             return self._start(domain, prompt, intent)
 
@@ -140,6 +146,47 @@ class ChatSession:
             plan=plan.model_dump(),
         )
         return ChatResponse(f"{spec.intro}\n\n{plan.summary}\n\n{self._next_question()}")
+
+    def _start_multi_domain_workflow(
+        self,
+        prompt: str,
+        intent: AgentIntent,
+    ) -> ChatResponse:
+        workflow_id = intent.workflow_id
+        if workflow_id is None:
+            return ChatResponse(
+                "Tell me which sequential workflow you want: liquidity stress funding, "
+                "funding capacity shock, collateral liquidity review, or MVO rebalance."
+            )
+
+        portfolio_id = _detect_portfolio_id(prompt) or self.default_portfolio
+        context = _workflow_context_from_intent(intent)
+        plan = DEFAULT_WORKFLOW_REGISTRY.build(
+            workflow_id,
+            portfolio_id=portfolio_id,
+            seed=self.seed,
+            context=context,
+        )
+        self._last_plan = _execution_plan_from_workflow(intent, plan)
+        self._record_trace(
+            "workflow_plan_built",
+            "Built a registered multi-domain workflow plan from detected intent.",
+            workflow_id=plan.workflow_id,
+            plan=self._last_plan.model_dump(),
+        )
+        self._record_trace(
+            "workflow_request_compiled",
+            "Compiled WorkflowPlan for sequential optimizer execution.",
+            workflow_id=plan.workflow_id,
+            step_count=len(plan.steps),
+        )
+        return ChatResponse(
+            (
+                f"Running {plan.name} as a sequential workflow with "
+                f"{len(plan.steps)} optimizer steps..."
+            ),
+            workflow_plan=plan,
+        )
 
     def _handle_answer(self, prompt: str) -> ChatResponse:
         state = self._require_state()
@@ -328,6 +375,58 @@ def _format_value(value: Any, field_spec: FieldSpec) -> str:
             return f"{value:.0%}"
         return f"{value:g}%"
     return str(value)
+
+
+def _workflow_context_from_intent(intent: AgentIntent) -> dict[str, Any]:
+    context: dict[str, Any] = {}
+    if intent.scenarios:
+        context["scenario"] = intent.scenarios[0]
+    return context
+
+
+def _execution_plan_from_workflow(
+    intent: AgentIntent,
+    workflow: WorkflowPlan,
+) -> ExecutionPlan:
+    return ExecutionPlan(
+        domain="multi_domain",
+        title=workflow.name,
+        action="multi_domain_workflow",
+        objective_metric="workflow",
+        execution_mode="recommendation",
+        summary=(
+            f"Plan {workflow.name}: run {len(workflow.steps)} optimizer steps in "
+            "sequence, apply cross-step dependencies, validate aggregate results, "
+            "then explain the workflow."
+        ),
+        collected_fields={
+            "workflow_id": workflow.workflow_id,
+            "portfolio_id": workflow.context.get("portfolio_id"),
+            "seed": workflow.context.get("seed"),
+        },
+        missing_fields=[],
+        required_fields=[],
+        scenario_names=list(intent.scenarios),
+        scenario_suggestions=[],
+        solver_options={
+            "supported_backends": ["scipy", "cvxpy"],
+            "supported_problem_types": ["lp", "milp", "qp", "conic"],
+        },
+        steps=[
+            PlanStep(
+                name=step.step_id,
+                description=step.description or step.name,
+                status="pending",
+            )
+            for step in workflow.steps
+        ],
+        ready_to_run=True,
+    )
+
+
+def _detect_portfolio_id(text: str) -> str | None:
+    match = re.search(r"\bPORT[A-Z0-9_-]*\b", text, flags=re.IGNORECASE)
+    return match.group(0).upper() if match else None
 
 
 def _dump_model(value: Any) -> dict[str, Any] | None:

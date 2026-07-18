@@ -119,3 +119,23 @@ def test_guided_workflow_can_use_defaults_and_cancel():
     assert response.request is None
     assert "Cancelled" in response.message
     assert not session.active
+
+
+def test_chat_can_build_multi_domain_workflow_plan_directly():
+    session = ChatSession(seed=7, default_portfolio="PORT_CHAT")
+
+    response = session.reply("run the full liquidity stress funding workflow")
+
+    assert response.request is None
+    assert response.workflow_plan is not None
+    assert response.workflow_plan.workflow_id == "liquidity_stress_funding_workflow"
+    assert response.workflow_plan.context["portfolio_id"] == "PORT_CHAT"
+    assert [step.domain for step in response.workflow_plan.steps] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
+    snapshot = session.snapshot()
+    assert snapshot["plan"]["action"] == "multi_domain_workflow"
+    assert snapshot["plan"]["ready_to_run"] is True
+    assert snapshot["trace"][-1]["event"] == "workflow_request_compiled"

@@ -109,23 +109,44 @@ def send_chat_message(
     reply = session.reply(payload.message)
     result = None
     request = None
+    workflow_plan = None
+    workflow_result = None
+    assistant_message = reply.message
 
     if reply.request is not None:
         request = _json(reply.request)
         result = _json(_run_request(reply.request))
 
+    if reply.workflow_plan is not None:
+        workflow_plan = _json(reply.workflow_plan)
+        orchestrator, _audit = _build_orchestrator()
+        workflow_run = SequentialWorkflowRunner(orchestrator).run(reply.workflow_plan)
+        workflow_result = _json(workflow_run)
+        final_step = workflow_run.step_results[-1] if workflow_run.step_results else None
+        if final_step is not None:
+            result = _json(final_step.result)
+        assistant_message = (
+            f"Sequential workflow complete. {len(workflow_run.step_results)} "
+            f"optimizer steps ran with aggregate validation "
+            f"{'passing' if workflow_run.validation_summary.get('passed') else 'requiring review'}."
+        )
+
     state = session.snapshot()
     trace = state.get("trace", [])
     if result is not None:
         result["agent_trace"] = trace
+    if workflow_result is not None:
+        workflow_result["agent_trace"] = trace
 
     return ChatSessionResponse(
         session_id=session_id,
-        assistant_message=reply.message,
+        assistant_message=assistant_message,
         state=state,
         trace=trace,
         result=result,
         request=request,
+        workflow_plan=workflow_plan,
+        workflow_result=workflow_result,
     )
 
 

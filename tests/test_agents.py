@@ -14,6 +14,15 @@ def test_intent_agent_detects_domain_action_and_scenarios():
     assert "domain:money_market" in intent.signals
 
 
+def test_intent_agent_detects_multi_domain_workflow():
+    intent = IntentAgent().analyze("run the full liquidity stress funding workflow")
+
+    assert intent.action == "multi_domain_workflow"
+    assert intent.workflow_id == "liquidity_stress_funding_workflow"
+    assert intent.missing_inputs == []
+    assert "workflow:liquidity_stress_funding_workflow" in intent.signals
+
+
 def test_planning_agent_builds_missing_field_plan():
     intent = IntentAgent().analyze("optimize money market cash under stress")
     plan = PlanningAgent().build_plan(

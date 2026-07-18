@@ -23,6 +23,8 @@ class ChatSessionResponse(BaseModel):
     trace: list[dict[str, Any]] = Field(default_factory=list)
     result: dict[str, Any] | None = None
     request: dict[str, Any] | None = None
+    workflow_plan: dict[str, Any] | None = None
+    workflow_result: dict[str, Any] | None = None
 
 
 class LLMChatRequest(BaseModel):

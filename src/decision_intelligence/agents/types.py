@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 AgentAction = Literal[
     "optimize",
+    "multi_domain_workflow",
     "explain",
     "scenario_analysis",
     "ingest",
@@ -19,6 +20,7 @@ class AgentIntent(BaseModel):
     raw_text: str
     action: AgentAction = "unknown"
     domain: str | None = None
+    workflow_id: str | None = None
     confidence: float = 0.0
     scenarios: list[str] = Field(default_factory=list)
     missing_inputs: list[str] = Field(default_factory=list)

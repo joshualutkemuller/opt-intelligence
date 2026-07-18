@@ -644,6 +644,17 @@ automatically — no solver changes needed.
 workflow" and get a three-step sequenced optimization with dependency
 propagation, all in one chat turn.
 
+**Status:** ✅ **POC implemented** — `IntentAgent` now recognizes
+registered multi-domain workflow requests, `ChatSession` can compile a
+`WorkflowPlan` directly from a chat prompt, the chat API executes that
+plan through `SequentialWorkflowRunner`, and the browser UI routes the
+returned `workflow_result` into the same sequential workflow timeline
+used by manual demos.
+
+**Next:** add field-by-field chat collection for workflow template
+inputs, plus optional streaming/progressive step events while the
+runner executes each optimizer.
+
 ---
 
 ## 2. Constraint Negotiation / Inversion

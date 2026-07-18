@@ -253,6 +253,7 @@ type WorkflowRunApiResponse = {
     workflow_id: string;
     name: string;
     description: string;
+    context?: Record<string, unknown>;
     steps: Array<{
       step_id: string;
       domain: string;
@@ -366,6 +367,8 @@ type ChatApiResponse = {
   trace: AgentTraceEvent[];
   result: OptimizationResult | null;
   request: Record<string, unknown> | null;
+  workflow_plan: WorkflowRunApiResponse["plan"] | null;
+  workflow_result: WorkflowRunResult | null;
 };
 
 type ApprovalDecisionApiResponse = {
@@ -733,6 +736,32 @@ function App() {
       const body = (await response.json()) as ChatApiResponse;
       setWorkflow(body.state);
       setMessages((items) => replacePendingMessage(items, body.assistant_message));
+      if (body.workflow_result) {
+        const workflowResponse = {
+          plan: body.workflow_plan || {
+            workflow_id: body.workflow_result.workflow_id,
+            name: body.workflow_result.name,
+            description: "",
+            steps: [],
+          },
+          result: body.workflow_result,
+        } as WorkflowRunApiResponse;
+        const finalStep = [...body.workflow_result.step_results].reverse()[0];
+        setWorkflowRun(body.workflow_result);
+        setLatestPayload(workflowResponse);
+        setLatestWorkflowRunPayload({
+          workflow: body.workflow_result.workflow_id,
+          portfolio_id: String(finalStep?.request?.portfolio_id || "PORT_001"),
+          seed: Number(body.workflow_plan?.context?.seed || 42),
+          execution_mode: "recommendation",
+          context: {},
+        });
+        setSelectedWorkflowId(body.workflow_result.workflow_id);
+        if (finalStep?.result) {
+          setResult(finalStep.result);
+        }
+        return;
+      }
       if (body.result) {
         setResult(body.result);
         setLatestPayload(body);

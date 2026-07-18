@@ -51,6 +51,7 @@ from decision_intelligence.optimizers import (
     FinancingOptimizer,
     MoneyMarketOptimizer,
 )
+from decision_intelligence.workflows import SequentialWorkflowRunner
 
 app = typer.Typer(
     name="di",
@@ -215,6 +216,7 @@ def _print_chat_help() -> None:
         "Try prompts like:\n"
         "  list domains\n"
         "  optimize asset allocation under stress\n"
+        "  run the full liquidity stress funding workflow\n"
         "  tell me about collateral\n"
         "  optimize money market under stress\n"
         "  run financing with credit stress\n"
@@ -232,10 +234,25 @@ def _run_guided_chat_turn(session: ChatSession, text: str) -> bool:
     console.print(response.message, markup=False)
 
     if response.request is not None:
-        orch, audit = _build_registry()
+        orch, _audit = _build_registry()
         with console.status(f"[dim]Solving {response.request.domain}…[/dim]", spinner="dots"):
             result = orch.run(response.request)
         _print_result(response.request.domain, result, verbose=False)
+    elif response.workflow_plan is not None:
+        orch, _audit = _build_registry()
+        with console.status(
+            f"[dim]Running {response.workflow_plan.name}…[/dim]",
+            spinner="dots",
+        ):
+            workflow_result = SequentialWorkflowRunner(orch).run(response.workflow_plan)
+        console.print(
+            "[bold blue]assistant[/bold blue] "
+            f"Workflow complete: {len(workflow_result.step_results)} steps, "
+            f"status {workflow_result.status}."
+        )
+        final_step = workflow_result.step_results[-1] if workflow_result.step_results else None
+        if final_step is not None:
+            _print_result(final_step.domain, final_step.result, verbose=False)
 
     return not response.should_exit
 
@@ -748,7 +765,6 @@ def _print_result(domain: str, result, verbose: bool):
 
     # ── Progress bar ──
     frac = min(1.0, result.improvement_pct / 100)
-    bar_str = _bar(frac, 32)
     filled = round(frac * 32)
     colored_bar = (
         f"[green]{'█' * max(0,filled-1)}{'▓' if filled else ''}[/green]"
@@ -766,7 +782,6 @@ def _print_result(domain: str, result, verbose: bool):
         table.add_column("Fraction", justify="right")
 
         for a in sorted(result.allocations, key=lambda x: -x.allocated_value):
-            b = _bar(a.allocated_fraction, 14)
             filled = round(a.allocated_fraction * 14)
             bfmt = (
                 f"[yellow]{'█' * max(0,filled-1)}{'▓' if filled else ''}[/yellow]"

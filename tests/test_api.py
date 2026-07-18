@@ -325,6 +325,35 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
 
 
+def test_chat_endpoint_runs_multi_domain_workflow_from_prompt():
+    response = client.post(
+        "/api/chat/sessions",
+        json={"seed": 7, "default_portfolio": "PORT_CHAT_API"},
+    )
+    assert response.status_code == 200
+    session_id = response.json()["session_id"]
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        json={"message": "run the full liquidity stress funding workflow"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["workflow_plan"]["workflow_id"] == "liquidity_stress_funding_workflow"
+    assert body["workflow_result"]["status"] == "complete"
+    assert [step["domain"] for step in body["workflow_result"]["step_results"]] == [
+        "financing",
+        "collateral",
+        "money_market",
+    ]
+    assert body["result"]["domain"] == "money_market"
+    assert body["state"]["plan"]["action"] == "multi_domain_workflow"
+    assert body["workflow_result"]["agent_trace"][-1]["event"] == (
+        "workflow_request_compiled"
+    )
+
+
 def test_workflow_endpoint_surfaces_governance_threshold_escalation():
     api_app._APPROVAL_STORE.clear()
     response = client.post(
