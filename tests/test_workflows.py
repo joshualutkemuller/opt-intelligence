@@ -161,6 +161,7 @@ def test_loads_demo_presets_for_registered_workflows():
         "executive_liquidity_stress",
         "funding_capacity_crisis",
         "governed_recommendation_baseline",
+        "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
     ]
@@ -180,6 +181,12 @@ def test_loads_demo_presets_for_registered_workflows():
         preset for preset in presets if preset.preset_id == "production_constraint_change_review"
     )
     assert tier5.context["governance"]["production_constraint_change"] is True
+    csv_preset = next(
+        preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_stress"
+    )
+    assert csv_preset.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
+    assert csv_preset.context["money_market"]["problem_type"] == "milp"
+    assert csv_preset.context["financing"]["data_source"]["type"] == "csv"
 
 
 def test_portfolio_rebalance_mvo_workflow_runs(orchestrator):

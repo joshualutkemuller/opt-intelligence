@@ -199,7 +199,7 @@ def _act_3_executive_workflow() -> None:
         "with dependency propagation.",
     )
 
-    preset_path = DEFAULT_DEMO_PRESET_DIR / "executive_liquidity_stress.yaml"
+    preset_path = DEFAULT_DEMO_PRESET_DIR / "institutional_csv_liquidity_stress.yaml"
     preset = load_demo_preset(preset_path)
     _preset_panel(preset_path, preset)
 

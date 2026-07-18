@@ -1,0 +1,30 @@
+packet_id: institutional_liquidity_stress
+version: 1
+name: Institutional Liquidity Stress CSV Packet
+description: >
+  An anonymized, real-data-style CSV packet for the POC video. It replaces the
+  simulated financing, collateral, and money-market universes with deterministic
+  CSV inputs while preserving the same workflow contract.
+audience: Treasury, risk, and funding stakeholders
+workflow_id: liquidity_stress_funding_workflow
+preset_id: institutional_csv_liquidity_stress
+source_type: csv
+domains:
+  - financing
+  - collateral
+  - money_market
+files:
+  financing_counterparties: examples/data/institutional_liquidity_stress/financing_counterparties.csv
+  financing_needs: examples/data/institutional_liquidity_stress/financing_needs.csv
+  collateral_assets: examples/data/institutional_liquidity_stress/collateral_assets.csv
+  collateral_obligations: examples/data/institutional_liquidity_stress/collateral_obligations.csv
+  money_market_funds: examples/data/institutional_liquidity_stress/mmf_universe.csv
+  money_market_position: examples/data/institutional_liquidity_stress/cash_position.csv
+talking_points:
+  - This run uses anonymized CSVs, not simulated generators, for each optimizer step.
+  - The same workflow and validation machinery runs whether data is simulated or CSV-backed.
+  - The final money-market step uses true MILP fund selection on top of the CSV fund universe.
+success_criteria:
+  - All CSV files load through the data-provider layer.
+  - Workflow completes financing, collateral, and money-market steps.
+  - Dependency effects are visible before the final liquidity allocation.

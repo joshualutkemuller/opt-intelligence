@@ -1,0 +1,9 @@
+fund_id,label,provider,yield_7day,expense_ratio_bps,wam_days,daily_liquidity_pct,weekly_liquidity_pct,min_investment,credit_quality,switching_cost_bps
+MMF_REAL_001,Institutional Treasury Liquidity Fund,Northbank,5.08,8.0,34,0.96,1.0,1000000,treasury,0.9
+MMF_REAL_002,Government Cash Reserves Fund,Harbor,5.14,9.5,39,0.88,0.98,500000,government,1.1
+MMF_REAL_003,Prime Yield Select Fund,Atlas,5.42,22.0,61,0.58,0.84,1000000,prime,1.7
+MMF_REAL_004,Treasury Overnight Sweep,Metro,4.96,5.5,18,1.0,1.0,250000,treasury,0.6
+MMF_REAL_005,Government Liquidity Plus,Summit,5.18,10.0,45,0.82,0.96,1000000,government,1.2
+MMF_REAL_006,Prime Institutional Liquidity,Custody,5.36,24.0,64,0.55,0.82,1000000,prime,1.8
+MMF_REAL_007,Treasury Reserve Core,Global,5.02,7.0,29,0.98,1.0,500000,treasury,0.7
+MMF_REAL_008,Government Operating Cash Fund,Reserve,5.11,9.0,42,0.86,0.97,500000,government,1.0

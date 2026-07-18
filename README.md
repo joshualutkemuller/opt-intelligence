@@ -106,8 +106,8 @@ make demo-video
 ```
 
 This runs a deterministic terminal story covering guided chat intake, true MILP
-money-market fund selection, solver backend comparison, and the executive
-liquidity-stress workflow. The companion shot list is in
+money-market fund selection, solver backend comparison, and a CSV-backed
+institutional liquidity-stress workflow. The companion shot list is in
 `docs/demo_video_runbook.md`.
 
 ## Solver Backends
@@ -251,6 +251,11 @@ Per domain, the CSV columns map 1:1 to the dataclass fields in each optimizer's
 `{"type": "simulated"}` (or omitting `data_source`) keeps the built-in
 generator. Adding a new backend (Parquet, SQL, a REST feed) means implementing
 one loader that returns the same dataclass tuple — the optimizers are unchanged.
+
+The POC also includes an anonymized institutional CSV packet for the video demo:
+`config/demo_presets/institutional_csv_liquidity_stress.yaml` points financing,
+collateral, and money-market steps to `examples/data/institutional_liquidity_stress/`.
+See `docs/real_data_demo_packet.md`.
 
 ---
 

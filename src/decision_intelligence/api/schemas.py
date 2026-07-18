@@ -109,6 +109,25 @@ class DemoPresetCatalogResponse(BaseModel):
     presets: list[DemoPresetCatalogItem]
 
 
+class DemoDataPacketCatalogItem(BaseModel):
+    packet_id: str
+    version: int
+    name: str
+    description: str
+    audience: str
+    workflow_id: str
+    preset_id: str
+    source_type: str
+    domains: list[str]
+    files: dict[str, str]
+    talking_points: list[str] = Field(default_factory=list)
+    success_criteria: list[str] = Field(default_factory=list)
+
+
+class DemoDataPacketCatalogResponse(BaseModel):
+    packets: list[DemoDataPacketCatalogItem]
+
+
 class WorkflowRunRequest(BaseModel):
     workflow: str = "liquidity_stress_funding_workflow"
     portfolio_id: str = "PORT_001"

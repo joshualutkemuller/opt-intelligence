@@ -261,6 +261,7 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "executive_liquidity_stress",
         "funding_capacity_crisis",
         "governed_recommendation_baseline",
+        "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
     ]
@@ -283,6 +284,28 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "production_constraint_change_review"
     ))
     assert tier5["context"]["governance"]["production_constraint_change"] is True
+    csv_preset = next(
+        item for item in body["presets"] if item["preset_id"] == (
+            "institutional_csv_liquidity_stress"
+        )
+    )
+    assert csv_preset["context"]["money_market"]["problem_type"] == "milp"
+    assert csv_preset["context"]["money_market"]["data_source"]["type"] == "csv"
+
+
+def test_demo_data_packet_catalog_endpoint_lists_csv_packet():
+    response = client.get("/api/demo-data-packets")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["packet_id"] for item in body["packets"]] == [
+        "institutional_liquidity_stress"
+    ]
+    packet = body["packets"][0]
+    assert packet["source_type"] == "csv"
+    assert packet["preset_id"] == "institutional_csv_liquidity_stress"
+    assert packet["domains"] == ["financing", "collateral", "money_market"]
+    assert "money_market_funds" in packet["files"]
 
 
 def test_workflow_endpoint_runs_liquidity_stress_workflow():
@@ -323,6 +346,33 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["explanation_report"]["dependency_changes"]
     assert body["result"]["step_results"][-1]["dependency_effects"]
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
+
+
+def test_workflow_endpoint_runs_institutional_csv_liquidity_stress_preset():
+    preset = next(
+        item for item in client.get("/api/demo-presets").json()["presets"]
+        if item["preset_id"] == "institutional_csv_liquidity_stress"
+    )
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": preset["workflow_id"],
+            "portfolio_id": preset["portfolio_id"],
+            "seed": preset["seed"],
+            "context": preset["context"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["status"] == "complete"
+    assert body["result"]["validation_summary"]["passed"] is True
+    assert body["result"]["dependency_summary"]["total_effects"] == 4
+    final = body["result"]["step_results"][-1]["result"]
+    assert final["domain"] == "money_market"
+    assert final["solver_metadata"]["solver_backend"] == "scipy"
+    assert final["solver_metadata"]["problem_type"] == "milp"
+    assert final["solver_metadata"]["n_funds_used"] <= 3
 
 
 def test_chat_endpoint_runs_multi_domain_workflow_from_prompt():

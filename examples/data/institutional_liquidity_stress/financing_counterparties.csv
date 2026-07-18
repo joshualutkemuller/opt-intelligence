@@ -1,0 +1,9 @@
+counterparty_id,name,instrument,spread_bps,capacity,min_tenor_days,max_tenor_days,capital_usage_pct,eligible_collateral
+CP_100,Northbank Markets,repo,8.25,165000000,1,90,0.72,govt_bond;cash
+CP_101,Harbor Securities,repo,11.75,95000000,1,90,0.88,govt_bond;corp_bond
+CP_102,Atlas Prime Finance,sec_lending,22.5,80000000,1,45,1.35,equity;corp_bond
+CP_103,Metro Credit Facility,revolver,41.0,120000000,1,180,7.9,
+CP_104,Summit Liquidity Bank,revolver,36.5,85000000,1,180,7.1,
+CP_105,Custody Funding Desk,sec_lending,19.25,70000000,1,30,2.15,equity;corp_bond
+CP_106,Reserve Term Lender,term_loan,118.0,90000000,30,365,13.8,
+CP_107,Global Repo Desk,repo,14.5,110000000,1,90,1.05,cash;govt_bond

@@ -20,6 +20,9 @@ Open `http://127.0.0.1:5173/` and show:
 3. Validation/readiness panels.
 4. Workflow result timeline and export package.
 
+Select **Institutional CSV Liquidity Stress** in the preset selector when you
+want the browser to mirror the video story with file-backed inputs.
+
 Then run the terminal proof:
 
 ```bash
@@ -70,13 +73,14 @@ Spend most of the video here.
 Say:
 
 > This is the real decision-intelligence concept. Financing stress and
-> collateral pressure run first. Their results flow into the downstream
-> money-market optimizer, which raises liquidity requirements before producing
-> the final recommendation.
+> collateral pressure run first from anonymized CSV inputs. Their results flow
+> into the downstream money-market optimizer, which raises liquidity requirements
+> before producing the final MILP-selected recommendation.
 
 Call out:
 
 - The workflow has ordered optimizer steps, not one isolated solve.
+- The institutional data packet points each optimizer to CSV inputs.
 - Cross-step dependency effects are printed with before/after values.
 - Aggregate validation summarizes whether the recommendation is ready, needs
   review, or is blocked.
@@ -92,9 +96,10 @@ Call out:
 | 4 | Guided chat section | Agent collects missing data, not just text completion |
 | 5 | MILP proof panel | True optimization model with selected funds |
 | 6 | Solver comparison | Solver backend and problem type are user-selectable |
-| 7 | Executive workflow timeline | Financing, collateral, money-market chain |
-| 8 | Dependency effects table | Upstream stress changes downstream constraints |
-| 9 | Explanation and next actions | Recommendation is explainable and auditable |
+| 7 | Data packet panel | CSV files backing each optimizer step |
+| 8 | Executive workflow timeline | Financing, collateral, money-market chain |
+| 9 | Dependency effects table | Upstream stress changes downstream constraints |
+| 10 | Explanation and next actions | Recommendation is explainable and auditable |
 
 ## Fallback Commands
 
@@ -111,6 +116,7 @@ di run money_market --solver scipy --problem-type milp --scenario stress
 ## Success Criteria
 
 - The demo completes without network access or external credentials.
+- The institutional CSV data packet is selected for the workflow recording.
 - The money-market MILP result is optimal and uses no more than the selected
   fund limit.
 - The executive workflow completes all planned steps.

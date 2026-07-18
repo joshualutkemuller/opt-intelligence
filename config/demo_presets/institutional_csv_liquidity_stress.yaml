@@ -1,0 +1,54 @@
+preset_id: institutional_csv_liquidity_stress
+version: 1
+name: Institutional CSV Liquidity Stress
+description: >
+  Proof-of-concept walkthrough using anonymized CSV source files for financing,
+  collateral, and money-market inputs, then applying MILP fund selection in the
+  final liquidity allocation.
+audience: Treasury, risk, funding, and investment technology stakeholders
+workflow_id: liquidity_stress_funding_workflow
+portfolio_id: PORT_REALDATA_001
+seed: 17
+duration_minutes: 7
+context:
+  scenario: institutional_csv_liquidity_stress
+  solver_backend: scipy
+  problem_type: lp
+  financing:
+    total_funding_need: 325000000
+    max_cp_concentration: 0.35
+    data_source:
+      type: csv
+      counterparties: examples/data/institutional_liquidity_stress/financing_counterparties.csv
+      needs: examples/data/institutional_liquidity_stress/financing_needs.csv
+  collateral:
+    obligation_scale: 1.0
+    concentration_limit: 0.55
+    data_source:
+      type: csv
+      assets: examples/data/institutional_liquidity_stress/collateral_assets.csv
+      obligations: examples/data/institutional_liquidity_stress/collateral_obligations.csv
+  money_market:
+    total_cash: 500000000
+    daily_liquidity_req: 0.40
+    weekly_liquidity_req: 0.70
+    max_prime_fraction: 0.35
+    max_wam_days: 55
+    max_single_fund: 0.50
+    max_funds: 3
+    min_allocation_fraction: 0.10
+    problem_type: milp
+    data_source:
+      type: csv
+      funds: examples/data/institutional_liquidity_stress/mmf_universe.csv
+      position: examples/data/institutional_liquidity_stress/cash_position.csv
+talking_points:
+  - Start by showing that each optimizer step is loading anonymized CSV input data.
+  - Financing and collateral run first to expose capacity and coverage pressure.
+  - Those upstream constraints raise liquidity requirements before the final money-market solve.
+  - The final step uses SciPy MILP to select no more than three funds from the CSV universe.
+success_criteria:
+  - CSV-backed workflow completes all three optimizer steps.
+  - The final money-market solver metadata shows scipy/milp.
+  - Dependency effects are visible on the money-market step.
+  - Aggregate validation passes with no blocking violations.

@@ -1,0 +1,4 @@
+position_id,instrument_type,notional,required_tenor_days,preferred_instrument
+POS_REAL_001,equity_long,125000000,30,sec_lending
+POS_REAL_002,treasury_inventory,115000000,90,repo
+POS_REAL_003,credit_inventory,85000000,60,repo

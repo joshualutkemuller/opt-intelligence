@@ -14,6 +14,7 @@ from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.data.demo_packets import load_demo_data_packets
 from decision_intelligence.export import generate_workflow_demo_package
 from decision_intelligence.governance import (
     ApprovalDecision,
@@ -44,6 +45,7 @@ from .schemas import (
     ChatMessageRequest,
     ChatSessionResponse,
     CreateChatSessionRequest,
+    DemoDataPacketCatalogResponse,
     DemoPresetCatalogResponse,
     DirectOptimizationRequest,
     LLMChatRequest,
@@ -209,6 +211,14 @@ def list_demo_presets() -> DemoPresetCatalogResponse:
     )
     return DemoPresetCatalogResponse(
         presets=[preset.catalog_item() for preset in presets]
+    )
+
+
+@app.get("/api/demo-data-packets", response_model=DemoDataPacketCatalogResponse)
+def list_demo_data_packets() -> DemoDataPacketCatalogResponse:
+    packets = load_demo_data_packets()
+    return DemoDataPacketCatalogResponse(
+        packets=[packet.catalog_item() for packet in packets]
     )
 
 

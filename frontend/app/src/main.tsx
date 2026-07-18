@@ -314,6 +314,25 @@ type DemoPresetCatalogApiResponse = {
   presets: DemoPresetCatalogItem[];
 };
 
+type DemoDataPacketCatalogItem = {
+  packet_id: string;
+  version: number;
+  name: string;
+  description: string;
+  audience: string;
+  workflow_id: string;
+  preset_id: string;
+  source_type: string;
+  domains: string[];
+  files: Record<string, string>;
+  talking_points: string[];
+  success_criteria: string[];
+};
+
+type DemoDataPacketCatalogApiResponse = {
+  packets: DemoDataPacketCatalogItem[];
+};
+
 type PresenterStatus = "ready" | "review" | "blocked";
 
 type PresenterIssue = {
@@ -396,6 +415,7 @@ const defaultMessages: Message[] = [
 
 const RUN_HISTORY_KEY = "decision-intelligence.workflowRunHistory.v1";
 const MAX_RUN_HISTORY = 12;
+const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
   {
@@ -484,6 +504,41 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
 
 const fallbackDemoPresets: DemoPresetCatalogItem[] = [
   {
+    preset_id: "institutional_csv_liquidity_stress",
+    version: 1,
+    name: "Institutional CSV Liquidity Stress",
+    description:
+      "CSV-backed walkthrough using anonymized financing, collateral, and money-market data with MILP fund selection.",
+    audience: "Treasury, risk, funding, and investment technology stakeholders",
+    workflow_id: "liquidity_stress_funding_workflow",
+    portfolio_id: "PORT_REALDATA_001",
+    seed: 17,
+    duration_minutes: 7,
+    context: {
+      scenario: "institutional_csv_liquidity_stress",
+      solver_backend: "scipy",
+      problem_type: "lp",
+      money_market: {
+        total_cash: 500_000_000,
+        daily_liquidity_req: 0.4,
+        weekly_liquidity_req: 0.7,
+        max_prime_fraction: 0.35,
+        max_wam_days: 55,
+        max_funds: 3,
+        min_allocation_fraction: 0.1,
+        problem_type: "milp",
+      },
+    },
+    talking_points: [
+      "Start by showing that each optimizer step is loading anonymized CSV input data.",
+      "The final step uses SciPy MILP to select no more than three funds.",
+    ],
+    success_criteria: [
+      "CSV-backed workflow completes all three optimizer steps.",
+      "Dependency effects are visible on the money-market step.",
+    ],
+  },
+  {
     preset_id: "balanced_mvo_rebalance",
     version: 1,
     name: "Balanced MVO Rebalance",
@@ -537,6 +592,39 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
   },
 ];
 
+const fallbackDemoDataPackets: DemoDataPacketCatalogItem[] = [
+  {
+    packet_id: "institutional_liquidity_stress",
+    version: 1,
+    name: "Institutional Liquidity Stress CSV Packet",
+    description:
+      "Anonymized CSV files backing financing, collateral, and money-market inputs.",
+    audience: "Treasury, risk, and funding stakeholders",
+    workflow_id: "liquidity_stress_funding_workflow",
+    preset_id: VIDEO_DEMO_PRESET_ID,
+    source_type: "csv",
+    domains: ["financing", "collateral", "money_market"],
+    files: {
+      financing_counterparties:
+        "examples/data/institutional_liquidity_stress/financing_counterparties.csv",
+      financing_needs: "examples/data/institutional_liquidity_stress/financing_needs.csv",
+      collateral_assets: "examples/data/institutional_liquidity_stress/collateral_assets.csv",
+      collateral_obligations:
+        "examples/data/institutional_liquidity_stress/collateral_obligations.csv",
+      money_market_funds: "examples/data/institutional_liquidity_stress/mmf_universe.csv",
+      money_market_position: "examples/data/institutional_liquidity_stress/cash_position.csv",
+    },
+    talking_points: [
+      "This run uses CSVs rather than simulated data generators.",
+      "The same workflow machinery runs against either source type.",
+    ],
+    success_criteria: [
+      "All CSV files load through the data-provider layer.",
+      "Final liquidity allocation uses MILP fund selection.",
+    ],
+  },
+];
+
 function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
@@ -561,11 +649,11 @@ function App() {
     useState<WorkflowCatalogItem[]>(fallbackWorkflowCatalog);
   const [demoPresets, setDemoPresets] =
     useState<DemoPresetCatalogItem[]>(fallbackDemoPresets);
-  const [selectedDemoPresetId, setSelectedDemoPresetId] = useState(
-    fallbackDemoPresets[0].preset_id,
-  );
+  const [demoDataPackets, setDemoDataPackets] =
+    useState<DemoDataPacketCatalogItem[]>(fallbackDemoDataPackets);
+  const [selectedDemoPresetId, setSelectedDemoPresetId] = useState(VIDEO_DEMO_PRESET_ID);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(
-    fallbackDemoPresets[0].workflow_id,
+    "liquidity_stress_funding_workflow",
   );
   const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
   const [historyInputOverride, setHistoryInputOverride] =
@@ -588,6 +676,7 @@ function App() {
     void createSession();
     void loadWorkflowCatalog();
     void loadDemoPresets();
+    void loadDemoDataPackets();
   }, []);
 
   useEffect(() => {
@@ -686,10 +775,13 @@ function App() {
         setSelectedDemoPresetId((current) =>
           body.presets.some((item) => item.preset_id === current)
             ? current
-            : body.presets[0].preset_id,
+            : body.presets.some((item) => item.preset_id === VIDEO_DEMO_PRESET_ID)
+              ? VIDEO_DEMO_PRESET_ID
+              : body.presets[0].preset_id,
         );
         setSelectedWorkflowId((current) => {
           const preset = body.presets.find((item) => item.preset_id === selectedDemoPresetId)
+            || body.presets.find((item) => item.preset_id === VIDEO_DEMO_PRESET_ID)
             || body.presets[0];
           return current === preset.workflow_id ? current : preset.workflow_id;
         });
@@ -697,6 +789,46 @@ function App() {
     } catch {
       setDemoPresets(fallbackDemoPresets);
     }
+  }
+
+  async function loadDemoDataPackets() {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/demo-data-packets`,
+        { method: "GET" },
+        5000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as DemoDataPacketCatalogApiResponse;
+      if (body.packets.length) {
+        setDemoDataPackets(body.packets);
+      }
+    } catch {
+      setDemoDataPackets(fallbackDemoDataPackets);
+    }
+  }
+
+  function selectVideoDemoPath() {
+    const preset =
+      demoPresets.find((item) => item.preset_id === VIDEO_DEMO_PRESET_ID) ||
+      demoPresets.find((item) => item.workflow_id === "liquidity_stress_funding_workflow");
+    if (!preset) return;
+    const workflow = workflowCatalog.find((item) => item.workflow_id === preset.workflow_id);
+    setSelectedDemoPresetId(preset.preset_id);
+    setSelectedWorkflowId(preset.workflow_id);
+    setSolver(solverKeyForWorkflow(preset.workflow_id));
+    setWorkflowInputValues(buildWorkflowInputValues(workflow?.inputs || [], preset));
+    setResult(null);
+    setWorkflowRun(null);
+    setPresenterReviewOpen(true);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          "POC video path loaded: CSV data packet, liquidity stress workflow, and MILP money-market selection. Review the inputs, then run the demo.",
+      },
+    ]);
   }
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
@@ -1173,6 +1305,8 @@ function App() {
   const selectedPreset = demoPresets.find(
     (item) => item.preset_id === selectedDemoPresetId,
   ) || fallbackDemoPresets[0];
+  const selectedDataPacket =
+    demoDataPackets.find((item) => item.preset_id === selectedPreset.preset_id) || null;
   const collected = workflow?.collected || {};
   const display = useMemo(
     () => buildDisplayState(collected, selectedWorkflow, selectedPreset),
@@ -1234,6 +1368,8 @@ function App() {
               <StateRow label="Governance" value="Recommendation" />
             </dl>
           </section>
+
+          <DataPacketPanel packet={selectedDataPacket} />
 
           <DemoPresetSelector
             presets={demoPresets}
@@ -1330,6 +1466,15 @@ function App() {
         </aside>
 
         <section className="main-stage" aria-label="Demo workspace">
+          <VideoStoryPanel
+            selectedPreset={selectedPreset}
+            selectedDataPacket={selectedDataPacket}
+            workflowRun={workflowRun}
+            onSelectPath={selectVideoDemoPath}
+            onReview={openPresenterReview}
+            disabled={isWorkflowRunning}
+          />
+
           <section className="chat-panel panel">
             <div className="section-header">
               <div>
@@ -2027,6 +2172,123 @@ function numberFrom(...values: unknown[]): number {
     }
   }
   return 0;
+}
+
+function VideoStoryPanel({
+  selectedPreset,
+  selectedDataPacket,
+  workflowRun,
+  onSelectPath,
+  onReview,
+  disabled,
+}: {
+  selectedPreset: DemoPresetCatalogItem;
+  selectedDataPacket: DemoDataPacketCatalogItem | null;
+  workflowRun: WorkflowRunResult | null;
+  onSelectPath: () => void;
+  onReview: () => void;
+  disabled: boolean;
+}) {
+  const finalStep = workflowRun?.step_results.at(-1);
+  const finalSolver = finalStep?.result.solver_metadata;
+  const proofPoints = [
+    {
+      label: "1",
+      title: "CSV Data Packet",
+      body: selectedDataPacket
+        ? `${selectedDataPacket.domains.length} domains, ${Object.keys(selectedDataPacket.files).length} files`
+        : "Select the institutional CSV preset",
+      status: selectedDataPacket ? "ready" : "review",
+    },
+    {
+      label: "2",
+      title: "MILP Final Step",
+      body: finalSolver
+        ? `${finalSolver.solver_backend}/${finalSolver.problem_type}`
+        : "Money-market step uses scipy/milp",
+      status: finalSolver?.problem_type === "milp" ? "ready" : "review",
+    },
+    {
+      label: "3",
+      title: "Workflow Dependencies",
+      body: workflowRun
+        ? `${workflowRun.dependency_summary.total_effects} effects applied`
+        : "Financing and collateral adjust liquidity",
+      status: workflowRun?.dependency_summary.total_effects ? "ready" : "review",
+    },
+  ];
+
+  return (
+    <section className="panel video-story-panel">
+      <div className="video-story-copy">
+        <span className="eyebrow">POC Video Path</span>
+        <h2>Real-data workflow story</h2>
+        <p>
+          Use this lane for the recording: load the anonymized CSV packet, run
+          the liquidity stress workflow, then call out dependency effects and
+          the final MILP-selected money-market allocation.
+        </p>
+        <div className="video-story-actions">
+          <button className="primary-button" type="button" onClick={onSelectPath} disabled={disabled}>
+            Load POC Path
+          </button>
+          <button className="secondary-button" type="button" onClick={onReview} disabled={disabled}>
+            Review & Run
+          </button>
+        </div>
+      </div>
+      <div className="video-proof-grid">
+        {proofPoints.map((point) => (
+          <div className={`video-proof-card ${point.status}`} key={point.title}>
+            <span>{point.label}</span>
+            <strong>{point.title}</strong>
+            <p>{point.body}</p>
+          </div>
+        ))}
+      </div>
+      <div className="video-story-preset">
+        <strong>{selectedPreset.name}</strong>
+        <span>{selectedPreset.audience}</span>
+      </div>
+    </section>
+  );
+}
+
+function DataPacketPanel({ packet }: { packet: DemoDataPacketCatalogItem | null }) {
+  if (!packet) {
+    return (
+      <section className="panel compact data-packet-panel">
+        <div className="panel-heading">
+          <span className="eyebrow">Data Packet</span>
+          <span className="status-pill status-ready">Simulated</span>
+        </div>
+        <p>Select the institutional CSV preset to show file-backed inputs.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel compact data-packet-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Data Packet</span>
+        <span className="status-pill status-optimal">{packet.source_type.toUpperCase()}</span>
+      </div>
+      <strong>{packet.name}</strong>
+      <p>{packet.description}</p>
+      <div className="data-packet-meta">
+        <span>{packet.domains.length} domains</span>
+        <span>{Object.keys(packet.files).length} files</span>
+      </div>
+      <ul>
+        {Object.entries(packet.files).slice(0, 4).map(([label, path]) => (
+          <li key={label}>
+            <strong>{titleCase(label.replaceAll("_", " "))}</strong>
+            <span>{path}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function DemoPresetSelector({
