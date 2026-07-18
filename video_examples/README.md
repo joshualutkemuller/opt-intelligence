@@ -11,6 +11,7 @@ platform.
 | `governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
 | `ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
+| `llm-assisted-ips-interactive-optimization-example.mp4` | 86 second silent clip showing local Ollama IPS extraction, chat interaction, deterministic validation, optimization, and before/after analytics. |
 | `liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
 | `mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
 | `policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
@@ -48,6 +49,17 @@ This generator uses `examples/policies/sample_full_ips.pdf` as the visible
 source document, shows the PDF upload and preview steps, then carries the
 extracted IPS constraints into the optimization workflow and before/after
 portfolio analytics.
+
+## Regenerate LLM-Assisted IPS Interaction MP4
+
+```bash
+node scripts/generate_llm_ips_interactive_workflow_video.mjs
+```
+
+This generator shows the LLM-assisted IPS backend configured for a local
+Ollama model through the OpenAI-compatible provider, then shows the user
+interaction, proposed fields, deterministic validator review, optimization run,
+and before/after portfolio analytics.
 
 ## Regenerate Governed MVO Example
 
