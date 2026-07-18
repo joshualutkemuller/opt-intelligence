@@ -612,6 +612,156 @@ decision-intelligence-platform/
 
 ------------------------------------------------------------------------
 
+# 15b. Orchestration Expansion Opportunities
+
+Six high-leverage areas where the existing orchestration infrastructure
+can be extended to materially increase platform value. Each opportunity
+is grounded in already-built components; no new architectural layer is
+required.
+
+---
+
+## 1. Multi-Domain Workflow Chaining via Chat
+
+**What:** Surface the existing `WorkflowLibrary` workflows through the
+conversational interface. Today `ChatSession.reply()` routes only to
+single-domain optimizers; `library.py` already defines cross-domain
+chains (financing → collateral → money market) but they are unreachable
+from chat.
+
+**How:** Add a `multi_domain_workflow` `AgentAction` type in
+`IntentAgent`. Add a routing branch in `ChatSession.reply()` that calls
+`WorkflowRunner` and streams `WorkflowStepResult` events back into the
+chat trace. The `CrossStepDependencyEngine` propagates upstream results
+automatically — no solver changes needed.
+
+**Key files:** `src/decision_intelligence/chat/engine.py` ·
+`src/decision_intelligence/agents/intent.py` ·
+`src/decision_intelligence/workflows/library.py` ·
+`src/decision_intelligence/workflows/runner.py`
+
+**Value:** A user can type "run the full liquidity stress funding
+workflow" and get a three-step sequenced optimization with dependency
+propagation, all in one chat turn.
+
+---
+
+## 2. Constraint Negotiation / Inversion
+
+**What:** Let the orchestrator answer "I need X additional bps — which
+constraints could I relax, and by how much?" The `ExplanationEngine`
+already computes shadow prices (dual values) for every binding
+constraint; an inversion agent reads those and proposes a ranked menu of
+relaxations.
+
+**How:** Add a `ConstraintNegotiationAgent` that accepts a target
+improvement (e.g. +15 bps), reads `ExplanationEngine.sensitivities`,
+and returns combinations of constraint relaxations ordered by
+governance impact. Integrate with `GovernanceController` so each
+proposal is tagged with the approval tier it would require.
+
+**Key files:** `src/decision_intelligence/explanation/engine.py` ·
+`src/decision_intelligence/governance/approvals.py`
+
+**Value:** Transforms the platform from "here is the constrained
+optimum" to "here is what you would need to change to close the gap" —
+a direct decision-support capability for portfolio managers and
+treasurers.
+
+---
+
+## 3. Governance Escalation Orchestration
+
+**What:** The `GovernanceController` defines six execution tiers
+(`explain=0` through `change_constraints=5`) but the current UI only
+reaches `recommendation` (tier 2). An orchestration layer should
+automatically route proposed actions to the correct tier based on
+materiality and magnitude, and manage the two-phase approval flow for
+higher tiers.
+
+**How:** Add a `GovernanceOrchestrator` that inspects the
+`ExecutionPlan` magnitude, domain, and governance policy to determine
+the required tier; surfaces a staged approval prompt to the relevant
+approver role; and advances to `stage` or `execute` tiers only after
+sign-off is recorded in `ApprovalStore`.
+
+**Key files:** `src/decision_intelligence/governance/approvals.py` ·
+`src/decision_intelligence/governance/audit.py`
+
+**Value:** Completes the governance loop. The platform can be safely
+handed to execution teams — not just analysts — because material trades
+cannot bypass the approval chain.
+
+---
+
+## 4. IPS / Document Ingestion Agent
+
+**What:** Replace the placeholder "Upload IPS" button in the frontend
+with a real agent that extracts constraint parameters from Investment
+Policy Statement PDFs and populates `WorkflowSpec` fields directly.
+
+**How:** Add an `IPSIngestionAgent` that accepts a document (PDF or
+text), uses an LLM via `LLMProvider` to extract structured constraint
+data (concentration limits, WAM caps, credit quality minimums, liquidity
+floors), and writes them into the constraint schema. Surface the
+extracted fields for human review before they are applied.
+
+**Key files:** `src/decision_intelligence/llm/provider.py` ·
+`src/decision_intelligence/workflows/types.py`
+
+**Value:** Eliminates manual re-keying of policy documents. A new
+mandate can be onboarded in minutes instead of days, with an auditable
+extraction trace.
+
+---
+
+## 5. Portfolio Drift Monitoring + Proactive Re-triggering
+
+**What:** Use the `AuditLog` and the pre-trade analytics metrics already
+displayed in the frontend to run scheduled monitoring. When a portfolio
+drifts past a configurable threshold (e.g. a holding crosses 90% of its
+concentration cap, or yield gap widens beyond a threshold), the
+orchestrator proactively surfaces a re-optimization recommendation.
+
+**How:** Add a `DriftMonitor` that compares current portfolio state
+against the last audit snapshot, computes metric deltas, and emits an
+`AgentTraceEvent` of type `proactive_alert` when a threshold is crossed.
+Wire this to the `ChatSession` so the alert appears as an unsolicited
+orchestrator message, with a one-click path to trigger re-optimization.
+
+**Key files:** `src/decision_intelligence/governance/audit.py` ·
+`frontend/prototype/index.html` (pre-trade panel) ·
+`src/decision_intelligence/agents/tracing.py`
+
+**Value:** Moves the platform from reactive (user asks) to proactive
+(orchestrator alerts). Directly addresses the "portfolio drift goes
+unnoticed until end-of-day" risk.
+
+---
+
+## 6. Audit Narrative Generation
+
+**What:** Convert the append-only `AgentTraceEvent` /
+`WorkflowTraceEvent` logs into compliance-readable prose narratives on
+demand. Today the audit log is structured data; compliance teams need
+human-readable summaries of what was decided, why, and who approved it.
+
+**How:** Add an `AuditNarrativeAgent` that accepts a session or workflow
+ID, reads all trace events from `AuditLog`, and uses `LLMProvider` to
+generate a structured narrative (decision summary, constraint context,
+approval chain, outcome, risk flags). Output formats: PDF-ready markdown
+and JSON for downstream systems.
+
+**Key files:** `src/decision_intelligence/governance/audit.py` ·
+`src/decision_intelligence/llm/provider.py` ·
+`src/decision_intelligence/explanation/engine.py`
+
+**Value:** Closes the regulatory reporting loop. A compliance officer
+can pull a plain-English account of any optimization decision with full
+provenance, without reading raw event logs.
+
+------------------------------------------------------------------------
+
 # 16. Initial Backlog
 
 1.  OptimizationRequest schema
