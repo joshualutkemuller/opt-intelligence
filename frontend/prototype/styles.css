@@ -1962,3 +1962,919 @@ tbody tr:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Terminal redesign pass                                                     */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+  --void: #070c14;
+  --surface: #0c1522;
+  --surface-raised: #101d2c;
+  --surface-hot: #12243a;
+  --rim: #1a2d42;
+  --rim-strong: #294866;
+  --muted: #3d5a78;
+  --body: #7a9bb8;
+  --ink: #c4d9ee;
+  --accent: #00c8f0;
+  --accent-dim: #087a96;
+  --positive: #00c896;
+  --warning: #f0a020;
+  --critical: #f04860;
+  --bg: var(--void);
+  --panel: var(--surface);
+  --panel-strong: var(--surface-raised);
+  --text: var(--ink);
+  --line: var(--rim);
+  --line-strong: var(--rim-strong);
+  --blue: var(--accent);
+  --blue-deep: var(--accent);
+  --green: var(--positive);
+  --green-soft: rgba(0, 200, 150, 0.1);
+  --amber: var(--warning);
+  --amber-soft: rgba(240, 160, 32, 0.1);
+  --ink-soft: rgba(196, 217, 238, 0.08);
+  --shadow: none;
+  --radius: 4px;
+}
+
+body {
+  color: var(--body);
+  background:
+    linear-gradient(180deg, rgba(0, 200, 240, 0.035), transparent 220px),
+    var(--void);
+  font-size: 13px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+input,
+select,
+button,
+textarea {
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+.metric strong,
+.state-list dd,
+.summary-list strong,
+.workflow-step-metrics span,
+.workflow-impact-value strong,
+.workflow-point-table td,
+td,
+.holding-stat strong,
+.risk-metric-value,
+.governance-card strong,
+.governance-factor-list span,
+.approval-decision-fields input,
+.model-control input,
+.chat-input input {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+
+.topbar {
+  height: 48px;
+  padding: 0 16px;
+  background: rgba(7, 12, 20, 0.96);
+  border-bottom: 1px solid var(--rim);
+}
+
+.brand-block {
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;
+  color: var(--void);
+  background: var(--accent);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 12px;
+  box-shadow: 0 0 20px rgba(0, 200, 240, 0.28);
+}
+
+h1 {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+h2 {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.brand-block p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.topbar-controls {
+  gap: 6px;
+}
+
+.workspace {
+  max-width: none;
+  padding: 10px;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.sidebar {
+  gap: 8px;
+  top: 58px;
+}
+
+.main-stage {
+  grid-template-columns: minmax(380px, 0.95fr) minmax(460px, 1.1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.chat-panel {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.workflow-run-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.governance-review-panel {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.ollama-panel {
+  grid-column: 1;
+}
+
+.dashboard-grid,
+.workflow-comparison-panel,
+.presenter-review-panel,
+.workflow-explanation-panel,
+.validation-panel,
+.explanation-panel,
+.table-grid {
+  grid-column: 1 / -1;
+}
+
+.panel {
+  border: 1px solid var(--rim);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.panel.compact,
+.chat-panel,
+.ollama-panel,
+.result-panel,
+.table-grid .panel,
+.dashboard-grid > .panel,
+.workflow-run-panel,
+.governance-review-panel,
+.workflow-comparison-panel,
+.pretrade-panel {
+  padding: 10px;
+}
+
+.chat-panel,
+.workflow-run-panel,
+.governance-review-panel {
+  border-left: 4px solid var(--accent);
+}
+
+.section-header,
+.panel-heading {
+  gap: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(26, 45, 66, 0.72);
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.status-pill {
+  gap: 6px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--body);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.status-ready {
+  color: var(--warning);
+  background: transparent;
+  border-color: transparent;
+}
+
+.status-optimal {
+  color: var(--positive);
+  background: transparent;
+  border-color: transparent;
+}
+
+.status-error {
+  color: var(--critical);
+  background: transparent;
+  border-color: transparent;
+}
+
+.state-list,
+.summary-list,
+.segmented,
+.plan-steps {
+  gap: 6px;
+}
+
+.state-list div,
+.summary-list li {
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(26, 45, 66, 0.58);
+}
+
+.state-list div:last-child,
+.summary-list li:last-child {
+  border-bottom: 0;
+}
+
+.state-list dt,
+.summary-list span,
+.workflow-input-field span,
+.model-control span,
+.approval-decision-fields span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.state-list dd,
+.summary-list strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.segmented-button,
+.primary-button,
+.secondary-button,
+.icon-button,
+.text-button {
+  min-height: 32px;
+  border-radius: 2px;
+  border: 1px solid var(--rim-strong);
+  background: transparent;
+  color: var(--body);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.primary-button {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(0, 200, 240, 0.08);
+}
+
+.segmented-button.active {
+  color: var(--void);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.secondary-button:hover,
+.icon-button:hover,
+.segmented-button:hover,
+.primary-button:hover {
+  color: var(--ink);
+  background: var(--surface-hot);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.icon-button:disabled,
+.segmented-button:disabled {
+  color: var(--muted);
+  border-color: var(--rim);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.select-input,
+.workflow-input-field input,
+.workflow-input-field select,
+.model-control input,
+.approval-decision-fields input {
+  min-height: 32px;
+  border-radius: 2px;
+  border: 1px solid var(--rim-strong);
+  background: #08111d;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workflow-input-field input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.select-input:focus,
+.workflow-input-field input:focus,
+.workflow-input-field select:focus,
+.model-control input:focus,
+.approval-decision-fields input:focus,
+.chat-input input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 200, 240, 0.14);
+}
+
+.preset-meta,
+.history-card,
+.presenter-review-grid > div,
+.pdf-card,
+.metric,
+.constraint-item,
+.validation-check,
+.workflow-step-body,
+.governance-card,
+.approval-decision-box,
+.workflow-impact-row,
+.workflow-point-table,
+.risk-return-card,
+.workflow-recommendation,
+.explanation-list,
+.health-gauge-block,
+.risk-metric,
+.assessment-item,
+.holding-card {
+  border-radius: 3px;
+  border-color: var(--rim);
+  background: var(--surface-raised);
+}
+
+.workflow-domain-tags {
+  gap: 4px;
+}
+
+.workflow-domain-tags span,
+.scenario-chips span {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--body);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workflow-domain-tags span + span::before,
+.scenario-chips span + span::before {
+  content: "/";
+  margin-right: 4px;
+  color: var(--muted);
+}
+
+.scenario-chips span.selected {
+  color: var(--accent);
+  border-color: transparent;
+  background: transparent;
+}
+
+.messages {
+  min-height: 300px;
+  max-height: 460px;
+  padding: 0;
+  gap: 0;
+  border-radius: 3px;
+  border-color: var(--rim);
+  background: #08111d;
+}
+
+.ollama-messages {
+  min-height: 180px;
+}
+
+.message {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(26, 45, 66, 0.7);
+  border-radius: 0;
+  background: transparent;
+}
+
+.message.user {
+  margin-left: 0;
+  color: var(--ink);
+  background: rgba(0, 200, 240, 0.045);
+}
+
+.message.assistant {
+  margin-right: 0;
+}
+
+.message-label {
+  margin: 0;
+  color: var(--accent);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.message p {
+  color: var(--body);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.current-prompt {
+  padding: 8px 10px;
+  border-radius: 3px;
+  border-color: rgba(0, 200, 240, 0.45);
+  background: rgba(0, 200, 240, 0.06);
+}
+
+.current-prompt span {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.current-prompt strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.chat-input {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.chat-input::before {
+  content: ">";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-weight: 800;
+  z-index: 1;
+}
+
+.chat-input input {
+  min-height: 38px;
+  padding: 0 12px 0 28px;
+  border-radius: 2px;
+  border-color: var(--rim-strong);
+  background: #08111d;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.chat-input input::placeholder {
+  color: var(--muted);
+}
+
+.metric-grid,
+.workflow-validation-strip,
+.governance-metric-grid,
+.governance-detail-grid,
+.workflow-impact-strip,
+.validation-summary {
+  gap: 8px;
+}
+
+.metric {
+  min-height: 76px;
+  padding: 9px;
+}
+
+.metric span,
+.metric small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.metric.accent {
+  border-left: 4px solid var(--positive);
+  background: rgba(0, 200, 150, 0.08);
+}
+
+.bar-track,
+.workflow-impact-track,
+.proximity-track {
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--rim);
+  background: #08111d;
+}
+
+.bar-fill,
+.workflow-impact-fill,
+.proximity-fill {
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.bar-fill.alternate {
+  background: var(--positive);
+}
+
+.bar-fill.muted {
+  background: var(--muted);
+}
+
+.constraint-item,
+.validation-check.pass,
+.workflow-recommendation,
+.assessment-item.strength {
+  border-left: 4px solid var(--positive);
+  background: rgba(0, 200, 150, 0.08);
+}
+
+.validation-check.warning,
+.assessment-item.concern {
+  border-left: 4px solid var(--warning);
+  background: rgba(240, 160, 32, 0.08);
+}
+
+.validation-check.fail,
+.assessment-item.critical {
+  border-left: 4px solid var(--critical);
+  background: rgba(240, 72, 96, 0.08);
+}
+
+.workflow-step {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.workflow-step + .workflow-step {
+  margin-top: 8px;
+}
+
+.workflow-step:not(:last-child)::before {
+  left: 13px;
+  top: 28px;
+  bottom: -10px;
+  width: 1px;
+  background: var(--rim-strong);
+}
+
+.workflow-step-marker {
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  color: var(--body);
+  background: #08111d;
+  border-color: var(--rim-strong);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.workflow-step.optimal .workflow-step-marker {
+  color: var(--void);
+  background: var(--positive);
+  border-color: var(--positive);
+}
+
+.workflow-step.error .workflow-step-marker,
+.workflow-step.infeasible .workflow-step-marker,
+.workflow-step.unbounded .workflow-step-marker {
+  color: var(--void);
+  background: var(--critical);
+  border-color: var(--critical);
+}
+
+.workflow-step-body {
+  padding: 10px;
+}
+
+.workflow-step-heading strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.workflow-step-heading div > span {
+  color: var(--muted);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.workflow-step-metrics {
+  margin-top: 8px;
+  gap: 6px;
+}
+
+.workflow-step-metrics span {
+  min-height: 28px;
+  padding: 6px;
+  border-radius: 2px;
+  border-color: var(--rim);
+  color: var(--body);
+  background: #08111d;
+  font-size: 10px;
+}
+
+.workflow-dependency-list {
+  gap: 6px;
+}
+
+.workflow-dependency-list li,
+.governance-factor-list li {
+  padding: 7px;
+  border-radius: 2px;
+  border-color: rgba(0, 200, 240, 0.4);
+  background: rgba(0, 200, 240, 0.055);
+}
+
+.workflow-dependency-list strong,
+.governance-factor-list strong {
+  color: var(--accent);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.workflow-dependency-list span,
+.governance-factor-list span {
+  color: var(--body);
+}
+
+.governance-card {
+  min-height: 72px;
+  border-left: 4px solid var(--warning);
+}
+
+.approval-decision-box {
+  border-color: rgba(240, 160, 32, 0.48);
+  background: rgba(240, 160, 32, 0.055);
+}
+
+.approval-actions .secondary-button:first-child {
+  color: var(--critical);
+  border-color: var(--critical);
+}
+
+.workflow-impact-row {
+  grid-template-columns: minmax(130px, 0.8fr) minmax(160px, 1.2fr) minmax(86px, 0.45fr);
+  padding: 8px;
+  border-radius: 3px;
+}
+
+.workflow-impact-row.best {
+  border-left: 4px solid var(--accent);
+  border-color: var(--accent);
+  background: rgba(0, 200, 240, 0.06);
+}
+
+.workflow-impact-label strong,
+.workflow-impact-value strong {
+  color: var(--ink);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.workflow-point-table table,
+table {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+
+th,
+td,
+.workflow-point-table th,
+.workflow-point-table td {
+  border-bottom-color: var(--rim);
+}
+
+th,
+.workflow-point-table th {
+  color: var(--accent);
+  background: #08111d;
+  font-size: 10px;
+}
+
+td,
+.workflow-point-table td {
+  color: var(--body);
+  font-size: 12px;
+}
+
+tbody tr:hover {
+  background: rgba(0, 200, 240, 0.04);
+}
+
+.risk-return-card {
+  border-color: rgba(0, 200, 240, 0.42);
+  background: rgba(0, 200, 240, 0.045);
+}
+
+.risk-return-plot {
+  border-color: var(--rim-strong);
+  background:
+    linear-gradient(to right, rgba(0, 200, 240, 0.16) 1px, transparent 1px),
+    linear-gradient(to top, rgba(0, 200, 240, 0.16) 1px, transparent 1px),
+    #08111d;
+  background-size: 25% 100%, 100% 25%, auto;
+}
+
+.risk-return-dot {
+  color: var(--void);
+  background: var(--accent);
+  border: 1px solid var(--void);
+  box-shadow: 0 0 16px rgba(0, 200, 240, 0.45);
+}
+
+.workflow-trace-grid ol,
+.workflow-trace-grid ul,
+.trace-panel ol {
+  color: var(--body);
+}
+
+.workflow-trace-grid strong,
+.trace-panel li strong {
+  color: var(--accent);
+}
+
+.explanation-summary,
+.workflow-empty,
+.workflow-explanation,
+.workflow-step-body p,
+.workflow-recommendation span,
+.explanation-list ul,
+.presenter-review-grid p,
+.preset-points li,
+.workflow-selector p,
+.run-history-panel p {
+  color: var(--body);
+}
+
+.explanation-list {
+  border-left: 4px solid var(--rim-strong);
+}
+
+.pretrade-panel,
+.health-gauge-block,
+.risk-metric,
+.holding-card {
+  background: var(--surface-raised);
+}
+
+.risk-tag.good {
+  color: var(--positive);
+  border-color: rgba(0, 200, 150, 0.45);
+  background: rgba(0, 200, 150, 0.08);
+}
+
+.risk-tag.caution,
+.risk-tag.tight {
+  color: var(--warning);
+  border-color: rgba(240, 160, 32, 0.45);
+  background: rgba(240, 160, 32, 0.08);
+}
+
+.risk-tag.opportunity {
+  color: var(--accent);
+  border-color: rgba(0, 200, 240, 0.45);
+  background: rgba(0, 200, 240, 0.08);
+}
+
+.holding-name,
+.presenter-review-grid h3,
+.presenter-list strong,
+.preset-meta strong,
+.history-card strong,
+.constraint-item strong,
+.validation-check strong,
+.workflow-point-table h3,
+.risk-return-card h3,
+.explanation-list h3 {
+  color: var(--ink);
+}
+
+.holding-stat strong.flag-amber {
+  color: var(--warning);
+}
+
+.holding-stat strong.flag-blue {
+  color: var(--accent);
+}
+
+.holding-stat strong.flag-red,
+.health-gauge-block .gauge-score.score-red,
+.presenter-list li.error {
+  color: var(--critical);
+}
+
+@media (max-width: 1280px) {
+  .main-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel,
+  .workflow-run-panel,
+  .governance-review-panel,
+  .ollama-panel,
+  .dashboard-grid,
+  .workflow-comparison-panel,
+  .presenter-review-panel,
+  .workflow-explanation-panel,
+  .validation-panel,
+  .explanation-panel,
+  .table-grid {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: static;
+  }
+}
+
+@media (max-width: 820px) {
+  .topbar {
+    min-height: 48px;
+    padding: 10px;
+  }
+
+  .workspace {
+    padding: 8px;
+  }
+
+  .sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .message {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .chat-input {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-input::before {
+    top: 19px;
+  }
+}
