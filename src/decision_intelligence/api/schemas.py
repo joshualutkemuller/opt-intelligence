@@ -157,6 +157,16 @@ class WorkflowRunResponse(BaseModel):
     result: dict[str, Any]
 
 
+class WorkflowScenarioCompareRequest(BaseModel):
+    runs: list[dict[str, Any]]
+    labels: list[str] = Field(default_factory=list)
+    run_ids: list[str] = Field(default_factory=list)
+
+
+class WorkflowScenarioCompareResponse(BaseModel):
+    comparison: dict[str, Any]
+
+
 class ApprovalDecisionRequest(BaseModel):
     approval_id: str
     approver: str

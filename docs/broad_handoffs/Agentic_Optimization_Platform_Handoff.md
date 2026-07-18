@@ -603,8 +603,14 @@ decision-intelligence-platform/
     posture, dependency counts, allocation counts, and optional risk/return
     points when available. The browser demo renders this for every workflow,
     with an MVO risk/return plot as a special case instead of a one-off view.
--   Next: add scenario side-by-side comparison across saved/replayed workflow
-    runs.
+-   ✅ **Scenario Side-by-Side Comparison (POC)** — saved/replayed workflow
+    results can now be submitted to `/api/workflows/compare` to produce a
+    deterministic comparison summary, baseline deltas, best-run marker,
+    validation burden, dependency-effect counts, and risk/return metrics where
+    available. The browser demo uses local run history to surface base vs stress
+    vs replayed scenarios in the workflow comparison panel.
+-   Next: add named comparison sets and export the comparison table inside the
+    evidence PDF/package.
 
 ## Phase 6
 

@@ -20,6 +20,7 @@ from decision_intelligence.workflows import (
     WorkflowTemplate,
     build_liquidity_stress_funding_workflow,
     build_portfolio_rebalance_mvo_workflow,
+    build_workflow_scenario_comparison,
     load_demo_presets,
     load_workflow_config,
     load_workflow_configs,
@@ -399,6 +400,38 @@ def test_workflow_visual_summary_for_all_registered_workflows(orchestrator):
             assert visual.points[0].volatility is not None
         else:
             assert visual.chart_kind == "improvement_bar"
+
+
+def test_workflow_scenario_comparison_builds_baseline_deltas(orchestrator):
+    base = SequentialWorkflowRunner(orchestrator).run(
+        DEFAULT_WORKFLOW_REGISTRY.build(
+            LIQUIDITY_STRESS_WORKFLOW_ID,
+            portfolio_id="PORT_BASE",
+            seed=7,
+            context={"money_market": {"daily_liquidity_req": 0.30}},
+        )
+    )
+    stress = SequentialWorkflowRunner(orchestrator).run(
+        DEFAULT_WORKFLOW_REGISTRY.build(
+            LIQUIDITY_STRESS_WORKFLOW_ID,
+            portfolio_id="PORT_STRESS",
+            seed=7,
+            context={"money_market": {"daily_liquidity_req": 0.45}},
+        )
+    )
+
+    comparison = build_workflow_scenario_comparison(
+        [base, stress],
+        labels=["Base", "Stress"],
+        run_ids=["base", "stress"],
+    )
+
+    assert comparison.comparison_ready is True
+    assert comparison.baseline_run_id == "base"
+    assert comparison.run_count == 2
+    assert comparison.runs[1].deltas
+    assert comparison.runs[1].label == "Stress"
+    assert comparison.insights
 
 
 @pytest.mark.parametrize(

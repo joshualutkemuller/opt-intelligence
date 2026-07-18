@@ -1603,6 +1603,74 @@ h2 {
   align-items: start;
 }
 
+.scenario-comparison-block {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.scenario-comparison-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scenario-comparison-head h3 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.scenario-comparison-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scenario-comparison-table {
+  overflow-x: auto;
+}
+
+.scenario-comparison-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.scenario-comparison-table th,
+.scenario-comparison-table td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.scenario-comparison-table tr.best td {
+  color: var(--green);
+}
+
+.scenario-comparison-table td strong,
+.scenario-comparison-table td span {
+  display: block;
+}
+
+.scenario-comparison-table td span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.scenario-insights {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .workflow-impact-bars {
   display: grid;
   gap: 10px;

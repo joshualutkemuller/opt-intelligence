@@ -386,6 +386,46 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
 
 
+def test_workflow_compare_endpoint_returns_scenario_deltas():
+    base = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "portfolio_rebalance_mvo",
+            "portfolio_id": "PORT_MVO_BASE",
+            "seed": 42,
+            "context": {"asset_allocation": {"target_return": 0.05}},
+        },
+    )
+    stress = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "portfolio_rebalance_mvo",
+            "portfolio_id": "PORT_MVO_STRESS",
+            "seed": 42,
+            "context": {"asset_allocation": {"target_return": 0.055}},
+        },
+    )
+    assert base.status_code == 200
+    assert stress.status_code == 200
+
+    response = client.post(
+        "/api/workflows/compare",
+        json={
+            "runs": [base.json()["result"], stress.json()["result"]],
+            "labels": ["Base", "Higher return target"],
+            "run_ids": ["base", "higher_return"],
+        },
+    )
+
+    assert response.status_code == 200
+    comparison = response.json()["comparison"]
+    assert comparison["comparison_ready"] is True
+    assert comparison["baseline_run_id"] == "base"
+    assert comparison["run_count"] == 2
+    assert comparison["runs"][1]["deltas"]["final_improvement_pct"] is not None
+    assert comparison["runs"][0]["expected_return"] is not None
+
+
 def test_workflow_endpoint_runs_institutional_csv_liquidity_stress_preset():
     preset = next(
         item for item in client.get("/api/demo-presets").json()["presets"]

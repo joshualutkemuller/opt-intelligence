@@ -1,5 +1,10 @@
 """Deterministic multi-optimizer workflow engine."""
 
+from .comparison import (
+    WorkflowScenarioComparison,
+    WorkflowScenarioComparisonRun,
+    build_workflow_scenario_comparison,
+)
 from .config_loader import (
     WorkflowTemplateConfig,
     load_workflow_config,
@@ -51,6 +56,8 @@ __all__ = [
     "FUNDING_CAPACITY_SHOCK_WORKFLOW_ID",
     "SequentialWorkflowRunner",
     "WorkflowRegistry",
+    "WorkflowScenarioComparison",
+    "WorkflowScenarioComparisonRun",
     "WorkflowTemplate",
     "WorkflowTemplateConfig",
     "WorkflowDependencyRule",
@@ -70,4 +77,5 @@ __all__ = [
     "build_funding_capacity_shock_workflow",
     "build_liquidity_stress_funding_workflow",
     "build_portfolio_rebalance_mvo_workflow",
+    "build_workflow_scenario_comparison",
 ]

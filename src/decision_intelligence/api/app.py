@@ -42,6 +42,7 @@ from decision_intelligence.workflows import (
     DEFAULT_DEMO_PRESET_DIR,
     DEFAULT_WORKFLOW_REGISTRY,
     SequentialWorkflowRunner,
+    build_workflow_scenario_comparison,
     load_demo_presets,
 )
 
@@ -67,6 +68,8 @@ from .schemas import (
     WorkflowExportPackageResponse,
     WorkflowRunRequest,
     WorkflowRunResponse,
+    WorkflowScenarioCompareRequest,
+    WorkflowScenarioCompareResponse,
 )
 
 app = FastAPI(
@@ -267,6 +270,18 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
     orchestrator, _audit = _build_orchestrator()
     result = SequentialWorkflowRunner(orchestrator).run(plan)
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))
+
+
+@app.post("/api/workflows/compare", response_model=WorkflowScenarioCompareResponse)
+def compare_workflow_runs(
+    payload: WorkflowScenarioCompareRequest,
+) -> WorkflowScenarioCompareResponse:
+    comparison = build_workflow_scenario_comparison(
+        payload.runs,
+        labels=payload.labels,
+        run_ids=payload.run_ids,
+    )
+    return WorkflowScenarioCompareResponse(comparison=_json(comparison))
 
 
 @app.get("/api/approvals/pending", response_model=PendingApprovalsResponse)

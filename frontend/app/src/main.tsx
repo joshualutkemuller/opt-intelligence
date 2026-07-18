@@ -265,6 +265,40 @@ type WorkflowRunApiResponse = {
   result: WorkflowRunResult;
 };
 
+type WorkflowScenarioComparisonRun = {
+  run_id: string;
+  label: string;
+  workflow_id: string;
+  status: string;
+  timestamp: string | null;
+  step_count: number;
+  final_domain: string | null;
+  final_objective_value: number;
+  final_improvement_pct: number;
+  average_improvement_pct: number;
+  total_dependency_effects: number;
+  warning_count: number;
+  violation_count: number;
+  validation_passed: boolean;
+  expected_return: number | null;
+  volatility: number | null;
+  sharpe: number | null;
+  deltas: Record<string, number>;
+};
+
+type WorkflowScenarioComparison = {
+  baseline_run_id: string | null;
+  best_run_id: string | null;
+  run_count: number;
+  comparison_ready: boolean;
+  runs: WorkflowScenarioComparisonRun[];
+  insights: string[];
+};
+
+type WorkflowScenarioCompareApiResponse = {
+  comparison: WorkflowScenarioComparison;
+};
+
 type WorkflowExportPackageApiResponse = {
   filename: string;
   content_type: string;
@@ -784,6 +818,8 @@ function App() {
   const [latestWorkflowRunPayload, setLatestWorkflowRunPayload] =
     useState<WorkflowRunPayload | null>(null);
   const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory());
+  const [scenarioComparison, setScenarioComparison] =
+    useState<WorkflowScenarioComparison | null>(null);
   const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -831,6 +867,10 @@ function App() {
     selectedWorkflowId,
     workflowCatalog,
   ]);
+
+  useEffect(() => {
+    void loadScenarioComparison(runHistory);
+  }, [runHistory]);
 
   async function createSession() {
     try {
@@ -930,6 +970,38 @@ function App() {
       }
     } catch {
       setDemoDataPackets(fallbackDemoDataPackets);
+    }
+  }
+
+  async function loadScenarioComparison(entries: RunHistoryEntry[]) {
+    const comparable = entries.filter((entry) => entry.response?.result?.step_results?.length);
+    if (comparable.length < 2) {
+      setScenarioComparison(null);
+      return;
+    }
+
+    const selected = comparable.slice(0, 4);
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows/compare`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runs: selected.map((entry) => entry.response.result),
+            labels: selected.map(
+              (entry) => `${entry.preset_name} (${formatHistoryTimestamp(entry.created_at)})`,
+            ),
+            run_ids: selected.map((entry) => entry.id),
+          }),
+        },
+        5000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowScenarioCompareApiResponse;
+      setScenarioComparison(body.comparison);
+    } catch {
+      setScenarioComparison(null);
     }
   }
 
@@ -1864,7 +1936,10 @@ function App() {
             disabled={isWorkflowRunning}
           />
 
-          <WorkflowComparisonPanel workflowRun={workflowRun} />
+          <WorkflowComparisonPanel
+            workflowRun={workflowRun}
+            scenarioComparison={scenarioComparison}
+          />
 
           {presenterReviewOpen ? (
             <PresenterReviewPanel
@@ -3428,11 +3503,14 @@ function GovernanceReviewPanel({
 
 function WorkflowComparisonPanel({
   workflowRun,
+  scenarioComparison,
 }: {
   workflowRun: WorkflowRunResult | null;
+  scenarioComparison: WorkflowScenarioComparison | null;
 }) {
   const visual = workflowRun?.visual_summary;
   const points = visual?.points || [];
+  const scenarioRuns = scenarioComparison?.runs || [];
   const maxAbsImprovement = Math.max(
     1,
     ...points.map((point) => Math.abs(point.improvement_pct)),
@@ -3443,17 +3521,71 @@ function WorkflowComparisonPanel({
       <div className="section-header tight">
         <div>
           <span className="eyebrow">Workflow Comparison</span>
-          <h2>Step impact across the run</h2>
+          <h2>Scenario and step impact</h2>
         </div>
         <StatusStrip
           label={
-            workflowRun
+            scenarioComparison?.comparison_ready
+              ? `${scenarioComparison.run_count} Runs`
+              : workflowRun
               ? titleCase(visual?.chart_kind.replaceAll("_", " ") || "Summary")
               : "Pending"
           }
           statusClass={workflowStatusClass(workflowRun?.status)}
         />
       </div>
+
+      {scenarioComparison?.comparison_ready && scenarioRuns.length ? (
+        <div className="scenario-comparison-block">
+          <div className="scenario-comparison-head">
+            <div>
+              <h3>Saved Run Comparison</h3>
+              <p>Baseline is the newest selected history entry; deltas compare each run to it.</p>
+            </div>
+            <StatusStrip label="History" statusClass="status-optimal" />
+          </div>
+          <div className="scenario-comparison-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Scenario</th>
+                  <th>Final Step</th>
+                  <th>Improvement</th>
+                  <th>Delta</th>
+                  <th>Deps</th>
+                  <th>Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarioRuns.map((run) => (
+                  <tr
+                    className={run.run_id === scenarioComparison.best_run_id ? "best" : ""}
+                    key={run.run_id}
+                  >
+                    <td>
+                      <strong>{run.label}</strong>
+                      <span>{titleCase(run.status)}</span>
+                    </td>
+                    <td>{titleCase((run.final_domain || "workflow").replaceAll("_", " "))}</td>
+                    <td>{run.final_improvement_pct.toFixed(2)}%</td>
+                    <td>{formatSigned(run.deltas.final_improvement_pct, "%")}</td>
+                    <td>{run.total_dependency_effects}</td>
+                    <td>
+                      {run.warning_count + run.violation_count}
+                      {run.validation_passed ? " / pass" : " / review"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="scenario-insights">
+            {scenarioComparison.insights.map((insight) => (
+              <li key={insight}>{insight}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {visual && points.length ? (
         <>
@@ -4143,6 +4275,12 @@ function formatCurrency(value: unknown) {
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
+}
+
+function formatSigned(value: number | undefined, suffix = "") {
+  if (value === undefined || Number.isNaN(value)) return "baseline";
+  if (value === 0) return `+0.00${suffix}`;
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}${suffix}`;
 }
 
 function formatFraction(value: unknown) {
