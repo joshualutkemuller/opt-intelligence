@@ -769,6 +769,36 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
     assert pdf_bytes.startswith(b"%PDF")
 
 
+def test_audit_narrative_endpoint_returns_markdown_sections():
+    run_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "liquidity_stress_funding_workflow",
+            "portfolio_id": "PORT_AUDIT",
+            "seed": 7,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        "/api/audit/narrative",
+        json={
+            "response": run_response.json(),
+            "payload": {
+                "workflow": "liquidity_stress_funding_workflow",
+                "portfolio_id": "PORT_AUDIT",
+            },
+            "preset": {"preset_id": "audit_demo"},
+        },
+    )
+
+    assert response.status_code == 200
+    narrative = response.json()["narrative"]
+    assert "PORT_AUDIT" in narrative["decision_summary"]
+    assert "## Constraint Context" in narrative["markdown"]
+    assert narrative["json_payload"]["workflow_id"] == "liquidity_stress_funding_workflow"
+
+
 def test_unknown_workflow_returns_400():
     response = client.post(
         "/api/workflows/run",

@@ -790,6 +790,17 @@ and JSON for downstream systems.
 can pull a plain-English account of any optimization decision with full
 provenance, without reading raw event logs.
 
+**Status:** ✅ **Audit Narrative Generation (POC implemented)** — workflow API
+responses can now be submitted to `/api/audit/narrative` to produce a
+deterministic compliance-readable narrative with decision summary, constraint
+context, approval chain, risk flags, timeline, outcome, markdown, and structured
+JSON provenance. The generator uses existing workflow traces, validation
+summary, dependency effects, explanation report, and governance records.
+
+**Next:** add an LLMProvider polishing option behind the same schema, persist
+narratives by workflow/session ID, and include the markdown section in evidence
+PDF/package exports.
+
 ------------------------------------------------------------------------
 
 # 16. Initial Backlog

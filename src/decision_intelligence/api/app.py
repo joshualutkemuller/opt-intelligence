@@ -27,6 +27,7 @@ from decision_intelligence.governance import (
     ApprovalStore,
     ApprovalThreshold,
     GovernanceController,
+    build_workflow_audit_narrative,
 )
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.ingestion import IngestionError, ingest_policy_document
@@ -49,6 +50,8 @@ from decision_intelligence.workflows import (
 from .schemas import (
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
+    AuditNarrativeRequest,
+    AuditNarrativeResponse,
     ChatMessageRequest,
     ChatSessionResponse,
     CreateChatSessionRequest,
@@ -373,6 +376,17 @@ def export_workflow_evidence(
         pdf_filename=f"{filename}-evidence.pdf",
         pdf_base64=encode_pdf_base64(pdf),
     )
+
+
+@app.post("/api/audit/narrative", response_model=AuditNarrativeResponse)
+def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeResponse:
+    narrative = build_workflow_audit_narrative(
+        response=payload.response,
+        payload=payload.payload,
+        preset=payload.preset,
+        workflow=payload.workflow,
+    )
+    return AuditNarrativeResponse(narrative=_json(narrative))
 
 
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:

@@ -213,3 +213,14 @@ class WorkflowEvidenceExportResponse(BaseModel):
     pdf_filename: str
     pdf_content_type: str = "application/pdf"
     pdf_base64: str
+
+
+class AuditNarrativeRequest(BaseModel):
+    response: dict[str, Any]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    preset: dict[str, Any] = Field(default_factory=dict)
+    workflow: dict[str, Any] = Field(default_factory=dict)
+
+
+class AuditNarrativeResponse(BaseModel):
+    narrative: dict[str, Any]
