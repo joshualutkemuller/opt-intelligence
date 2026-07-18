@@ -90,7 +90,7 @@ def create_chat_session(payload: CreateChatSessionRequest) -> ChatSessionRespons
         session_id=session_id,
         assistant_message=(
             "Tell me which workflow you want: asset allocation, collateral, "
-            "money market, or financing."
+            "money market, financing, or a full sequential workflow."
         ),
         state=session.snapshot(),
         trace=session.snapshot().get("trace", []),

@@ -1166,16 +1166,19 @@ function App() {
     setRunHistory(persistRunHistory([]));
   }
 
-  const collected = workflow?.collected || {};
-  const display = useMemo(() => buildDisplayState(collected), [collected]);
   const solverProfile = solverProfiles[solver];
-  const dashboard = result || mockResult;
   const selectedWorkflow = workflowCatalog.find(
     (item) => item.workflow_id === selectedWorkflowId,
   ) || fallbackWorkflowCatalog[0];
   const selectedPreset = demoPresets.find(
     (item) => item.preset_id === selectedDemoPresetId,
   ) || fallbackDemoPresets[0];
+  const collected = workflow?.collected || {};
+  const display = useMemo(
+    () => buildDisplayState(collected, selectedWorkflow, selectedPreset),
+    [collected, selectedPreset, selectedWorkflow],
+  );
+  const dashboard = result || mockResultForWorkflow(selectedWorkflow.workflow_id);
   const presenterReview = useMemo(
     () => validatePresenterInputs(
       selectedWorkflow.inputs,
@@ -1241,6 +1244,8 @@ function App() {
               if (preset) {
                 setSelectedWorkflowId(preset.workflow_id);
                 setSolver(solverKeyForWorkflow(preset.workflow_id));
+                setResult(null);
+                setWorkflowRun(null);
               }
             }}
             disabled={isWorkflowRunning}
@@ -1254,6 +1259,8 @@ function App() {
               setSolver(solverKeyForWorkflow(workflowId));
               const preset = demoPresets.find((item) => item.workflow_id === workflowId);
               if (preset) setSelectedDemoPresetId(preset.preset_id);
+              setResult(null);
+              setWorkflowRun(null);
             }}
             disabled={isWorkflowRunning}
           />
@@ -1707,11 +1714,22 @@ function validatePresenterInputs(
           message: `${input.label} must be a whole number.`,
         });
       }
-      if (input.type === "currency" && numeric <= 0) {
+      if (
+        input.type === "currency" &&
+        numeric === 0 &&
+        !input.key.includes("estimated_pnl_impact")
+      ) {
         issues.push({
           severity: "error",
           field: input.label,
           message: `${input.label} must be greater than zero.`,
+        });
+      }
+      if (input.type === "currency" && numeric < 0) {
+        issues.push({
+          severity: "error",
+          field: input.label,
+          message: `${input.label} cannot be negative.`,
         });
       }
       if (input.type === "currency" && numeric > 2_000_000_000) {
@@ -2105,13 +2123,20 @@ function WorkflowInputPanel({
                 ))}
               </select>
             ) : input.type === "boolean" ? (
-              <input
-                checked={(values[input.key] ?? "").toLowerCase() === "true"}
-                onChange={(event) => onChange(input.key, event.target.checked ? "true" : "false")}
-                type="checkbox"
-                disabled={disabled}
-                aria-label={input.label}
-              />
+              <span className="boolean-control">
+                <input
+                  checked={(values[input.key] ?? "").toLowerCase() === "true"}
+                  onChange={(event) =>
+                    onChange(input.key, event.target.checked ? "true" : "false")
+                  }
+                  type="checkbox"
+                  disabled={disabled}
+                  aria-label={input.label}
+                />
+                <strong>
+                  {(values[input.key] ?? "").toLowerCase() === "true" ? "Yes" : "No"}
+                </strong>
+              </span>
             ) : (
               <input
                 value={values[input.key] ?? ""}
@@ -2543,8 +2568,7 @@ function WorkflowTimelinePanel({
         </>
       ) : (
         <p className="workflow-empty">
-          Run the workflow action to execute {selectedPreset.name} using the
-          {selectedWorkflow.name} template.
+          {`Run the workflow action to execute ${selectedPreset.name} using the ${selectedWorkflow.name} template.`}
         </p>
       )}
     </section>
@@ -3318,18 +3342,79 @@ function SensitivityTable({ result }: { result: OptimizationResult }) {
   );
 }
 
-function buildDisplayState(collected: Record<string, unknown>) {
-  const domain = titleCase(String(collected.domain || "money market").replaceAll("_", " "));
+function buildDisplayState(
+  collected: Record<string, unknown>,
+  selectedWorkflow: WorkflowCatalogItem,
+  selectedPreset: DemoPresetCatalogItem,
+) {
+  const presetContext = toRecord(selectedPreset.context);
+  const assetAllocation = toRecord(presetContext.asset_allocation);
+  const moneyMarket = toRecord(presetContext.money_market);
+  const fallbackDomain = selectedWorkflow.domains[0] || "money_market";
+  const rawDomain = String(collected.domain || fallbackDomain);
+  const domain = titleCase(rawDomain.replaceAll("_", " "));
+
+  if (rawDomain === "asset_allocation") {
+    return {
+      domain,
+      portfolio: String(collected.portfolio_id || selectedPreset.portfolio_id || "PORT_MVO_001"),
+      scenario: formatPresetScenario(collected.scenario_names, presetContext.scenario),
+      summary: [
+        [
+          "Portfolio notional",
+          formatCurrency(
+            collected.portfolio_notional || assetAllocation.portfolio_notional || 250_000_000,
+          ),
+        ],
+        [
+          "Target return",
+          formatFraction(collected.target_return || assetAllocation.target_return || 0.05),
+        ],
+        [
+          "Risk aversion",
+          String(collected.risk_aversion || assetAllocation.risk_aversion || 3),
+        ],
+        [
+          "Asset cap",
+          formatFraction(
+            collected.max_single_asset_weight ||
+              assetAllocation.max_single_asset_weight ||
+              0.45,
+          ),
+        ],
+        [
+          "Cash floor",
+          formatFraction(collected.min_cash_weight || assetAllocation.min_cash_weight || 0.02),
+        ],
+        ["Solver", "SciPy QP"],
+      ],
+    };
+  }
+
   return {
     domain,
-    portfolio: String(collected.portfolio_id || "PORT_204"),
-    scenario: formatScenarioList(collected.scenario_names),
+    portfolio: String(collected.portfolio_id || selectedPreset.portfolio_id || "PORT_204"),
+    scenario: formatPresetScenario(collected.scenario_names, presetContext.scenario),
     summary: [
-      ["Total cash", formatCurrency(collected.total_cash || 500_000_000)],
-      ["Daily liquidity", formatFraction(collected.daily_liquidity_req || 0.3)],
-      ["Weekly liquidity", formatFraction(collected.weekly_liquidity_req || 0.6)],
-      ["Prime limit", formatFraction(collected.max_prime_fraction || 0.4)],
-      ["Max WAM", collected.max_wam_days ? `${collected.max_wam_days} days` : "60 days"],
+      ["Total cash", formatCurrency(collected.total_cash || moneyMarket.total_cash || 500_000_000)],
+      [
+        "Daily liquidity",
+        formatFraction(collected.daily_liquidity_req || moneyMarket.daily_liquidity_req || 0.3),
+      ],
+      [
+        "Weekly liquidity",
+        formatFraction(collected.weekly_liquidity_req || moneyMarket.weekly_liquidity_req || 0.6),
+      ],
+      [
+        "Prime limit",
+        formatFraction(collected.max_prime_fraction || moneyMarket.max_prime_fraction || 0.4),
+      ],
+      [
+        "Max WAM",
+        collected.max_wam_days || moneyMarket.max_wam_days
+          ? `${collected.max_wam_days || moneyMarket.max_wam_days} days`
+          : "60 days",
+      ],
       ["Single fund", formatFraction(collected.max_single_fund || 0.5)],
     ],
   };
@@ -3380,6 +3465,12 @@ function formatScenarioList(value: unknown) {
   return value.map((item) => titleCase(String(item).replaceAll("_", " "))).join(", ");
 }
 
+function formatPresetScenario(value: unknown, fallback: unknown) {
+  if (Array.isArray(value)) return formatScenarioList(value);
+  if (fallback) return titleCase(String(fallback).replaceAll("_", " "));
+  return "Base";
+}
+
 function titleCase(value: string) {
   return value
     .split(" ")
@@ -3409,7 +3500,146 @@ function solverKeyForWorkflow(workflowId: string): string {
   return workflowId === "portfolio_rebalance_mvo" ? "scipy-qp" : "scipy-lp";
 }
 
+function mockResultForWorkflow(workflowId: string): OptimizationResult {
+  return workflowId === "portfolio_rebalance_mvo" ? mockAssetAllocationResult : mockResult;
+}
+
+const mockAssetAllocationResult: OptimizationResult = {
+  domain: "asset_allocation",
+  status: "optimal",
+  objective_value: 0.0468,
+  baseline_value: 0.0415,
+  improvement: 0.0053,
+  improvement_pct: 12.77,
+  binding_constraints: ["target_return", "max_single_asset_weight", "min_cash_weight"],
+  validation_report: {
+    passed: true,
+    recommendation: "ready",
+    risk_score: 0,
+    checks: [
+      {
+        name: "solver_status",
+        status: "pass",
+        severity: "info",
+        message: "MVO solver returned an optimal allocation.",
+        details: {},
+      },
+      {
+        name: "target_return",
+        status: "pass",
+        severity: "info",
+        message: "Expected return meets the configured target.",
+        details: { target_return: 0.05 },
+      },
+      {
+        name: "weight_limits",
+        status: "pass",
+        severity: "info",
+        message: "Asset-class weights are within configured bounds.",
+        details: {},
+      },
+    ],
+    violations: [],
+    warnings: [],
+    data_quality: {
+      allocation_count: 6,
+      has_sensitivities: true,
+      has_scenarios: false,
+      has_explanation: true,
+    },
+    policy_status: null,
+  },
+  explanation_report: {
+    summary:
+      "MVO placeholder view balances expected return, volatility, and diversification for the selected portfolio rebalance demo.",
+    what_changed: [
+      "Allocated across six broad asset classes.",
+      "Equity exposure is capped by the single-asset concentration limit.",
+    ],
+    rationale: [
+      "The allocation maximizes mean-variance utility while meeting target return and cash floor controls.",
+      "Diversifying across bonds, credit, and alternatives reduces portfolio volatility.",
+    ],
+    economic_impact: {
+      expected_return: 0.056,
+      volatility: 0.088,
+      sharpe: 0.52,
+    },
+    binding_constraints: ["target_return", "max_single_asset_weight", "min_cash_weight"],
+    risks: ["Target return and concentration limits are active and should be reviewed."],
+    alternatives: ["Lower risk aversion to increase growth exposure, or raise cash floor for defense."],
+    sensitivities: ["Relaxing the asset cap can increase expected return but raises concentration risk."],
+    scenarios: [],
+    governance: null,
+    source_explanation: "Asset allocation MVO placeholder result for the selected demo.",
+  },
+  solver_metadata: {
+    solver_backend: "scipy",
+    problem_type: "qp",
+    solver_method: "SLSQP",
+    expected_return: 0.056,
+    volatility: 0.088,
+    sharpe: 0.52,
+  },
+  allocations: [
+    {
+      label: "US Equity",
+      allocated_value: 87_500_000,
+      allocated_fraction: 0.35,
+      metadata: { asset_class: "equity" },
+    },
+    {
+      label: "Core Bonds",
+      allocated_value: 62_500_000,
+      allocated_fraction: 0.25,
+      metadata: { asset_class: "fixed_income" },
+    },
+    {
+      label: "Credit",
+      allocated_value: 37_500_000,
+      allocated_fraction: 0.15,
+      metadata: { asset_class: "credit" },
+    },
+    {
+      label: "International Equity",
+      allocated_value: 30_000_000,
+      allocated_fraction: 0.12,
+      metadata: { asset_class: "equity" },
+    },
+    {
+      label: "Alternatives",
+      allocated_value: 20_000_000,
+      allocated_fraction: 0.08,
+      metadata: { asset_class: "alternatives" },
+    },
+    {
+      label: "Cash",
+      allocated_value: 12_500_000,
+      allocated_fraction: 0.05,
+      metadata: { asset_class: "cash" },
+    },
+  ],
+  sensitivities: [
+    {
+      parameter: "target_return",
+      shadow_price: 0.018,
+      interpretation: "A higher target return requires more risk budget.",
+    },
+    {
+      parameter: "max_single_asset_weight",
+      shadow_price: 0.011,
+      interpretation: "Relaxing the asset cap can improve utility.",
+    },
+    {
+      parameter: "min_cash_weight",
+      shadow_price: -0.006,
+      interpretation: "A higher cash floor reduces expected return.",
+    },
+  ],
+};
+
 const mockResult: OptimizationResult = {
+  domain: "money_market",
   status: "optimal",
   objective_value: 5.2284,
   baseline_value: 5.0291,

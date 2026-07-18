@@ -489,6 +489,18 @@ h2 {
   accent-color: var(--blue);
 }
 
+.boolean-control {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boolean-control strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
 .workflow-input-field input:focus,
 .workflow-input-field select:focus {
   outline: 2px solid rgba(37, 99, 235, 0.22);
@@ -2352,6 +2364,21 @@ h2 {
 
 .workflow-domain-tags {
   gap: 4px;
+}
+
+.boolean-control {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--rim-strong);
+  border-radius: 2px;
+  background: #08111d;
+}
+
+.boolean-control strong {
+  color: var(--ink);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
 }
 
 .workflow-domain-tags span,
