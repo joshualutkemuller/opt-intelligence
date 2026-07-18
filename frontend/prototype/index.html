@@ -104,6 +104,183 @@
         </aside>
 
         <section class="main-stage" aria-label="Demo workspace">
+
+          <!-- ── pre-trade analytics ── -->
+          <section class="pretrade-panel panel" id="pretradePanel" aria-label="Pre-trade analytics">
+            <div class="section-header">
+              <div>
+                <span class="eyebrow">Pre-Trade Analytics</span>
+                <h2>Portfolio assessment — PORT_204</h2>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="agent-badge"><span class="agent-dot"></span>Assessment agent</span>
+                <span class="status-pill status-ready" id="pretradeStatus">Analysing</span>
+              </div>
+            </div>
+
+            <!-- top row: gauge + metric grid -->
+            <div class="pretrade-top">
+              <div class="health-gauge-block">
+                <span class="gauge-label">Portfolio health</span>
+                <canvas id="healthGauge" width="140" height="80" aria-hidden="true"></canvas>
+                <span class="gauge-score score-amber" id="healthScore">74</span>
+                <span class="gauge-sub">out of 100 · Moderate</span>
+              </div>
+
+              <div class="risk-metric-grid">
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">Yield</span>
+                    <span class="risk-tag caution">Below frontier</span>
+                  </div>
+                  <div class="risk-metric-value">5.0291%</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-amber" style="width:62%"></div></div>
+                    <span class="proximity-cap">frontier 5.23%</span>
+                  </div>
+                </div>
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">Daily liquidity</span>
+                    <span class="risk-tag good">Strong buffer</span>
+                  </div>
+                  <div class="risk-metric-value">52%</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-green" style="width:52%"></div></div>
+                    <span class="proximity-cap">floor 30%</span>
+                  </div>
+                </div>
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">Weekly liquidity</span>
+                    <span class="risk-tag good">Strong buffer</span>
+                  </div>
+                  <div class="risk-metric-value">71%</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-green" style="width:71%"></div></div>
+                    <span class="proximity-cap">floor 60%</span>
+                  </div>
+                </div>
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">Prime concentration</span>
+                    <span class="risk-tag opportunity">Underutilised</span>
+                  </div>
+                  <div class="risk-metric-value">18%</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-blue" style="width:45%"></div></div>
+                    <span class="proximity-cap">cap 40%</span>
+                  </div>
+                </div>
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">WAM</span>
+                    <span class="risk-tag caution">Near limit</span>
+                  </div>
+                  <div class="risk-metric-value">53d</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-amber" style="width:88%"></div></div>
+                    <span class="proximity-cap">cap 60d</span>
+                  </div>
+                </div>
+
+                <div class="risk-metric">
+                  <div class="risk-metric-head">
+                    <span class="risk-metric-name">Single fund (Gov 2)</span>
+                    <span class="risk-tag tight">Approaching cap</span>
+                  </div>
+                  <div class="risk-metric-value">45%</div>
+                  <div class="proximity-row">
+                    <div class="proximity-track"><div class="proximity-fill fill-amber" style="width:90%"></div></div>
+                    <span class="proximity-cap">cap 50%</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- current holdings -->
+            <div class="pretrade-holdings">
+              <span class="eyebrow">Current holdings</span>
+              <div class="pretrade-holdings-grid">
+                <div class="holding-card">
+                  <div class="holding-name">BNY Mellon Government Fund 2</div>
+                  <div class="holding-stat"><span>Weight</span><strong class="flag-red">45%</strong></div>
+                  <div class="holding-stat"><span>Amount</span><strong>$225M</strong></div>
+                  <div class="holding-stat"><span>Yield 7d</span><strong>5.03%</strong></div>
+                  <div class="holding-stat"><span>WAM</span><strong>36d</strong></div>
+                </div>
+                <div class="holding-card">
+                  <div class="holding-name">BNY Mellon Government Fund 3</div>
+                  <div class="holding-stat"><span>Weight</span><strong>32%</strong></div>
+                  <div class="holding-stat"><span>Amount</span><strong>$160M</strong></div>
+                  <div class="holding-stat"><span>Yield 7d</span><strong>5.23%</strong></div>
+                  <div class="holding-stat"><span>WAM</span><strong>47d</strong></div>
+                </div>
+                <div class="holding-card">
+                  <div class="holding-name">BNY Mellon Prime Fund 7</div>
+                  <div class="holding-stat"><span>Weight</span><strong class="flag-blue">18%</strong></div>
+                  <div class="holding-stat"><span>Amount</span><strong>$90M</strong></div>
+                  <div class="holding-stat"><span>Yield 7d</span><strong class="flag-amber">5.57%</strong></div>
+                  <div class="holding-stat"><span>WAM</span><strong>58d</strong></div>
+                </div>
+                <div class="holding-card">
+                  <div class="holding-name">T-Bill / Overnight cash</div>
+                  <div class="holding-stat"><span>Weight</span><strong>5%</strong></div>
+                  <div class="holding-stat"><span>Amount</span><strong>$25M</strong></div>
+                  <div class="holding-stat"><span>Yield 7d</span><strong class="flag-red">4.20%</strong></div>
+                  <div class="holding-stat"><span>WAM</span><strong>1d</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- assessment agent output -->
+            <div class="assessment-section" id="assessmentSection">
+              <div class="assessment-header">
+                <span class="eyebrow">Agent assessment</span>
+              </div>
+              <div class="assessment-grid">
+                <div class="assessment-col">
+                  <div class="assessment-col-head strengths">Strengths</div>
+                  <div class="assessment-item strength">
+                    <strong>Liquidity buffers are robust</strong>
+                    <span>Daily at 52% (vs 30% floor) and weekly at 71% (vs 60% floor) give the desk significant room to absorb redemptions without hitting regulatory limits.</span>
+                  </div>
+                  <div class="assessment-item strength">
+                    <strong>Low credit risk profile</strong>
+                    <span>82% in government funds limits credit and counterparty exposure — appropriate for a liquidity stress scenario.</span>
+                  </div>
+                  <div class="assessment-item strength">
+                    <strong>WAM within policy</strong>
+                    <span>53-day weighted average maturity stays inside the 60-day cap and provides adequate duration management.</span>
+                  </div>
+                </div>
+                <div class="assessment-col">
+                  <div class="assessment-col-head concerns">Watch</div>
+                  <div class="assessment-item concern">
+                    <strong>Prime allocation materially underutilised</strong>
+                    <span>Prime Fund 7 (5.57% yield) is at 18% vs the 40% cap. This gap is the primary source of the 19.93 bps yield shortfall vs the achievable frontier.</span>
+                  </div>
+                  <div class="assessment-item concern">
+                    <strong>Gov Fund 2 over-weight is a drag</strong>
+                    <span>45% in the lowest-yielding fund (5.03%) is approaching the 50% single-fund cap and suppressing portfolio yield unnecessarily.</span>
+                  </div>
+                  <div class="assessment-item critical">
+                    <strong>T-Bill / cash drag at 4.20%</strong>
+                    <span>5% idle in overnight cash (4.20% yield) contributes ~5 bps of avoidable drag. Full deployment into eligible MMFs would be yield-accretive.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+          <!-- ── end pre-trade analytics ── -->
+
           <section class="chat-panel panel">
             <div class="section-header">
               <div>
