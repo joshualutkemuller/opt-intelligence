@@ -1,8 +1,12 @@
 """Tests for IPS / policy ingestion into workflow input patches."""
 
+from pathlib import Path
+
 import pytest
 
 from decision_intelligence.ingestion import IngestionError, ingest_policy_document
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_policy_ingestion_extracts_mvo_workflow_inputs():
@@ -59,3 +63,55 @@ def test_policy_ingestion_reports_missing_required_fields():
 def test_policy_ingestion_rejects_unknown_workflow():
     with pytest.raises(IngestionError):
         ingest_policy_document(workflow_id="unknown", text="Portfolio PORT_1.")
+
+
+def test_bundled_policy_demo_samples_are_ingestable():
+    samples = [
+        (
+            "portfolio_rebalance_mvo",
+            "examples/policies/sample_mvo_ips.txt",
+            {
+                "portfolio_id": "PORT_MVO_900",
+                "asset_allocation.target_return": "0.0525",
+                "asset_allocation.max_single_asset_weight": "0.4",
+                "asset_allocation.min_cash_weight": "0.03",
+                "governance.production_constraint_change": "true",
+            },
+        ),
+        (
+            "liquidity_stress_funding_workflow",
+            "examples/policies/sample_liquidity_ips.txt",
+            {
+                "portfolio_id": "PORT_204",
+                "money_market.total_cash": "500000000",
+                "money_market.daily_liquidity_req": "0.4",
+                "money_market.weekly_liquidity_req": "0.7",
+                "money_market.max_single_fund": "0.5",
+            },
+        ),
+        (
+            "collateral_liquidity_review",
+            "examples/policies/sample_collateral_policy.txt",
+            {
+                "portfolio_id": "PORT_COLL_210",
+                "collateral.obligation_scale": "1.65",
+                "money_market.total_cash": "420000000",
+                "money_market.daily_liquidity_req": "0.35",
+                "money_market.max_prime_fraction": "0.3",
+                "money_market.max_wam_days": "50",
+            },
+        ),
+    ]
+
+    for workflow_id, relative_path, expected_values in samples:
+        path = REPO_ROOT / relative_path
+        result = ingest_policy_document(
+            workflow_id=workflow_id,
+            text=path.read_text(encoding="utf-8"),
+            filename=path.name,
+        )
+
+        assert result.review_summary["ready"] is True
+        assert result.context_patch["policy_ingestion"]["filename"] == path.name
+        for key, expected in expected_values.items():
+            assert result.input_values[key] == expected

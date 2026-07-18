@@ -1,0 +1,12 @@
+Sample Investment Policy Statement - Multi-Asset Allocation
+
+Mandate: Balanced institutional portfolio construction for Portfolio PORT_MVO_900.
+
+The portfolio value is $250 million. The objective is to construct a diversified
+multi-asset allocation with a target annual return of 5.25%. Risk aversion
+lambda is 3.5 for the current review cycle.
+
+Single asset class exposure must not exceed 40%. Cash floor must be at least
+3% of portfolio value to preserve operating liquidity.
+
+Governance: Materiality notional is $250 million. This review is a production constraint change because the approved concentration limit is being revised.

@@ -1,0 +1,10 @@
+Sample Investment Policy Statement - Collateral Liquidity Review
+
+Mandate: Collateral and cash review for Portfolio PORT_COLL_210.
+
+Margin call scale is 165%. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
+
+Prime fund exposure must not exceed 30%. Weighted average maturity must stay under 50 days. Single-fund limit may not exceed 45%.
+
+Governance: Materiality notional is $420 million. Any policy override must be
+reviewed by treasury governance before execution.

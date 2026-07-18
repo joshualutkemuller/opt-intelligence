@@ -1,0 +1,12 @@
+Sample Investment Policy Statement - Liquidity Stress Funding
+
+Mandate: Liquidity stress funding controls for Account PORT_204.
+
+Total cash balance is $500 million. Daily liquidity must be at least 40%.
+Weekly liquidity minimum 70%. Prime funds may not exceed 35% of total
+money-market cash.
+
+Weighted average maturity must stay below 55 days. Single-fund limit may not exceed 50%.
+
+Governance: Approval notional is $500 million. Estimated PnL impact is $0.
+Stress scenario review is required before implementation.
