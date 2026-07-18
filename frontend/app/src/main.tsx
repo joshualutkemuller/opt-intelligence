@@ -314,6 +314,24 @@ type WorkflowEvidenceExportApiResponse = {
   pdf_base64: string;
 };
 
+type PolicyExtractedField = {
+  key: string;
+  label: string;
+  value: string | number | boolean | null;
+  confidence: number;
+  evidence: string;
+  applied: boolean;
+};
+
+type PolicyIngestionResponse = {
+  workflow_id: string;
+  source_type: string;
+  input_values: Record<string, string>;
+  context_patch: Record<string, unknown>;
+  extracted_fields: PolicyExtractedField[];
+  review_summary: Record<string, unknown>;
+};
+
 type WorkflowCatalogItem = {
   workflow_id: string;
   version: number;
@@ -403,6 +421,7 @@ type WorkflowRunPayload = {
   seed: number;
   execution_mode?: string;
   context: Record<string, unknown>;
+  policy_ingestion?: PolicyIngestionResponse | null;
 };
 
 type RunHistoryEntry = {
@@ -812,6 +831,15 @@ function App() {
     "liquidity_stress_funding_workflow",
   );
   const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
+  const [policyText, setPolicyText] = useState("");
+  const [policyFilename, setPolicyFilename] = useState("");
+  const [policyPdfBase64, setPolicyPdfBase64] = useState<string | null>(null);
+  const [policyBackend, setPolicyBackend] =
+    useState<"deterministic" | "llm" | "auto">("deterministic");
+  const [policyModel, setPolicyModel] = useState("llama3.1:8b");
+  const [policyResult, setPolicyResult] = useState<PolicyIngestionResponse | null>(null);
+  const [policyApplied, setPolicyApplied] = useState(false);
+  const [isPolicyIngesting, setIsPolicyIngesting] = useState(false);
   const [historyInputOverride, setHistoryInputOverride] =
     useState<Record<string, string> | null>(null);
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
@@ -1281,6 +1309,104 @@ function App() {
     void createSession();
   }
 
+  async function handlePolicyFileChange(file: File | null) {
+    if (!file) return;
+    setPolicyFilename(file.name);
+    setPolicyResult(null);
+    setPolicyApplied(false);
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      const dataUrl = await readFileAsDataUrl(file);
+      setPolicyPdfBase64(dataUrl.split(",")[1] || "");
+      setPolicyText("");
+      return;
+    }
+    const text = await file.text();
+    setPolicyPdfBase64(null);
+    setPolicyText(text);
+  }
+
+  async function ingestPolicyDocument() {
+    if (isPolicyIngesting) return;
+    if (!policyText.trim() && !policyPdfBase64) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "Upload an IPS PDF/text file or paste policy text before ingesting.",
+        },
+      ]);
+      return;
+    }
+
+    setIsPolicyIngesting(true);
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/policy/ingest`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workflow_id: selectedWorkflow.workflow_id,
+            text: policyPdfBase64 ? undefined : policyText,
+            pdf_base64: policyPdfBase64 || undefined,
+            filename: policyFilename || undefined,
+            backend: policyBackend,
+            provider: policyBackend === "deterministic" ? undefined : "openai",
+            model: policyBackend === "deterministic" ? undefined : policyModel,
+            base_url:
+              policyBackend === "deterministic" ? undefined : "http://localhost:11434/v1",
+          }),
+        },
+        policyBackend === "deterministic" ? 15000 : 60000,
+      );
+      if (!response.ok) throw new Error(await response.text());
+      const body = (await response.json()) as PolicyIngestionResponse;
+      setPolicyResult(body);
+      setPolicyApplied(false);
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `IPS ingestion complete using ${String(body.review_summary.backend || policyBackend)}. Review ${body.extracted_fields.length} extracted fields, then apply them to the workflow inputs.`,
+        },
+      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `IPS ingestion did not complete (${detail}).`,
+        },
+      ]);
+    } finally {
+      setIsPolicyIngesting(false);
+    }
+  }
+
+  function applyPolicyInputs() {
+    if (!policyResult) return;
+    const nextValues = {
+      ...workflowInputValues,
+      ...policyResult.input_values,
+    };
+    if (policyResult.workflow_id !== selectedWorkflowId) {
+      setHistoryInputOverride(nextValues);
+      setSelectedWorkflowId(policyResult.workflow_id);
+    } else {
+      setWorkflowInputValues(nextValues);
+    }
+    setPolicyApplied(true);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          "Applied IPS fields to the workflow inputs. Run presenter review to confirm guardrails before executing.",
+      },
+    ]);
+  }
+
   function exportJson() {
     const payload = latestPayload || { workflow, result };
     downloadTextFile(
@@ -1458,6 +1584,7 @@ function App() {
       workflowInputValues,
       selectedWorkflow.inputs,
     );
+    const payloadWithPolicy = attachPolicyIngestion(payload, policyResult, policyApplied);
     setIsWorkflowRunning(true);
     setMessages((items) => [
       ...items,
@@ -1475,7 +1602,7 @@ function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(payloadWithPolicy),
         },
         20000,
       );
@@ -1488,7 +1615,7 @@ function App() {
         setResult(finalStep.result);
       }
       setLatestPayload(body);
-      setLatestWorkflowRunPayload(payload);
+      setLatestWorkflowRunPayload(payloadWithPolicy);
       if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
         setScriptModeEnabled(true);
         setScriptStepIndex((current) => Math.max(current, 3));
@@ -1499,7 +1626,7 @@ function App() {
           workflow: selectedWorkflow,
           solverKey: solver,
           inputValues: workflowInputValues,
-          payload,
+          payload: payloadWithPolicy,
           response: body,
         }),
       );
@@ -1737,6 +1864,29 @@ function App() {
             onReview={openPresenterReview}
             reviewStatus={presenterReview.status}
             disabled={isWorkflowRunning}
+          />
+
+          <PolicyIngestionPanel
+            selectedWorkflow={selectedWorkflow}
+            text={policyText}
+            filename={policyFilename}
+            backend={policyBackend}
+            model={policyModel}
+            result={policyResult}
+            applied={policyApplied}
+            isIngesting={isPolicyIngesting}
+            disabled={isWorkflowRunning}
+            onTextChange={(value) => {
+              setPolicyText(value);
+              setPolicyPdfBase64(null);
+              setPolicyResult(null);
+              setPolicyApplied(false);
+            }}
+            onFileChange={handlePolicyFileChange}
+            onBackendChange={setPolicyBackend}
+            onModelChange={setPolicyModel}
+            onIngest={ingestPolicyDocument}
+            onApply={applyPolicyInputs}
           />
 
           <RunHistoryPanel
@@ -2019,6 +2169,15 @@ function downloadBase64File(filename: string, base64: string, contentType: strin
   URL.revokeObjectURL(url);
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function workflowRunResponseFromLatest(value: unknown): WorkflowRunApiResponse | null {
   if (!isRecord(value)) return null;
   if (!isRecord(value.plan) || !isRecord(value.result)) return null;
@@ -2165,6 +2324,34 @@ function buildWorkflowPayload(
         ),
       },
     },
+  };
+}
+
+function attachPolicyIngestion(
+  payload: WorkflowRunPayload,
+  policy: PolicyIngestionResponse | null,
+  applied: boolean,
+): WorkflowRunPayload {
+  if (!policy) return payload;
+  const policyContext = toRecord(policy.context_patch);
+  const metadata = toRecord(policyContext.policy_ingestion);
+  const context = applied
+    ? deepMerge(payload.context, policyContext)
+    : deepMerge(payload.context, {
+        policy_ingestion: {
+          ...metadata,
+          applied_to_workflow: false,
+          extracted_field_count: policy.extracted_fields.length,
+          ready: Boolean(policy.review_summary.ready),
+        },
+      });
+  return {
+    ...payload,
+    portfolio_id: applied
+      ? policy.input_values.portfolio_id || payload.portfolio_id
+      : payload.portfolio_id,
+    context,
+    policy_ingestion: policy,
   };
 }
 
@@ -2922,6 +3109,151 @@ function WorkflowInputPanel({
           {disabled ? "Running" : "Review & Run Demo"}
         </button>
       </div>
+    </section>
+  );
+}
+
+function PolicyIngestionPanel({
+  selectedWorkflow,
+  text,
+  filename,
+  backend,
+  model,
+  result,
+  applied,
+  isIngesting,
+  disabled,
+  onTextChange,
+  onFileChange,
+  onBackendChange,
+  onModelChange,
+  onIngest,
+  onApply,
+}: {
+  selectedWorkflow: WorkflowCatalogItem;
+  text: string;
+  filename: string;
+  backend: "deterministic" | "llm" | "auto";
+  model: string;
+  result: PolicyIngestionResponse | null;
+  applied: boolean;
+  isIngesting: boolean;
+  disabled: boolean;
+  onTextChange: (value: string) => void;
+  onFileChange: (file: File | null) => void;
+  onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
+  onModelChange: (value: string) => void;
+  onIngest: () => void;
+  onApply: () => void;
+}) {
+  const ready = Boolean(result?.review_summary.ready);
+  const missing = asStringArray(result?.review_summary.missing_required);
+  const warnings = asStringArray(result?.review_summary.warnings);
+  return (
+    <section className="panel compact policy-ingestion-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">IPS Ingestion</span>
+        <StatusStrip
+          label={result ? (ready ? "Ready" : "Review") : "Upload"}
+          statusClass={result ? (ready ? "status-optimal" : "status-ready") : "status-ready"}
+        />
+      </div>
+
+      <label className="policy-file-drop">
+        <span>{filename || "Upload IPS PDF or text"}</span>
+        <input
+          type="file"
+          accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+          onChange={(event) => onFileChange(event.target.files?.[0] || null)}
+          disabled={disabled || isIngesting}
+          aria-label="Upload IPS document"
+        />
+      </label>
+
+      <textarea
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="Paste IPS language here if you are not uploading a file."
+        aria-label="IPS policy text"
+        disabled={disabled || isIngesting}
+      />
+
+      <div className="policy-mode-grid">
+        <label>
+          <span>Backend</span>
+          <select
+            value={backend}
+            onChange={(event) =>
+              onBackendChange(event.target.value as "deterministic" | "llm" | "auto")
+            }
+            disabled={disabled || isIngesting}
+            aria-label="IPS ingestion backend"
+          >
+            <option value="deterministic">Deterministic</option>
+            <option value="llm">Ollama assisted</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
+        <label>
+          <span>Model</span>
+          <input
+            value={model}
+            onChange={(event) => onModelChange(event.target.value)}
+            disabled={disabled || isIngesting || backend === "deterministic"}
+            aria-label="IPS ingestion model"
+          />
+        </label>
+      </div>
+
+      <div className="policy-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onIngest}
+          disabled={disabled || isIngesting}
+        >
+          {isIngesting ? "Ingesting" : "Ingest IPS"}
+        </button>
+        <button
+          className="primary-button"
+          type="button"
+          onClick={onApply}
+          disabled={disabled || isIngesting || !result || applied}
+        >
+          {applied ? "Applied" : "Apply Fields"}
+        </button>
+      </div>
+
+      {result ? (
+        <div className="policy-review">
+          <div className="policy-review-summary">
+            <strong>{selectedWorkflow.name}</strong>
+            <span>
+              {result.extracted_fields.length} fields from {result.source_type};{" "}
+              {String(result.review_summary.backend || backend)}
+            </span>
+          </div>
+          {missing.length || warnings.length ? (
+            <ul className="policy-issue-list">
+              {missing.map((item) => (
+                <li className="error" key={item}>{item} missing</li>
+              ))}
+              {warnings.map((item) => (
+                <li className="warning" key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+          <ul className="policy-field-list">
+            {result.extracted_fields.slice(0, 8).map((field) => (
+              <li key={field.key}>
+                <strong>{field.label}</strong>
+                <span>{formatPolicyFieldValue(field.value)}</span>
+                <em>{Math.round(field.confidence * 100)}% confidence</em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3843,6 +4175,10 @@ function formatGovernanceFactor(value: string | number | boolean): string {
   return value;
 }
 
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)) : [];
+}
+
 function stepStatusClass(status: string) {
   if (status === "optimal") return "status-optimal";
   if (status === "error" || status === "infeasible" || status === "unbounded") {
@@ -4271,6 +4607,17 @@ function formatCurrency(value: unknown) {
   if (number >= 1_000_000_000) return `$${(number / 1_000_000_000).toFixed(1)}B`;
   if (number >= 1_000_000) return `$${(number / 1_000_000).toFixed(0)}M`;
   return `$${number.toLocaleString()}`;
+}
+
+function formatPolicyFieldValue(value: string | number | boolean | null): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    if (Math.abs(value) >= 1_000_000) return formatCurrency(value);
+    if (value > 0 && value <= 1) return formatFraction(value);
+    return String(value);
+  }
+  if (value === null || value === undefined) return "-";
+  return String(value);
 }
 
 function formatPercent(value: number) {

@@ -777,7 +777,44 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
                 "workflow": "liquidity_stress_funding_workflow",
                 "portfolio_id": "PORT_EVIDENCE",
                 "seed": 17,
-                "context": {},
+                "context": {
+                    "governance": {"production_constraint_change": True},
+                    "policy_ingestion": {
+                        "filename": "sample_ips.pdf",
+                        "backend": "deterministic",
+                    },
+                },
+                "policy_ingestion": {
+                    "workflow_id": "liquidity_stress_funding_workflow",
+                    "source_type": "pdf",
+                    "input_values": {
+                        "portfolio_id": "PORT_EVIDENCE",
+                        "governance.production_constraint_change": "true",
+                    },
+                    "context_patch": {
+                        "governance": {"production_constraint_change": True},
+                        "policy_ingestion": {
+                            "filename": "sample_ips.pdf",
+                            "backend": "deterministic",
+                        },
+                    },
+                    "extracted_fields": [
+                        {
+                            "key": "governance.production_constraint_change",
+                            "label": "Production constraint change",
+                            "value": True,
+                            "confidence": 0.86,
+                            "evidence": "Constraint policy changes require approval.",
+                            "applied": True,
+                        }
+                    ],
+                    "review_summary": {
+                        "ready": True,
+                        "backend": "deterministic",
+                        "warnings": [],
+                        "missing_required": [],
+                    },
+                },
             },
             "preset": {
                 "preset_id": "institutional_csv_liquidity_stress",
@@ -804,6 +841,12 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
     assert packet["solver_evidence"][-1]["solver_backend"] == "scipy"
     assert packet["solver_evidence"][-1]["problem_type"] == "milp"
     assert packet["allocation_evidence"][-1]["allocation_count"] == 3
+    assert packet["overview"]["source_policy"] == "sample_ips.pdf"
+    assert packet["policy_ingestion_evidence"]["summary"]["present"] is True
+    assert packet["policy_ingestion_evidence"]["extracted_fields"][0]["key"] == (
+        "governance.production_constraint_change"
+    )
+    assert packet["governance_evidence"]["summary"]["policy_driven_constraint_change"] is True
     pdf_bytes = base64.b64decode(body["pdf_base64"])
     assert pdf_bytes.startswith(b"%PDF")
 

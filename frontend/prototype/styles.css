@@ -435,6 +435,138 @@ h2 {
   gap: 10px;
 }
 
+.policy-ingestion-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.policy-file-drop {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  background: var(--ink-soft);
+  cursor: pointer;
+}
+
+.policy-file-drop span,
+.policy-mode-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.policy-file-drop input {
+  width: 100%;
+  font-size: 12px;
+}
+
+.policy-ingestion-panel textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.35;
+}
+
+.policy-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.policy-mode-grid label {
+  display: grid;
+  gap: 4px;
+}
+
+.policy-mode-grid input,
+.policy-mode-grid select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.policy-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.policy-review,
+.policy-issue-list,
+.policy-field-list {
+  display: grid;
+  gap: 8px;
+}
+
+.policy-issue-list,
+.policy-field-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-review-summary,
+.policy-issue-list li,
+.policy-field-list li {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.policy-review-summary {
+  background: var(--green-soft);
+}
+
+.policy-review-summary strong,
+.policy-review-summary span,
+.policy-field-list strong,
+.policy-field-list span,
+.policy-field-list em {
+  display: block;
+  font-size: 12px;
+}
+
+.policy-review-summary span,
+.policy-field-list span,
+.policy-field-list em {
+  color: var(--muted);
+}
+
+.policy-field-list em {
+  font-style: normal;
+}
+
+.policy-issue-list li.error {
+  border-color: #b91c1c;
+}
+
+.policy-issue-list li.warning {
+  border-color: var(--amber);
+}
+
+.policy-field-list li {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(72px, 0.8fr) minmax(72px, 0.65fr);
+  gap: 6px;
+}
+
 .text-button {
   border: 0;
   background: transparent;

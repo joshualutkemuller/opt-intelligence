@@ -135,6 +135,44 @@ def test_chat_can_build_multi_domain_workflow_plan_directly():
         "collateral",
         "money_market",
     ]
+
+
+def test_chat_can_collect_registered_workflow_inputs_field_by_field():
+    session = ChatSession(seed=7, default_portfolio="PORT_CHAT")
+
+    response = session.reply("guide me through the MVO rebalance workflow")
+    assert response.workflow_plan is None
+    assert "Portfolio ID" in response.message
+
+    answers = [
+        "PORT_MVO_CHAT",
+        "11",
+        "$250 million",
+        "5%",
+        "3",
+        "45%",
+        "2%",
+        "change constraints",
+        "$1.5 billion",
+        "$6 million",
+        "yes",
+    ]
+    for answer in answers:
+        response = session.reply(answer)
+
+    assert "Confirm" in response.message
+    response = session.reply("yes")
+
+    plan = response.workflow_plan
+    assert plan is not None
+    assert plan.workflow_id == "portfolio_rebalance_mvo"
+    assert plan.context["portfolio_id"] == "PORT_MVO_CHAT"
+    assert plan.context["seed"] == 11
+    request = plan.steps[0].request
+    assert request.execution_mode == ExecutionMode.CHANGE_CONSTRAINTS
+    assert request.context["target_return"] == 0.05
+    assert request.context["governance"]["materiality_notional"] == 1_500_000_000
+    assert request.context["governance"]["production_constraint_change"] is True
     snapshot = session.snapshot()
     assert snapshot["plan"]["action"] == "multi_domain_workflow"
     assert snapshot["plan"]["ready_to_run"] is True

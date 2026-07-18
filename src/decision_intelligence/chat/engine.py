@@ -14,12 +14,27 @@ from decision_intelligence.agents import (
     PlanningAgent,
     PlanStep,
 )
-from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
+from decision_intelligence.contracts import (
+    Objective,
+    ObjectiveDirection,
+    OptimizationRequest,
+    Scenario,
+)
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY, WorkflowPlan
+from decision_intelligence.workflows.config_loader import WorkflowInputConfig
 
-from .parser import detect_domain, detect_scenarios, is_no, is_yes
+from .parser import (
+    detect_domain,
+    detect_scenarios,
+    is_no,
+    is_yes,
+    parse_amount,
+    parse_float,
+    parse_fraction,
+    parse_int,
+)
 from .workflows import SCENARIO_PRESETS, WORKFLOWS, FieldSpec, WorkflowSpec
 
 
@@ -159,6 +174,26 @@ class ChatSession:
                 "funding capacity shock, collateral liquidity review, or MVO rebalance."
             )
 
+        template = DEFAULT_WORKFLOW_REGISTRY.get(workflow_id)
+        if template.inputs and _should_collect_registered_inputs(prompt):
+            spec = _workflow_spec_from_template(template)
+            portfolio_id = _detect_portfolio_id(prompt)
+            self._state = _WorkflowState(spec=spec, seed=self.seed)
+            if portfolio_id:
+                self._state.values["portfolio_id"] = portfolio_id
+            self._last_plan = self._build_registered_execution_plan(self._state)
+            self._record_trace(
+                "registered_workflow_collection_started",
+                "Started field-by-field collection from workflow registry metadata.",
+                workflow_id=workflow_id,
+                input_count=len(template.inputs),
+                plan=self._last_plan.model_dump(),
+            )
+            return ChatResponse(
+                f"I will guide {template.name} using its registered workflow inputs.\n\n"
+                f"{self._last_plan.summary}\n\n{self._next_question()}"
+            )
+
         portfolio_id = _detect_portfolio_id(prompt) or self.default_portfolio
         context = _workflow_context_from_intent(intent)
         plan = DEFAULT_WORKFLOW_REGISTRY.build(
@@ -229,6 +264,19 @@ class ChatSession:
 
     def _handle_confirmation(self, prompt: str) -> ChatResponse:
         if is_yes(prompt):
+            if self._is_registered_workflow_state():
+                workflow_plan = self._build_registered_workflow_plan()
+                self._record_trace(
+                    "workflow_request_compiled",
+                    "Compiled registered WorkflowPlan from the confirmed plan.",
+                    workflow_id=workflow_plan.workflow_id,
+                    step_count=len(workflow_plan.steps),
+                )
+                self._state = None
+                return ChatResponse(
+                    "Confirmed. Running sequential workflow...",
+                    workflow_plan=workflow_plan,
+                )
             request = self._build_request()
             self._record_trace(
                 "request_compiled",
@@ -347,6 +395,9 @@ class ChatSession:
 
     def _build_plan(self) -> ExecutionPlan:
         state = self._require_state()
+        if self._registered_workflow_id(state.spec) is not None:
+            self._last_plan = self._build_registered_execution_plan(state)
+            return self._last_plan
         intent = self._last_intent or AgentIntent(raw_text="", domain=state.spec.domain)
         self._last_plan = self._planning_agent.build_plan(intent, collected=state.values)
         return self._last_plan
@@ -356,6 +407,197 @@ class ChatSession:
 
     def _record_trace(self, event: str, message: str, **details: Any) -> None:
         self._trace.append(AgentTraceEvent(event=event, message=message, details=details))
+
+    def _is_registered_workflow_state(self) -> bool:
+        state = self._state
+        return state is not None and self._registered_workflow_id(state.spec) is not None
+
+    @staticmethod
+    def _registered_workflow_id(spec: WorkflowSpec) -> str | None:
+        prefix = "workflow:"
+        if not spec.domain.startswith(prefix):
+            return None
+        return spec.domain[len(prefix):]
+
+    def _build_registered_execution_plan(self, state: _WorkflowState) -> ExecutionPlan:
+        workflow_id = self._registered_workflow_id(state.spec)
+        missing_fields = [
+            field.key for field in state.spec.fields if field.key not in state.values
+        ]
+        ready_to_run = not missing_fields
+        summary = (
+            f"Plan {state.spec.title}: collect {len(missing_fields)} remaining "
+            "registered workflow inputs, compile a WorkflowPlan, run each optimizer "
+            "step, then validate and explain the chain."
+            if missing_fields
+            else f"Plan {state.spec.title}: ready to compile the registered WorkflowPlan."
+        )
+        return ExecutionPlan(
+            domain="multi_domain",
+            title=state.spec.title,
+            action="multi_domain_workflow",
+            objective_metric="workflow",
+            execution_mode=str(state.values.get("execution_mode", "recommendation")),
+            summary=summary,
+            collected_fields=dict(state.values),
+            missing_fields=missing_fields,
+            required_fields=[
+                {
+                    "key": field.key,
+                    "label": field.display_label,
+                    "target": field.target,
+                    "default": field.default,
+                }
+                for field in state.spec.fields
+            ],
+            scenario_names=[],
+            scenario_suggestions=[],
+            solver_options={
+                "supported_backends": ["scipy", "cvxpy"],
+                "supported_problem_types": ["lp", "milp", "qp", "conic"],
+            },
+            steps=[
+                PlanStep(
+                    name="collect_registered_inputs",
+                    description=f"Collect configured inputs for {workflow_id}.",
+                    status="complete" if ready_to_run else "pending",
+                ),
+                PlanStep(
+                    name="compile_workflow_plan",
+                    description="Build the deterministic WorkflowPlan from registry metadata.",
+                    status="complete" if ready_to_run else "pending",
+                ),
+                PlanStep(
+                    name="run_sequential_workflow",
+                    description=(
+                        "Run optimizer steps with dependencies, validation, "
+                        "and governance."
+                    ),
+                    status="pending",
+                ),
+            ],
+            ready_to_run=ready_to_run,
+        )
+
+    def _build_registered_workflow_plan(self) -> WorkflowPlan:
+        state = self._require_state()
+        workflow_id = self._registered_workflow_id(state.spec)
+        if workflow_id is None:
+            raise RuntimeError("Active chat state is not a registered workflow.")
+        context = dict(state.spec.base_context)
+        portfolio_id = self.default_portfolio
+        seed = state.seed
+        for field_spec in state.spec.fields:
+            value = state.values.get(field_spec.key, field_spec.default)
+            if field_spec.key == "portfolio_id":
+                portfolio_id = str(value)
+            elif field_spec.key == "seed":
+                seed = int(value)
+            elif field_spec.key == "execution_mode":
+                context["execution_mode"] = str(value)
+            else:
+                _set_nested_context_value(context, field_spec.key, value)
+        return DEFAULT_WORKFLOW_REGISTRY.build(
+            workflow_id,
+            portfolio_id=portfolio_id,
+            seed=seed,
+            context=context,
+        )
+
+
+def _should_collect_registered_inputs(text: str) -> bool:
+    normalized = text.lower()
+    return any(
+        token in normalized
+        for token in (
+            "guide",
+            "walk me through",
+            "line by line",
+            "step by step",
+            "collect",
+            "ask me",
+        )
+    )
+
+
+def _workflow_spec_from_template(template: Any) -> WorkflowSpec:
+    return WorkflowSpec(
+        domain=f"workflow:{template.workflow_id}",
+        title=template.name,
+        intro=f"I will guide {template.name} using the workflow registry.",
+        objective_metric="workflow",
+        direction=ObjectiveDirection.MAXIMIZE,
+        fields=tuple(_field_spec_from_input(item) for item in template.inputs),
+        base_context=dict(template.default_context),
+    )
+
+
+def _field_spec_from_input(item: WorkflowInputConfig) -> FieldSpec:
+    return FieldSpec(
+        key=item.key,
+        prompt=f"{item.label}?",
+        parser=_parser_for_input(item),
+        default=item.default,
+        target="portfolio" if item.key == "portfolio_id" else "context",
+        label=item.label,
+    )
+
+
+def _parser_for_input(item: WorkflowInputConfig) -> Any:
+    if item.type == "integer":
+        return parse_int
+    if item.type == "currency":
+        return parse_amount
+    if item.type in {"fraction", "percent"}:
+        return parse_fraction
+    if item.type == "number":
+        return parse_float
+    if item.type == "boolean":
+        return _parse_boolean
+    if item.type == "select":
+        options = tuple(item.options)
+        return lambda text: _parse_select(text, options)
+    return _parse_text
+
+
+def _parse_text(text: str) -> str:
+    value = text.strip()
+    if not value:
+        raise ValueError("Enter a value.")
+    return value
+
+
+def _parse_boolean(text: str) -> bool:
+    normalized = text.strip().lower()
+    if normalized in {"1", "true", "yes", "y"}:
+        return True
+    if normalized in {"0", "false", "no", "n"}:
+        return False
+    raise ValueError("Enter yes or no.")
+
+
+def _parse_select(text: str, options: tuple[str, ...]) -> str:
+    value = text.strip().lower().replace(" ", "_")
+    if value in options:
+        return value
+    readable = ", ".join(option.replace("_", " ") for option in options)
+    raise ValueError(f"Enter one of: {readable}.")
+
+
+def _set_nested_context_value(
+    context: dict[str, Any],
+    path: str,
+    value: Any,
+) -> None:
+    parts = path.split(".")
+    cursor = context
+    for part in parts[:-1]:
+        existing = cursor.get(part)
+        if not isinstance(existing, dict):
+            existing = {}
+            cursor[part] = existing
+        cursor = existing
+    cursor[parts[-1]] = value
 
 
 def _format_value(value: Any, field_spec: FieldSpec) -> str:

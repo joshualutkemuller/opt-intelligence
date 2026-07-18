@@ -29,6 +29,8 @@ def build_workflow_evidence_packet(
     validation = _record(result.get("validation_summary"))
     dependency = _record(result.get("dependency_summary"))
     explanation = _record(result.get("explanation_report"))
+    policy_ingestion = _policy_ingestion_evidence(payload)
+    governance_evidence = _governance_evidence(steps, policy_ingestion)
     workflow_id = (
         result.get("workflow_id")
         or workflow.get("workflow_id")
@@ -58,6 +60,7 @@ def build_workflow_evidence_packet(
             "final_status": final_result.get("status") or final_step.get("status"),
             "final_objective_value": final_result.get("objective_value"),
             "final_improvement_pct": final_result.get("improvement_pct"),
+            "source_policy": _dig(policy_ingestion, "summary", "filename"),
         },
         "demo_story": {
             "description": preset.get("description") or workflow.get("description"),
@@ -73,12 +76,14 @@ def build_workflow_evidence_packet(
             "workflow_context": payload.get("context", {}),
             "plan_context": plan.get("context", {}),
         },
+        "policy_ingestion_evidence": policy_ingestion,
         "solver_evidence": [_solver_summary(step) for step in steps],
         "allocation_evidence": [_allocation_summary(step) for step in steps],
         "dependency_evidence": {
             "summary": dependency,
             "effects": _list(dependency.get("context_changes")),
         },
+        "governance_evidence": governance_evidence,
         "validation_evidence": {
             "summary": validation,
             "step_reports": [_step_validation_summary(step) for step in steps],
@@ -131,6 +136,7 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
             [
                 ["Workflow", overview.get("workflow_id")],
                 ["Preset", overview.get("preset_name")],
+                ["Source policy", overview.get("source_policy") or "None"],
                 ["Status", overview.get("status")],
                 ["Validation", "Passed" if overview.get("validation_passed") else "Review"],
                 ["Dependency effects", overview.get("dependency_effect_count")],
@@ -145,8 +151,14 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
         Paragraph("Success Criteria", heading_style),
         *_bullet_paragraphs(_list(story.get("success_criteria")), body_style),
         Spacer(1, 8),
+        Paragraph("Policy Ingestion Evidence", heading_style),
+        _policy_table(_record(packet.get("policy_ingestion_evidence"))),
+        Spacer(1, 8),
         Paragraph("Solver Evidence", heading_style),
         _solver_table(_list(packet.get("solver_evidence"))),
+        Spacer(1, 8),
+        Paragraph("Governance Evidence", heading_style),
+        _governance_table(_record(packet.get("governance_evidence"))),
         Spacer(1, 8),
         Paragraph("Dependency Evidence", heading_style),
         _dependency_table(_list(_dig(packet, "dependency_evidence", "effects"))),
@@ -212,6 +224,100 @@ def _step_validation_summary(step: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _policy_ingestion_evidence(payload: dict[str, Any]) -> dict[str, Any]:
+    policy = _record(payload.get("policy_ingestion"))
+    context_policy = _record(_dig(payload, "context", "policy_ingestion"))
+    if not policy and not context_policy:
+        return {
+            "summary": {"present": False},
+            "applied_inputs": {},
+            "extracted_fields": [],
+        }
+
+    summary = _record(policy.get("review_summary"))
+    metadata = _record(_dig(policy, "context_patch", "policy_ingestion"))
+    filename = (
+        metadata.get("filename")
+        or context_policy.get("filename")
+        or policy.get("filename")
+        or payload.get("filename")
+    )
+    return {
+        "summary": {
+            "present": True,
+            "workflow_id": policy.get("workflow_id") or payload.get("workflow"),
+            "source_type": policy.get("source_type") or context_policy.get("source_type"),
+            "filename": filename,
+            "backend": summary.get("backend") or context_policy.get("backend"),
+            "ready": summary.get("ready"),
+            "applied_to_workflow": context_policy.get("applied_to_workflow", True),
+            "missing_required": _list(summary.get("missing_required")),
+            "warnings": _list(summary.get("warnings")),
+        },
+        "applied_inputs": _record(policy.get("input_values")),
+        "context_patch": _record(policy.get("context_patch")),
+        "extracted_fields": [_record(field) for field in _list(policy.get("extracted_fields"))],
+    }
+
+
+def _governance_evidence(
+    steps: list[dict[str, Any]],
+    policy_ingestion: dict[str, Any],
+) -> dict[str, Any]:
+    records = []
+    for step in steps:
+        governance = _record(_dig(step, "result", "governance"))
+        if not governance:
+            continue
+        records.append(
+            {
+                "step_id": step.get("step_id"),
+                "name": step.get("name"),
+                "domain": step.get("domain"),
+                **governance,
+            }
+        )
+
+    highest_tier = max(
+        (int(record.get("tier", 0) or 0) for record in records),
+        default=0,
+    )
+    pending = [record for record in records if record.get("status") == "pending"]
+    escalated = [record for record in records if record.get("escalated")]
+    policy_summary = _record(policy_ingestion.get("summary"))
+    return {
+        "summary": {
+            "record_count": len(records),
+            "highest_tier": highest_tier,
+            "pending_count": len(pending),
+            "escalated_count": len(escalated),
+            "policy_ingestion_present": bool(policy_summary.get("present")),
+            "policy_driven_constraint_change": bool(
+                _dig(
+                    policy_ingestion,
+                    "context_patch",
+                    "governance",
+                    "production_constraint_change",
+                )
+            ),
+        },
+        "records": records,
+        "pending_approval_ids": [
+            record.get("approval_id") for record in pending if record.get("approval_id")
+        ],
+        "escalations": [
+            {
+                "step_id": record.get("step_id"),
+                "tier": record.get("tier"),
+                "base_tier": record.get("base_tier"),
+                "reason": record.get("escalation_reason"),
+                "factors": _record(record.get("governance_factors")),
+            }
+            for record in escalated
+        ],
+    }
+
+
 def _table(rows: list[list[Any]], widths: list[float] | None = None) -> Any:
     from reportlab.lib import colors
     from reportlab.platypus import Table, TableStyle
@@ -237,6 +343,26 @@ def _table(rows: list[list[Any]], widths: list[float] | None = None) -> Any:
     return table
 
 
+def _policy_table(policy: dict[str, Any]) -> Any:
+    summary = _record(policy.get("summary"))
+    rows = [["Field", "Value", "Confidence"]]
+    if not summary.get("present"):
+        rows.append(["Policy", "No IPS ingestion payload was attached.", "n/a"])
+        return _table(rows)
+    fields = [_record(field) for field in _list(policy.get("extracted_fields"))]
+    for field in fields[:8]:
+        rows.append(
+            [
+                field.get("label") or field.get("key"),
+                field.get("value"),
+                _format_pct(float(field.get("confidence", 0)) * 100),
+            ]
+        )
+    if len(rows) == 1:
+        rows.append(["Policy", "No fields extracted.", "n/a"])
+    return _table(rows)
+
+
 def _solver_table(items: list[Any]) -> Any:
     rows = [["Step", "Domain", "Solver", "Problem", "Objective", "Improvement"]]
     for item in items:
@@ -251,6 +377,21 @@ def _solver_table(items: list[Any]) -> Any:
                 _format_pct(record.get("improvement_pct")),
             ]
         )
+    return _table(rows)
+
+
+def _governance_table(governance: dict[str, Any]) -> Any:
+    summary = _record(governance.get("summary"))
+    rows = [
+        ["Metric", "Value"],
+        ["Highest tier", summary.get("highest_tier", 0)],
+        ["Escalated approvals", summary.get("escalated_count", 0)],
+        ["Pending approvals", summary.get("pending_count", 0)],
+        [
+            "IPS-driven constraint change",
+            "Yes" if summary.get("policy_driven_constraint_change") else "No",
+        ],
+    ]
     return _table(rows)
 
 
