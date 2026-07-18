@@ -161,6 +161,7 @@ def test_loads_demo_presets_for_registered_workflows():
         "executive_liquidity_stress",
         "funding_capacity_crisis",
         "governed_recommendation_baseline",
+        "institutional_csv_liquidity_base",
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
@@ -181,6 +182,12 @@ def test_loads_demo_presets_for_registered_workflows():
         preset for preset in presets if preset.preset_id == "production_constraint_change_review"
     )
     assert tier5.context["governance"]["production_constraint_change"] is True
+    csv_base = next(
+        preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_base"
+    )
+    assert csv_base.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
+    assert csv_base.context["money_market"]["daily_liquidity_req"] == 0.25
+    assert csv_base.context["financing"]["data_source"]["type"] == "csv"
     csv_preset = next(
         preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_stress"
     )
@@ -213,6 +220,48 @@ def test_portfolio_rebalance_mvo_workflow_runs(orchestrator):
     assert step_result.status.value == "optimal"
     assert step_result.solver_metadata["solver_method"] == "SLSQP"
     assert step_result.solver_metadata["expected_return"] >= 0.05
+
+
+def test_csv_base_case_has_smaller_dependency_deltas_than_stress(orchestrator):
+    presets = load_demo_presets(
+        DEMO_PRESET_CONFIG_DIR,
+        known_workflow_ids=set(DEFAULT_WORKFLOW_REGISTRY.list_ids()),
+    )
+    base = next(
+        preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_base"
+    )
+    stress = next(
+        preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_stress"
+    )
+
+    runner = SequentialWorkflowRunner(orchestrator)
+    base_result = runner.run(
+        DEFAULT_WORKFLOW_REGISTRY.build(
+            base.workflow_id,
+            portfolio_id=base.portfolio_id,
+            seed=base.seed,
+            context=base.context,
+        )
+    )
+    stress_result = runner.run(
+        DEFAULT_WORKFLOW_REGISTRY.build(
+            stress.workflow_id,
+            portfolio_id=stress.portfolio_id,
+            seed=stress.seed,
+            context=stress.context,
+        )
+    )
+
+    base_delta = sum(
+        effect["delta"] for effect in base_result.dependency_summary["context_changes"]
+    )
+    stress_delta = sum(
+        effect["delta"] for effect in stress_result.dependency_summary["context_changes"]
+    )
+    assert base_result.status == "complete"
+    assert stress_result.status == "complete"
+    assert base_delta < stress_delta
+    assert base_result.step_results[-1].result.solver_metadata["problem_type"] == "milp"
 
 
 def test_workflow_builder_applies_execution_mode_to_steps():

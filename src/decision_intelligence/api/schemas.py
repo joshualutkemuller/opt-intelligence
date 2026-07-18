@@ -171,3 +171,19 @@ class WorkflowExportPackageResponse(BaseModel):
     filename: str
     content_type: str = "text/html"
     html: str
+
+
+class WorkflowEvidenceExportRequest(BaseModel):
+    response: dict[str, Any]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    preset: dict[str, Any] = Field(default_factory=dict)
+    workflow: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowEvidenceExportResponse(BaseModel):
+    json_filename: str
+    json_content_type: str = "application/json"
+    json_payload: dict[str, Any]
+    pdf_filename: str
+    pdf_content_type: str = "application/pdf"
+    pdf_base64: str

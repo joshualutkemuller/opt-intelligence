@@ -15,7 +15,12 @@ from decision_intelligence.contracts import Objective, OptimizationRequest, Scen
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.data.demo_packets import load_demo_data_packets
-from decision_intelligence.export import generate_workflow_demo_package
+from decision_intelligence.export import (
+    build_workflow_evidence_packet,
+    encode_pdf_base64,
+    generate_workflow_demo_package,
+    generate_workflow_evidence_pdf,
+)
 from decision_intelligence.governance import (
     ApprovalDecision,
     ApprovalPolicy,
@@ -53,6 +58,8 @@ from .schemas import (
     OptimizationResponse,
     PendingApprovalsResponse,
     WorkflowCatalogResponse,
+    WorkflowEvidenceExportRequest,
+    WorkflowEvidenceExportResponse,
     WorkflowExportPackageRequest,
     WorkflowExportPackageResponse,
     WorkflowRunRequest,
@@ -306,6 +313,32 @@ def export_workflow_package(
     return WorkflowExportPackageResponse(
         filename=f"{_safe_filename(str(workflow_id))}-demo-package.html",
         html=html,
+    )
+
+
+@app.post("/api/workflows/export-evidence", response_model=WorkflowEvidenceExportResponse)
+def export_workflow_evidence(
+    payload: WorkflowEvidenceExportRequest,
+) -> WorkflowEvidenceExportResponse:
+    packet = build_workflow_evidence_packet(
+        response=payload.response,
+        payload=payload.payload,
+        preset=payload.preset,
+        workflow=payload.workflow,
+    )
+    pdf = generate_workflow_evidence_pdf(packet)
+    workflow_id = (
+        payload.response.get("result", {}).get("workflow_id")
+        or payload.workflow.get("workflow_id")
+        or payload.payload.get("workflow")
+        or "workflow-demo"
+    )
+    filename = _safe_filename(str(workflow_id))
+    return WorkflowEvidenceExportResponse(
+        json_filename=f"{filename}-evidence.json",
+        json_payload=packet,
+        pdf_filename=f"{filename}-evidence.pdf",
+        pdf_base64=encode_pdf_base64(pdf),
     )
 
 

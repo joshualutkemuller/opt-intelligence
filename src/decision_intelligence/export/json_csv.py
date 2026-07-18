@@ -62,7 +62,9 @@ def export_csv(result: OptimizationResult, path: str | Path) -> Path:
 
         # ── Section 3: sensitivities ──
         writer.writerow(["# SENSITIVITY ANALYSIS"])
-        writer.writerow(["parameter", "shadow_price", "range_lower", "range_upper", "interpretation"])
+        writer.writerow(
+            ["parameter", "shadow_price", "range_lower", "range_upper", "interpretation"]
+        )
         for s in result.sensitivities:
             writer.writerow([
                 s.parameter,
@@ -84,6 +86,13 @@ def export_csv(result: OptimizationResult, path: str | Path) -> Path:
             writer.writerow(["# SCENARIOS"])
             writer.writerow(["scenario", "status", "objective", "improvement_pct"])
             for name, sr in result.scenario_results.items():
-                writer.writerow([name, sr.status.value, round(sr.objective_value, 4), round(sr.improvement_pct, 4)])
+                writer.writerow(
+                    [
+                        name,
+                        sr.status.value,
+                        round(sr.objective_value, 4),
+                        round(sr.improvement_pct, 4),
+                    ]
+                )
 
     return path

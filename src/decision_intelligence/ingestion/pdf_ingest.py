@@ -72,7 +72,7 @@ def llm_available() -> bool:
 def extract_with_llm(
     pdf_path: Path,
     *,
-    provider: "LLMProvider | None" = None,
+    provider: LLMProvider | None = None,
     model: str | None = None,
 ) -> ExtractedRequest:
     """Extract via a configured LLM provider (schema-validated output).
@@ -99,7 +99,7 @@ def extract_with_llm(
         raise IngestionError(str(exc)) from exc
 
 
-def _default_provider(model: str | None) -> "LLMProvider":
+def _default_provider(model: str | None) -> LLMProvider:
     """Resolve a provider for an explicit LLM request (Anthropic fallback)."""
     from decision_intelligence.llm import AnthropicProvider, resolve_provider
 
@@ -263,7 +263,7 @@ def ingest_pdf(
     backend: Backend = "auto",
     seed: int | None = None,
     model: str | None = None,
-    provider: "LLMProvider | None" = None,
+    provider: LLMProvider | None = None,
 ) -> tuple[OptimizationRequest, ExtractedRequest]:
     """
     Ingest a PDF into a validated OptimizationRequest.

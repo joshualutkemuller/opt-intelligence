@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from .approvals import ApprovalRecord
 
 
-class SolveStatus(str, Enum):
+class SolveStatus(StrEnum):
     OPTIMAL = "optimal"
     INFEASIBLE = "infeasible"
     UNBOUNDED = "unbounded"
@@ -90,4 +90,4 @@ class OptimizationResult(BaseModel):
     governance: ApprovalRecord | None = None
     scenario_results: dict[str, "OptimizationResult"] = Field(default_factory=dict)
     solver_metadata: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

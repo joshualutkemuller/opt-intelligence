@@ -252,10 +252,11 @@ Per domain, the CSV columns map 1:1 to the dataclass fields in each optimizer's
 generator. Adding a new backend (Parquet, SQL, a REST feed) means implementing
 one loader that returns the same dataclass tuple — the optimizers are unchanged.
 
-The POC also includes an anonymized institutional CSV packet for the video demo:
-`config/demo_presets/institutional_csv_liquidity_stress.yaml` points financing,
-collateral, and money-market steps to `examples/data/institutional_liquidity_stress/`.
-See `docs/real_data_demo_packet.md`.
+The POC also includes anonymized institutional CSV packets for the video demo:
+`institutional_csv_liquidity_base.yaml` provides a calmer comparison run, while
+`institutional_csv_liquidity_stress.yaml` shows tighter funding, collateral, and
+liquidity pressure. Both point financing, collateral, and money-market steps to
+CSV inputs under `examples/data/`. See `docs/real_data_demo_packet.md`.
 
 ---
 

@@ -170,14 +170,13 @@ class CollateralOptimizer(OptimizationCapability):
 
         if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
             x = solver_result.x
-            n, m = problem["n"], problem["m"]
+            n = problem["n"]
             mv = problem["mv"]
             hc = problem["hc"]
             assets = problem["assets"]
             obligations = problem["obligations"]
 
             allocations = []
-            total_mv = sum(a.market_value for a in assets)
             for j, obl in enumerate(obligations):
                 for i, asset in enumerate(assets):
                     frac = x[i + j * n]
@@ -244,7 +243,11 @@ class CollateralOptimizer(OptimizationCapability):
 
         return violations
 
-    def run_sensitivity(self, problem: dict[str, Any], solution: dict[str, Any]) -> list[dict[str, Any]]:
+    def run_sensitivity(
+        self,
+        problem: dict[str, Any],
+        solution: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """
         Sensitivity: how much does objective improve if each obligation's
         required value is reduced by 10%?  (dual-price approximation via re-solve)
@@ -331,7 +334,6 @@ def _compute_naive_cost(
     assets: list[CollateralAsset], obligations: list[CollateralObligation]
 ) -> float:
     """Naive baseline: allocate cheapest assets first, proportionally."""
-    sorted_assets = sorted(assets, key=lambda a: -a.funding_cost_bps)  # worst first
     total_required = sum(o.required_value for o in obligations)
     total_mv = sum(a.market_value * (1 - a.haircut) for a in assets)
     if total_mv == 0:

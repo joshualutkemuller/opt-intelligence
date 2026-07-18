@@ -59,7 +59,10 @@ def simulate_financing_universe(
             capacity = rng.uniform(50e6, 500e6)
             tenor_range = (1, 90)
             cap_pct = rng.uniform(0.5, 2.0)
-            collateral = rng.sample(["govt_bond", "corp_bond", "equity", "cash"], k=rng.randint(1, 3))
+            collateral = rng.sample(
+                ["govt_bond", "corp_bond", "equity", "cash"],
+                k=rng.randint(1, 3),
+            )
         elif instr == "sec_lending":
             spread = rng.uniform(10, 40)
             capacity = rng.uniform(20e6, 200e6)

@@ -1,0 +1,31 @@
+packet_id: institutional_liquidity_base
+version: 1
+name: Institutional Liquidity Base Case CSV Packet
+description: >
+  An anonymized, real-data-style CSV packet for the calmer comparison case.
+  It uses the same financing, collateral, and money-market workflow contract as
+  the stress packet, but with more funding capacity, lighter obligations, and
+  lower liquidity requirements.
+audience: Treasury, risk, and funding stakeholders
+workflow_id: liquidity_stress_funding_workflow
+preset_id: institutional_csv_liquidity_base
+source_type: csv
+domains:
+  - financing
+  - collateral
+  - money_market
+files:
+  financing_counterparties: examples/data/institutional_liquidity_base/financing_counterparties.csv
+  financing_needs: examples/data/institutional_liquidity_base/financing_needs.csv
+  collateral_assets: examples/data/institutional_liquidity_base/collateral_assets.csv
+  collateral_obligations: examples/data/institutional_liquidity_base/collateral_obligations.csv
+  money_market_funds: examples/data/institutional_liquidity_base/mmf_universe.csv
+  money_market_position: examples/data/institutional_liquidity_base/cash_position.csv
+talking_points:
+  - This comparison run uses the same CSV-backed workflow with calmer market inputs.
+  - Funding and collateral pressure should be lower than the institutional stress packet.
+  - The final money-market step can still use MILP fund selection, but with easier constraints.
+success_criteria:
+  - CSV-backed base workflow completes all three optimizer steps.
+  - Dependency deltas are smaller than the stress packet.
+  - The final allocation remains validated and explainable.

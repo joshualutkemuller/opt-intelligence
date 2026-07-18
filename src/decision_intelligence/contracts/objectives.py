@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class ObjectiveDirection(str, Enum):
+class ObjectiveDirection(StrEnum):
     MINIMIZE = "minimize"
     MAXIMIZE = "maximize"
 

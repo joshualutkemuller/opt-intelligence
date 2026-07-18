@@ -12,31 +12,30 @@ Commands:
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 try:
     import typer
+    from rich import box
     from rich.console import Console
     from rich.panel import Panel
     from rich.prompt import Prompt
     from rich.table import Table
-    from rich import box
 except ImportError:
     print("Install: pip install 'decision-intelligence[dev]' typer")
     sys.exit(1)
 
+from decision_intelligence.chat import ChatSession
 from decision_intelligence.contracts import (
     Objective,
     ObjectiveDirection,
     OptimizationRequest,
     Scenario,
 )
+from decision_intelligence.contracts.approvals import ApprovalStatus
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.results import SolveStatus
 from decision_intelligence.contracts.scenarios import ScenarioType
 from decision_intelligence.export import export_csv, export_json, generate_report
-from decision_intelligence.contracts.approvals import ApprovalStatus
-from decision_intelligence.chat import ChatSession
 from decision_intelligence.governance import (
     ApprovalDecision,
     ApprovalPolicy,
@@ -64,7 +63,10 @@ console = Console()
 
 _DOMAIN_INFO = {
     "asset_allocation": {
-        "desc": "Maximize mean-variance utility across asset classes subject to weight limits and optional target return.",
+        "desc": (
+            "Maximize mean-variance utility across asset classes subject to "
+            "weight limits and optional target return."
+        ),
         "objective": "utility",
         "direction": ObjectiveDirection.MAXIMIZE,
         "metrics": ["utility", "risk_adjusted_return", "sharpe", "volatility"],
@@ -77,21 +79,30 @@ _DOMAIN_INFO = {
         },
     },
     "collateral": {
-        "desc": "Minimize funding cost across collateral assets subject to eligibility, haircut coverage, inventory, and concentration constraints.",
+        "desc": (
+            "Minimize funding cost across collateral assets subject to eligibility, "
+            "haircut coverage, inventory, and concentration constraints."
+        ),
         "objective": "funding_cost",
         "direction": ObjectiveDirection.MINIMIZE,
         "metrics": ["funding_cost", "haircut_cost", "opportunity_cost"],
         "default_context": {"n_assets": 20, "seed": 42},
     },
     "money_market": {
-        "desc": "Maximize net yield across money market funds subject to daily/weekly liquidity floors, WAM cap, prime concentration, and single-fund limits.",
+        "desc": (
+            "Maximize net yield across money market funds subject to daily/weekly "
+            "liquidity floors, WAM cap, prime concentration, and single-fund limits."
+        ),
         "objective": "yield",
         "direction": ObjectiveDirection.MAXIMIZE,
         "metrics": ["yield", "net_yield", "expense_ratio"],
         "default_context": {"n_funds": 8, "seed": 42, "total_cash": 500_000_000},
     },
     "financing": {
-        "desc": "Minimize financing spread cost across counterparties subject to tenor compatibility, capacity, concentration, and capital budget.",
+        "desc": (
+            "Minimize financing spread cost across counterparties subject to tenor "
+            "compatibility, capacity, concentration, and capital budget."
+        ),
         "objective": "funding_spread",
         "direction": ObjectiveDirection.MINIMIZE,
         "metrics": ["funding_spread", "capital_usage", "funding_cost"],
@@ -307,7 +318,10 @@ def _chat_turn(text: str, seed: int, portfolio: str) -> bool:
         return True
 
     if "info" in normalized or "about" in normalized or "describe" in normalized:
-        console.print(f"[bold blue]assistant[/bold blue] Here is the domain profile for [cyan]{domain}[/cyan].")
+        console.print(
+            "[bold blue]assistant[/bold blue] Here is the domain profile for "
+            f"[cyan]{domain}[/cyan]."
+        )
         cmd_info(domain)
         return True
 
@@ -369,7 +383,10 @@ def cmd_list():
 def cmd_info(domain: str = typer.Argument(..., help="Optimizer domain")):
     """Describe a domain's objective, metrics, and constraints."""
     if domain not in _DOMAIN_INFO:
-        console.print(f"[red]Unknown domain '{domain}'. Run [bold]di list[/bold] to see available domains.[/red]")
+        console.print(
+            f"[red]Unknown domain '{domain}'. Run [bold]di list[/bold] "
+            "to see available domains.[/red]"
+        )
         raise typer.Exit(1)
 
     info = _DOMAIN_INFO[domain]
@@ -391,33 +408,64 @@ def cmd_run(
         help="Optimizer domain (asset_allocation, collateral, money_market, financing)",
     ),
     portfolio: str = typer.Option("PORT_001", "--portfolio", "-p", help="Portfolio identifier"),
-    objective: Optional[str] = typer.Option(None, "--objective", "-o", help="Objective metric (default: domain's standard metric)"),
-    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario preset(s): stress, downside, inventory (comma-separated)"),
+    objective: str | None = typer.Option(
+        None,
+        "--objective",
+        "-o",
+        help="Objective metric (default: domain's standard metric)",
+    ),
+    scenario: str | None = typer.Option(
+        None,
+        "--scenario",
+        "-s",
+        help="Scenario preset(s): stress, downside, inventory (comma-separated)",
+    ),
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
-    mode: str = typer.Option("recommendation", "--mode", "-m", help="Execution mode: explain, scenario_analysis, recommendation"),
+    mode: str = typer.Option(
+        "recommendation",
+        "--mode",
+        "-m",
+        help="Execution mode: explain, scenario_analysis, recommendation",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full explanation text"),
-    output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+    output: str | None = typer.Option(
+        None,
+        "--output",
+        "-O",
+        help="Write output file: result.json | allocs.csv | report.html",
+    ),
     solver: str = typer.Option("scipy", "--solver", help="Solver backend: scipy | cvxpy"),
-    problem_type: str = typer.Option("lp", "--problem-type", help="Problem type: lp | milp | qp | conic"),
-    solver_method: Optional[str] = typer.Option(
+    problem_type: str = typer.Option(
+        "lp",
+        "--problem-type",
+        help="Problem type: lp | milp | qp | conic",
+    ),
+    solver_method: str | None = typer.Option(
         None, "--solver-method", help="Backend-specific solver method override",
     ),
-    data: Optional[str] = typer.Option(
+    data: str | None = typer.Option(
         None, "--data", "-d",
         help="JSON file with a 'data_source' config to load real data (CSV) instead of simulated",
     ),
-    approve_as: Optional[str] = typer.Option(
+    approve_as: str | None = typer.Option(
         None, "--approve-as",
         help="Approver name — grants approval for gated modes (stage, execute) in one shot",
     ),
     reject: bool = typer.Option(
         False, "--reject", help="Reject the gated action (use with --approve-as as the approver)",
     ),
-    reason: str = typer.Option("", "--reason", help="Reason recorded with an approve/reject decision"),
+    reason: str = typer.Option(
+        "",
+        "--reason",
+        help="Reason recorded with an approve/reject decision",
+    ),
 ):
     """Run an optimization for a domain and print structured results."""
     if domain not in _DOMAIN_INFO:
-        console.print(f"[red]Unknown domain '{domain}'. Run [bold]di list[/bold] to see available domains.[/red]")
+        console.print(
+            f"[red]Unknown domain '{domain}'. Run [bold]di list[/bold] "
+            "to see available domains.[/red]"
+        )
         raise typer.Exit(1)
 
     info = _DOMAIN_INFO[domain]
@@ -451,7 +499,10 @@ def cmd_run(
     try:
         exec_mode = ExecutionMode(mode)
     except ValueError:
-        console.print(f"[red]Unknown mode '{mode}'. Valid: explain, scenario_analysis, recommendation, stage, execute[/red]")
+        console.print(
+            f"[red]Unknown mode '{mode}'. Valid: explain, scenario_analysis, "
+            "recommendation, stage, execute[/red]"
+        )
         raise typer.Exit(1)
 
     req = OptimizationRequest(
@@ -485,7 +536,7 @@ def cmd_run(
 def cmd_chat(
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
     portfolio: str = typer.Option("PORT_001", "--portfolio", "-p", help="Portfolio identifier"),
-    prompt: Optional[str] = typer.Option(
+    prompt: str | None = typer.Option(
         None,
         "--prompt",
         help="Run a single chat prompt and exit; useful for scripted demos.",
@@ -543,13 +594,19 @@ def cmd_ingest(
     pdf: str = typer.Argument(..., help="Path to a PDF brief describing the optimization"),
     backend: str = typer.Option(
         "auto", "--backend", "-b",
-        help="Extraction backend: auto | llm | heuristic (auto uses an LLM provider when configured)",
+        help=(
+            "Extraction backend: auto | llm | heuristic "
+            "(auto uses an LLM provider when configured)"
+        ),
     ),
-    provider: Optional[str] = typer.Option(
+    provider: str | None = typer.Option(
         None, "--provider",
-        help="LLM provider: anthropic | openai | <registered> (default: DI_LLM_PROVIDER / auto-detect)",
+        help=(
+            "LLM provider: anthropic | openai | <registered> "
+            "(default: DI_LLM_PROVIDER / auto-detect)"
+        ),
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", help="Model id override (default: DI_LLM_MODEL / provider default)",
     ),
     seed: int = typer.Option(42, "--seed", help="RNG seed for simulated data"),
@@ -562,11 +619,20 @@ def cmd_ingest(
         False, "--dry-run", help="Only parse the PDF into a request; do not solve",
     ),
     solver: str = typer.Option("scipy", "--solver", help="Solver backend: scipy | cvxpy"),
-    problem_type: str = typer.Option("lp", "--problem-type", help="Problem type: lp | milp | qp | conic"),
-    solver_method: Optional[str] = typer.Option(
+    problem_type: str = typer.Option(
+        "lp",
+        "--problem-type",
+        help="Problem type: lp | milp | qp | conic",
+    ),
+    solver_method: str | None = typer.Option(
         None, "--solver-method", help="Backend-specific solver method override",
     ),
-    output: Optional[str] = typer.Option(None, "--output", "-O", help="Write output file: result.json | allocs.csv | report.html"),
+    output: str | None = typer.Option(
+        None,
+        "--output",
+        "-O",
+        help="Write output file: result.json | allocs.csv | report.html",
+    ),
 ):
     """Ingest a PDF brief into an OptimizationRequest and route it through the orchestrator."""
     from decision_intelligence.ingestion import IngestionError, ingest_pdf, llm_available
@@ -681,7 +747,11 @@ def _print_extraction(req, extracted):
         console.print("[bold blue]  SCENARIOS DETECTED[/bold blue]")
         for s in req.scenarios:
             ov = ", ".join(f"{k}={v}" for k, v in s.parameter_overrides.items()) or "—"
-            console.print(f"  [white]{s.name}[/white] [dim]({s.scenario_type.value})[/dim]  [magenta]{ov}[/magenta]")
+            console.print(
+                f"  [white]{s.name}[/white] "
+                f"[dim]({s.scenario_type.value})[/dim]  "
+                f"[magenta]{ov}[/magenta]"
+            )
         console.print()
 
 
@@ -737,13 +807,14 @@ def _print_result(domain: str, result, verbose: bool):
     status_color = "green" if result.status == SolveStatus.OPTIMAL else "red"
     status_label = result.status.value.upper()
     imp_sign = "+" if result.improvement >= 0 else ""
+    improvement_color = "green" if result.improvement >= 0 else "red"
     console.print(Panel(
         f"[bold]{domain.upper().replace('_', ' ')} OPTIMIZER[/bold]\n"
         f"[{status_color}]{status_label}[/{status_color}]   "
         f"obj [yellow]{result.objective_value:,.4f}[/yellow]   "
         f"base [dim]{result.baseline_value:,.4f}[/dim]   "
-        f"impr [{'green' if result.improvement >= 0 else 'red'}]"
-        f"{imp_sign}{result.improvement_pct:.2f}%[/{'green' if result.improvement >= 0 else 'red'}]",
+        f"impr [{improvement_color}]"
+        f"{imp_sign}{result.improvement_pct:.2f}%[/{improvement_color}]",
         border_style=status_color,
         padding=(0, 1),
     ))

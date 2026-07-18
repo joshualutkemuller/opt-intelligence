@@ -1,0 +1,11 @@
+asset_id,label,asset_class,market_value,haircut,funding_cost_bps,eligible,currency,rating,maturity_years
+ASSET_BASE_001,Treasury Note Stack A,govt_bond,105000000,0.012,5.4,True,USD,AAA,2.0
+ASSET_BASE_002,Treasury Note Stack B,govt_bond,92000000,0.016,6.2,True,USD,AA+,4.1
+ASSET_BASE_003,Agency Pool A,govt_bond,68000000,0.022,9.4,True,USD,AA+,5.8
+ASSET_BASE_004,Investment Grade Credit A,corp_bond,76000000,0.060,27.0,True,USD,A,5.0
+ASSET_BASE_005,Investment Grade Credit B,corp_bond,56000000,0.072,32.5,True,USD,A-,7.2
+ASSET_BASE_006,High Grade Credit Sleeve,corp_bond,62000000,0.055,24.0,True,USD,A+,3.5
+ASSET_BASE_007,Listed Equity Hedge Basket,equity,42000000,0.150,68.0,True,USD,NR,0.0
+ASSET_BASE_008,Cash Reserve Sweep,cash,82000000,0.0,2.0,True,USD,AAA,0.0
+ASSET_BASE_009,Operational Cash Buffer,cash,52000000,0.0,1.8,True,USD,AAA,0.0
+ASSET_BASE_010,Restricted Corporate Bond,corp_bond,30000000,0.100,48.0,False,USD,BBB,9.0

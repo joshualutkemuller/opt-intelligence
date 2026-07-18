@@ -1,0 +1,5 @@
+obligation_id,counterparty,required_value,eligible_asset_classes
+OBL_BASE_001,Central Clearing House,80000000,govt_bond;cash
+OBL_BASE_002,Prime Broker Margin,65000000,govt_bond;corp_bond;cash
+OBL_BASE_003,Bilateral Repo Desk,50000000,govt_bond;corp_bond
+OBL_BASE_004,Securities Lending Agent,30000000,equity;corp_bond;cash

@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class ScenarioType(str, Enum):
+class ScenarioType(StrEnum):
     BASE = "base"
     UPSIDE = "upside"
     DOWNSIDE = "downside"

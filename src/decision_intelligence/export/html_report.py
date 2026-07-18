@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """
 Self-contained HTML report generator for OptimizationResult.
 

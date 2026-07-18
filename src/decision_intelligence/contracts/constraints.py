@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class ConstraintType(str, Enum):
+class ConstraintType(StrEnum):
     ELIGIBILITY = "eligibility"
     CONCENTRATION = "concentration"
     LIQUIDITY = "liquidity"

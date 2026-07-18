@@ -99,7 +99,11 @@ class OptimizationCapability(ABC):
 
         baseline = problem.get("baseline_value", 0.0)
         obj_val = solution["objective_value"]
-        improvement = baseline - obj_val if request.objective.direction.value == "minimize" else obj_val - baseline
+        improvement = (
+            baseline - obj_val
+            if request.objective.direction.value == "minimize"
+            else obj_val - baseline
+        )
         improvement_pct = (improvement / abs(baseline) * 100) if baseline != 0 else 0.0
 
         allocations = [

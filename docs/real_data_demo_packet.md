@@ -1,17 +1,30 @@
 # Real-Data Demo Packet
 
-The POC includes one anonymized, real-data-style CSV packet:
+The POC includes two anonymized, real-data-style CSV packets:
 
 ```text
+institutional_liquidity_base
 institutional_liquidity_stress
 ```
 
-It backs the **Institutional CSV Liquidity Stress** demo preset and replaces the
-simulated data generators for all three steps in the liquidity stress workflow.
+They back the **Institutional CSV Liquidity Base Case** and
+**Institutional CSV Liquidity Stress** demo presets. Both replace simulated data
+generators for all three steps in the liquidity stress workflow.
+
+Use the base case first when you want a calmer comparison run, then switch to
+the stress packet to show tighter funding, collateral, and liquidity pressure.
 
 ## Files
 
 ```text
+examples/data/institutional_liquidity_base/
+├── financing_counterparties.csv
+├── financing_needs.csv
+├── collateral_assets.csv
+├── collateral_obligations.csv
+├── mmf_universe.csv
+└── cash_position.csv
+
 examples/data/institutional_liquidity_stress/
 ├── financing_counterparties.csv
 ├── financing_needs.csv
@@ -24,12 +37,14 @@ examples/data/institutional_liquidity_stress/
 The packet manifest lives at:
 
 ```text
+config/data_packets/institutional_liquidity_base.yaml
 config/data_packets/institutional_liquidity_stress.yaml
 ```
 
 The runnable demo preset lives at:
 
 ```text
+config/demo_presets/institutional_csv_liquidity_base.yaml
 config/demo_presets/institutional_csv_liquidity_stress.yaml
 ```
 
@@ -41,6 +56,8 @@ config/demo_presets/institutional_csv_liquidity_stress.yaml
   to CSV-backed inputs.
 - The final money-market step can use true MILP fund selection against a CSV fund
   universe.
+- The base and stress packets provide a repeatable scenario contrast with
+  smaller dependency deltas in the base case.
 - The browser demo can surface the data packet, workflow dependencies,
   validation, and explanation in one recording path.
 
@@ -58,7 +75,9 @@ Browser:
 make demo-ui
 ```
 
-Then select **Institutional CSV Liquidity Stress** or click **Load POC Path**.
+Then select **Institutional CSV Liquidity Base Case** for the calmer comparison,
+or **Institutional CSV Liquidity Stress** / **Load POC Path** for the primary
+video story.
 
 API catalog endpoint:
 

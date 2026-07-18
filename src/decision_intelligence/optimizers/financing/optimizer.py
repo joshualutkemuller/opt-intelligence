@@ -241,15 +241,19 @@ class FinancingOptimizer(OptimizationCapability):
             used = sum(x[i + j * n] for j in range(m))
             if used > cp.capacity * 1.001:
                 violations.append(
-                    f"Counterparty {cp.counterparty_id} over-capacity: ${used:,.0f} > ${cp.capacity:,.0f}"
+                    f"Counterparty {cp.counterparty_id} over-capacity: "
+                    f"${used:,.0f} > ${cp.capacity:,.0f}"
                 )
 
         return violations
 
-    def run_sensitivity(self, problem: dict[str, Any], solution: dict[str, Any]) -> list[dict[str, Any]]:
+    def run_sensitivity(
+        self,
+        problem: dict[str, Any],
+        solution: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         base_obj = solution["objective_value"]
         sensitivities = []
-        n_cp_rows = problem["n"]
 
         for i, cp in enumerate(problem["counterparties"]):
             b_mod = problem["b_ub"].copy()
@@ -282,7 +286,6 @@ class FinancingOptimizer(OptimizationCapability):
 
     def explain(self, problem: dict[str, Any], solution: dict[str, Any]) -> str:
         cps = problem["counterparties"]
-        needs = problem["needs"]
         x = solution["x"]
         n, m = problem["n"], problem["m"]
 

@@ -271,6 +271,15 @@ type WorkflowExportPackageApiResponse = {
   html: string;
 };
 
+type WorkflowEvidenceExportApiResponse = {
+  json_filename: string;
+  json_content_type: string;
+  json_payload: Record<string, unknown>;
+  pdf_filename: string;
+  pdf_content_type: string;
+  pdf_base64: string;
+};
+
 type WorkflowCatalogItem = {
   workflow_id: string;
   version: number;
@@ -379,6 +388,16 @@ type RunHistoryEntry = {
   validation_passed: boolean;
 };
 
+type PresenterScriptAction = "load" | "review" | "run" | "export" | "none";
+
+type PresenterScriptStep = {
+  title: string;
+  cue: string;
+  proof: string;
+  action: PresenterScriptAction;
+  actionLabel: string;
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -416,6 +435,44 @@ const defaultMessages: Message[] = [
 const RUN_HISTORY_KEY = "decision-intelligence.workflowRunHistory.v1";
 const MAX_RUN_HISTORY = 12;
 const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
+
+const pocPresenterScript: PresenterScriptStep[] = [
+  {
+    title: "Load the proof path",
+    cue: "Start by selecting the institutional CSV preset and show the data packet panel.",
+    proof: "The demo is file-backed: three domains, six CSVs, and a deterministic preset.",
+    action: "load",
+    actionLabel: "Load POC Path",
+  },
+  {
+    title: "Review before running",
+    cue: "Open presenter review and call out portfolio, seed, execution mode, and guardrails.",
+    proof: "The run is controlled, repeatable, and blocked if inputs violate demo guardrails.",
+    action: "review",
+    actionLabel: "Open Review",
+  },
+  {
+    title: "Run the workflow",
+    cue: "Run financing, collateral, then money-market allocation without changing screens.",
+    proof: "Upstream stress propagates into downstream liquidity requirements before MILP solve.",
+    action: "run",
+    actionLabel: "Run Workflow",
+  },
+  {
+    title: "Export evidence",
+    cue: "Download the evidence packet immediately after the workflow completes.",
+    proof: "The packet contains inputs, solver metadata, allocations, dependency effects, and validation.",
+    action: "export",
+    actionLabel: "Export Evidence",
+  },
+  {
+    title: "Close the story",
+    cue: "End by naming the architecture: agent intake, deterministic optimizers, solver layer, governance, and workflow orchestration.",
+    proof: "The output is repeatable, explainable, and ready to review.",
+    action: "none",
+    actionLabel: "Ready",
+  },
+];
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
   {
@@ -539,6 +596,41 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
     ],
   },
   {
+    preset_id: "institutional_csv_liquidity_base",
+    version: 1,
+    name: "Institutional CSV Liquidity Base Case",
+    description:
+      "CSV-backed comparison walkthrough using calmer funding, collateral, and liquidity inputs.",
+    audience: "Treasury, risk, funding, and investment technology stakeholders",
+    workflow_id: "liquidity_stress_funding_workflow",
+    portfolio_id: "PORT_BASEDATA_001",
+    seed: 19,
+    duration_minutes: 6,
+    context: {
+      scenario: "institutional_csv_liquidity_base",
+      solver_backend: "scipy",
+      problem_type: "lp",
+      money_market: {
+        total_cash: 500_000_000,
+        daily_liquidity_req: 0.25,
+        weekly_liquidity_req: 0.55,
+        max_prime_fraction: 0.45,
+        max_wam_days: 60,
+        max_funds: 4,
+        min_allocation_fraction: 0.05,
+        problem_type: "milp",
+      },
+    },
+    talking_points: [
+      "Start with the same anonymized CSV workflow under a benign funding backdrop.",
+      "Use this as the baseline before switching to Institutional CSV Liquidity Stress.",
+    ],
+    success_criteria: [
+      "CSV-backed base workflow completes all three optimizer steps.",
+      "Dependency deltas are smaller than the stress packet.",
+    ],
+  },
+  {
     preset_id: "balanced_mvo_rebalance",
     version: 1,
     name: "Balanced MVO Rebalance",
@@ -593,6 +685,36 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
 ];
 
 const fallbackDemoDataPackets: DemoDataPacketCatalogItem[] = [
+  {
+    packet_id: "institutional_liquidity_base",
+    version: 1,
+    name: "Institutional Liquidity Base Case CSV Packet",
+    description:
+      "Anonymized calmer-case CSV files backing financing, collateral, and money-market inputs.",
+    audience: "Treasury, risk, and funding stakeholders",
+    workflow_id: "liquidity_stress_funding_workflow",
+    preset_id: "institutional_csv_liquidity_base",
+    source_type: "csv",
+    domains: ["financing", "collateral", "money_market"],
+    files: {
+      financing_counterparties:
+        "examples/data/institutional_liquidity_base/financing_counterparties.csv",
+      financing_needs: "examples/data/institutional_liquidity_base/financing_needs.csv",
+      collateral_assets: "examples/data/institutional_liquidity_base/collateral_assets.csv",
+      collateral_obligations:
+        "examples/data/institutional_liquidity_base/collateral_obligations.csv",
+      money_market_funds: "examples/data/institutional_liquidity_base/mmf_universe.csv",
+      money_market_position: "examples/data/institutional_liquidity_base/cash_position.csv",
+    },
+    talking_points: [
+      "This run uses the same CSV-backed workflow under calmer market inputs.",
+      "Use it as the comparison case before the stress run.",
+    ],
+    success_criteria: [
+      "All CSV files load through the data-provider layer.",
+      "Dependency deltas are smaller than the stress packet.",
+    ],
+  },
   {
     packet_id: "institutional_liquidity_stress",
     version: 1,
@@ -666,6 +788,9 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
+  const [isExportingEvidence, setIsExportingEvidence] = useState(false);
+  const [scriptModeEnabled, setScriptModeEnabled] = useState(true);
+  const [scriptStepIndex, setScriptStepIndex] = useState(0);
   const [presenterReviewOpen, setPresenterReviewOpen] = useState(false);
   const didCreateSession = useRef(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -820,6 +945,10 @@ function App() {
     setWorkflowInputValues(buildWorkflowInputValues(workflow?.inputs || [], preset));
     setResult(null);
     setWorkflowRun(null);
+    setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
+    setScriptModeEnabled(true);
+    setScriptStepIndex(1);
     setPresenterReviewOpen(true);
     setMessages((items) => [
       ...items,
@@ -829,6 +958,46 @@ function App() {
           "POC video path loaded: CSV data packet, liquidity stress workflow, and MILP money-market selection. Review the inputs, then run the demo.",
       },
     ]);
+  }
+
+  function resetVideoDemoScript() {
+    const preset =
+      demoPresets.find((item) => item.preset_id === VIDEO_DEMO_PRESET_ID) ||
+      demoPresets.find((item) => item.workflow_id === "liquidity_stress_funding_workflow");
+    if (!preset) return;
+    const workflow = workflowCatalog.find((item) => item.workflow_id === preset.workflow_id);
+    setSelectedDemoPresetId(preset.preset_id);
+    setSelectedWorkflowId(preset.workflow_id);
+    setSolver(solverKeyForWorkflow(preset.workflow_id));
+    setWorkflowInputValues(buildWorkflowInputValues(workflow?.inputs || [], preset));
+    setResult(null);
+    setWorkflowRun(null);
+    setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
+    setPresenterReviewOpen(false);
+    setScriptModeEnabled(true);
+    setScriptStepIndex(0);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          "POC script reset. Start at step 1, then load the CSV path when you are ready.",
+      },
+    ]);
+  }
+
+  function runPresenterScriptAction(action: PresenterScriptAction) {
+    if (action === "load") {
+      selectVideoDemoPath();
+    } else if (action === "review") {
+      openPresenterReview();
+      setScriptStepIndex(2);
+    } else if (action === "run") {
+      void runSequentialWorkflow();
+    } else if (action === "export") {
+      void exportEvidencePacket();
+    }
   }
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
@@ -1105,7 +1274,77 @@ function App() {
     }
   }
 
+  async function exportEvidencePacket() {
+    const workflowResponse = workflowRunResponseFromLatest(latestPayload);
+    if (!workflowResponse || !workflowRun) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "Run or restore a sequential workflow before exporting evidence.",
+        },
+      ]);
+      return;
+    }
+
+    setIsExportingEvidence(true);
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/workflows/export-evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            response: workflowResponse,
+            payload:
+              latestWorkflowRunPayload ||
+              latestWorkflowRunPayloadFromHistory(runHistory, workflowRun) ||
+              {},
+            preset: selectedPreset,
+            workflow: selectedWorkflow,
+          }),
+        },
+        10000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as WorkflowEvidenceExportApiResponse;
+      downloadTextFile(
+        body.json_filename,
+        JSON.stringify(body.json_payload, null, 2),
+        body.json_content_type || "application/json",
+      );
+      downloadBase64File(
+        body.pdf_filename,
+        body.pdf_base64,
+        body.pdf_content_type || "application/pdf",
+      );
+      setScriptStepIndex((current) => Math.max(current, 4));
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `Exported ${body.json_filename} and ${body.pdf_filename}.`,
+        },
+      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: `Evidence export did not complete (${detail}). Check the API server and try again.`,
+        },
+      ]);
+    } finally {
+      setIsExportingEvidence(false);
+    }
+  }
+
   function openPresenterReview() {
+    if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
+      setScriptModeEnabled(true);
+      setScriptStepIndex((current) => Math.max(current, 1));
+    }
     setPresenterReviewOpen(true);
     setMessages((items) => [
       ...items,
@@ -1178,6 +1417,10 @@ function App() {
       }
       setLatestPayload(body);
       setLatestWorkflowRunPayload(payload);
+      if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
+        setScriptModeEnabled(true);
+        setScriptStepIndex((current) => Math.max(current, 3));
+      }
       addRunHistoryEntry(
         createRunHistoryEntry({
           preset: selectedPreset,
@@ -1345,9 +1588,17 @@ function App() {
             className="primary-button"
             type="button"
             onClick={exportDemoPackage}
-            disabled={!workflowRun || isExportingPackage}
+            disabled={!workflowRun || isExportingPackage || isExportingEvidence}
           >
             {isExportingPackage ? "Exporting" : "Export Package"}
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={exportEvidencePacket}
+            disabled={!workflowRun || isExportingEvidence || isExportingPackage}
+          >
+            {isExportingEvidence ? "Exporting" : "Export Evidence"}
           </button>
         </div>
       </header>
@@ -1472,8 +1723,24 @@ function App() {
             workflowRun={workflowRun}
             onSelectPath={selectVideoDemoPath}
             onReview={openPresenterReview}
+            scriptModeEnabled={scriptModeEnabled}
+            onToggleScript={() => setScriptModeEnabled((enabled) => !enabled)}
             disabled={isWorkflowRunning}
           />
+
+          {scriptModeEnabled ? (
+            <PresenterScriptPanel
+              steps={pocPresenterScript}
+              activeIndex={scriptStepIndex}
+              workflowRun={workflowRun}
+              selectedDataPacket={selectedDataPacket}
+              isRunning={isWorkflowRunning}
+              isExportingEvidence={isExportingEvidence}
+              onStepChange={setScriptStepIndex}
+              onAction={runPresenterScriptAction}
+              onReset={resetVideoDemoScript}
+            />
+          ) : null}
 
           <section className="chat-panel panel">
             <div className="section-header">
@@ -1653,6 +1920,21 @@ async function fetchWithTimeout(
 
 function downloadTextFile(filename: string, contents: string, contentType: string) {
   const blob = new Blob([contents], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadBase64File(filename: string, base64: string, contentType: string) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const blob = new Blob([bytes], { type: contentType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -2180,6 +2462,8 @@ function VideoStoryPanel({
   workflowRun,
   onSelectPath,
   onReview,
+  scriptModeEnabled,
+  onToggleScript,
   disabled,
 }: {
   selectedPreset: DemoPresetCatalogItem;
@@ -2187,6 +2471,8 @@ function VideoStoryPanel({
   workflowRun: WorkflowRunResult | null;
   onSelectPath: () => void;
   onReview: () => void;
+  scriptModeEnabled: boolean;
+  onToggleScript: () => void;
   disabled: boolean;
 }) {
   const finalStep = workflowRun?.step_results.at(-1);
@@ -2235,6 +2521,9 @@ function VideoStoryPanel({
           <button className="secondary-button" type="button" onClick={onReview} disabled={disabled}>
             Review & Run
           </button>
+          <button className="secondary-button" type="button" onClick={onToggleScript}>
+            {scriptModeEnabled ? "Hide Script" : "Show Script"}
+          </button>
         </div>
       </div>
       <div className="video-proof-grid">
@@ -2249,6 +2538,145 @@ function VideoStoryPanel({
       <div className="video-story-preset">
         <strong>{selectedPreset.name}</strong>
         <span>{selectedPreset.audience}</span>
+      </div>
+    </section>
+  );
+}
+
+function PresenterScriptPanel({
+  steps,
+  activeIndex,
+  workflowRun,
+  selectedDataPacket,
+  isRunning,
+  isExportingEvidence,
+  onStepChange,
+  onAction,
+  onReset,
+}: {
+  steps: PresenterScriptStep[];
+  activeIndex: number;
+  workflowRun: WorkflowRunResult | null;
+  selectedDataPacket: DemoDataPacketCatalogItem | null;
+  isRunning: boolean;
+  isExportingEvidence: boolean;
+  onStepChange: (index: number) => void;
+  onAction: (action: PresenterScriptAction) => void;
+  onReset: () => void;
+}) {
+  const step = steps[activeIndex] || steps[0];
+  const finalStep = workflowRun?.step_results.at(-1);
+  const finalSolver = finalStep?.result.solver_metadata;
+  const statusItems = [
+    {
+      label: "Data",
+      value: selectedDataPacket ? "CSV packet loaded" : "Select CSV packet",
+      ready: Boolean(selectedDataPacket),
+    },
+    {
+      label: "Workflow",
+      value: workflowRun ? `${workflowRun.step_results.length} steps complete` : "Not run",
+      ready: workflowRun?.status === "complete",
+    },
+    {
+      label: "Dependencies",
+      value: workflowRun
+        ? `${workflowRun.dependency_summary.total_effects} effects`
+        : "Pending",
+      ready: Boolean(workflowRun?.dependency_summary.total_effects),
+    },
+    {
+      label: "Solver",
+      value: finalSolver
+        ? `${finalSolver.solver_backend}/${finalSolver.problem_type}`
+        : "MILP pending",
+      ready: finalSolver?.problem_type === "milp",
+    },
+  ];
+  const actionDisabled =
+    step.action === "none" ||
+    isRunning ||
+    isExportingEvidence ||
+    (step.action === "export" && !workflowRun);
+
+  return (
+    <section className="panel presenter-script-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Presenter Script</span>
+          <h2>{step.title}</h2>
+        </div>
+        <div className="script-controls">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => onStepChange(Math.max(0, activeIndex - 1))}
+            disabled={activeIndex === 0}
+          >
+            Back
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => onStepChange(Math.min(steps.length - 1, activeIndex + 1))}
+            disabled={activeIndex === steps.length - 1}
+          >
+            Next
+          </button>
+          <button className="text-button" type="button" onClick={onReset}>
+            Reset Script
+          </button>
+        </div>
+      </div>
+
+      <div className="script-layout">
+        <ol className="script-step-list" aria-label="Presenter script steps">
+          {steps.map((item, index) => (
+            <li
+              className={`${index === activeIndex ? "active" : ""} ${
+                index < activeIndex ? "complete" : ""
+              }`}
+              key={item.title}
+            >
+              <button type="button" onClick={() => onStepChange(index)}>
+                <span>{index + 1}</span>
+                <strong>{item.title}</strong>
+              </button>
+            </li>
+          ))}
+        </ol>
+
+        <div className="script-card">
+          <div>
+            <span className="eyebrow">Say This</span>
+            <p>{step.cue}</p>
+          </div>
+          <div>
+            <span className="eyebrow">Proof Point</span>
+            <p>{step.proof}</p>
+          </div>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => onAction(step.action)}
+            disabled={actionDisabled}
+          >
+            {isRunning && step.action === "run"
+              ? "Running"
+              : isExportingEvidence && step.action === "export"
+                ? "Exporting"
+                : step.actionLabel}
+          </button>
+        </div>
+      </div>
+
+      <div className="script-proof-strip" aria-label="Script proof status">
+        {statusItems.map((item) => (
+          <div className={item.ready ? "ready" : "pending"} key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
       </div>
     </section>
   );

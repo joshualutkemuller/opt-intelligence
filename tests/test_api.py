@@ -1,5 +1,6 @@
 """Tests for the browser-facing FastAPI wrapper."""
 
+import base64
 import importlib
 
 from fastapi.testclient import TestClient
@@ -261,6 +262,7 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "executive_liquidity_stress",
         "funding_capacity_crisis",
         "governed_recommendation_baseline",
+        "institutional_csv_liquidity_base",
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
@@ -286,6 +288,13 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
     assert tier5["context"]["governance"]["production_constraint_change"] is True
     csv_preset = next(
         item for item in body["presets"] if item["preset_id"] == (
+            "institutional_csv_liquidity_base"
+        )
+    )
+    assert csv_preset["context"]["money_market"]["daily_liquidity_req"] == 0.25
+    assert csv_preset["context"]["financing"]["data_source"]["type"] == "csv"
+    csv_preset = next(
+        item for item in body["presets"] if item["preset_id"] == (
             "institutional_csv_liquidity_stress"
         )
     )
@@ -299,13 +308,20 @@ def test_demo_data_packet_catalog_endpoint_lists_csv_packet():
     assert response.status_code == 200
     body = response.json()
     assert [item["packet_id"] for item in body["packets"]] == [
+        "institutional_liquidity_base",
         "institutional_liquidity_stress"
     ]
-    packet = body["packets"][0]
+    packet = next(
+        item for item in body["packets"] if item["packet_id"] == "institutional_liquidity_stress"
+    )
     assert packet["source_type"] == "csv"
     assert packet["preset_id"] == "institutional_csv_liquidity_stress"
     assert packet["domains"] == ["financing", "collateral", "money_market"]
     assert "money_market_funds" in packet["files"]
+    base_packet = next(
+        item for item in body["packets"] if item["packet_id"] == "institutional_liquidity_base"
+    )
+    assert base_packet["preset_id"] == "institutional_csv_liquidity_base"
 
 
 def test_workflow_endpoint_runs_liquidity_stress_workflow():
@@ -373,6 +389,54 @@ def test_workflow_endpoint_runs_institutional_csv_liquidity_stress_preset():
     assert final["solver_metadata"]["solver_backend"] == "scipy"
     assert final["solver_metadata"]["problem_type"] == "milp"
     assert final["solver_metadata"]["n_funds_used"] <= 3
+
+
+def test_workflow_endpoint_runs_institutional_csv_liquidity_base_preset():
+    presets = client.get("/api/demo-presets").json()["presets"]
+    base = next(
+        item for item in presets if item["preset_id"] == "institutional_csv_liquidity_base"
+    )
+    stress = next(
+        item for item in presets if item["preset_id"] == "institutional_csv_liquidity_stress"
+    )
+
+    base_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": base["workflow_id"],
+            "portfolio_id": base["portfolio_id"],
+            "seed": base["seed"],
+            "context": base["context"],
+        },
+    )
+    stress_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": stress["workflow_id"],
+            "portfolio_id": stress["portfolio_id"],
+            "seed": stress["seed"],
+            "context": stress["context"],
+        },
+    )
+
+    assert base_response.status_code == 200
+    assert stress_response.status_code == 200
+    base_body = base_response.json()
+    stress_body = stress_response.json()
+    base_delta = sum(
+        effect["delta"]
+        for effect in base_body["result"]["dependency_summary"]["context_changes"]
+    )
+    stress_delta = sum(
+        effect["delta"]
+        for effect in stress_body["result"]["dependency_summary"]["context_changes"]
+    )
+    assert base_body["result"]["status"] == "complete"
+    assert base_body["result"]["validation_summary"]["passed"] is True
+    assert base_delta < stress_delta
+    final = base_body["result"]["step_results"][-1]["result"]
+    assert final["solver_metadata"]["problem_type"] == "milp"
+    assert final["solver_metadata"]["n_funds_used"] <= 4
 
 
 def test_chat_endpoint_runs_multi_domain_workflow_from_prompt():
@@ -575,6 +639,72 @@ def test_workflow_export_package_endpoint_returns_shareable_html():
     assert "Workflow Timeline" in body["html"]
     assert "Audit Payload" in body["html"]
     assert "PORT_EXPORT" in body["html"]
+
+
+def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
+    run_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "liquidity_stress_funding_workflow",
+            "portfolio_id": "PORT_EVIDENCE",
+            "seed": 17,
+            "context": {
+                "scenario": "institutional_csv_liquidity_stress",
+                "solver_backend": "scipy",
+                "problem_type": "lp",
+                "money_market": {
+                    "total_cash": 500_000_000,
+                    "daily_liquidity_req": 0.4,
+                    "weekly_liquidity_req": 0.7,
+                    "max_prime_fraction": 0.35,
+                    "max_wam_days": 55,
+                    "max_funds": 3,
+                    "min_allocation_fraction": 0.1,
+                    "problem_type": "milp",
+                },
+            },
+        },
+    )
+    assert run_response.status_code == 200
+    run_body = run_response.json()
+
+    response = client.post(
+        "/api/workflows/export-evidence",
+        json={
+            "response": run_body,
+            "payload": {
+                "workflow": "liquidity_stress_funding_workflow",
+                "portfolio_id": "PORT_EVIDENCE",
+                "seed": 17,
+                "context": {},
+            },
+            "preset": {
+                "preset_id": "institutional_csv_liquidity_stress",
+                "name": "Institutional CSV Liquidity Stress",
+                "audience": "Treasury stakeholders",
+                "talking_points": ["Show CSV provenance."],
+                "success_criteria": ["Evidence packet includes solver metadata."],
+            },
+            "workflow": {
+                "workflow_id": "liquidity_stress_funding_workflow",
+                "name": "Liquidity Stress Funding Workflow",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["json_filename"] == "liquidity-stress-funding-workflow-evidence.json"
+    assert body["pdf_filename"] == "liquidity-stress-funding-workflow-evidence.pdf"
+    packet = body["json_payload"]
+    assert packet["packet_type"] == "workflow_run_evidence"
+    assert packet["overview"]["portfolio_id"] == "PORT_EVIDENCE"
+    assert packet["overview"]["dependency_effect_count"] == 4
+    assert packet["solver_evidence"][-1]["solver_backend"] == "scipy"
+    assert packet["solver_evidence"][-1]["problem_type"] == "milp"
+    assert packet["allocation_evidence"][-1]["allocation_count"] == 3
+    pdf_bytes = base64.b64decode(body["pdf_base64"])
+    assert pdf_bytes.startswith(b"%PDF")
 
 
 def test_unknown_workflow_returns_400():

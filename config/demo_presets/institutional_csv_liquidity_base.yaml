@@ -1,0 +1,53 @@
+preset_id: institutional_csv_liquidity_base
+version: 1
+name: Institutional CSV Liquidity Base Case
+description: >
+  CSV-backed comparison walkthrough using calmer financing, collateral, and
+  money-market inputs. Use it before the stress packet to show how the same
+  workflow behaves when market pressure is manageable.
+audience: Treasury, risk, funding, and investment technology stakeholders
+workflow_id: liquidity_stress_funding_workflow
+portfolio_id: PORT_BASEDATA_001
+seed: 19
+duration_minutes: 6
+context:
+  scenario: institutional_csv_liquidity_base
+  solver_backend: scipy
+  problem_type: lp
+  financing:
+    total_funding_need: 240000000
+    max_cp_concentration: 0.45
+    data_source:
+      type: csv
+      counterparties: examples/data/institutional_liquidity_base/financing_counterparties.csv
+      needs: examples/data/institutional_liquidity_base/financing_needs.csv
+  collateral:
+    obligation_scale: 1.0
+    concentration_limit: 0.65
+    data_source:
+      type: csv
+      assets: examples/data/institutional_liquidity_base/collateral_assets.csv
+      obligations: examples/data/institutional_liquidity_base/collateral_obligations.csv
+  money_market:
+    total_cash: 500000000
+    daily_liquidity_req: 0.25
+    weekly_liquidity_req: 0.55
+    max_prime_fraction: 0.45
+    max_wam_days: 60
+    max_single_fund: 0.50
+    max_funds: 4
+    min_allocation_fraction: 0.05
+    problem_type: milp
+    data_source:
+      type: csv
+      funds: examples/data/institutional_liquidity_base/mmf_universe.csv
+      position: examples/data/institutional_liquidity_base/cash_position.csv
+talking_points:
+  - Start with the same anonymized CSV workflow under a benign funding backdrop.
+  - Show that financing and collateral complete with less pressure than the stress case.
+  - Use this as the baseline before switching to Institutional CSV Liquidity Stress.
+success_criteria:
+  - CSV-backed base workflow completes all three optimizer steps.
+  - Dependency deltas are smaller than the stress packet.
+  - The final money-market solver metadata shows scipy/milp.
+  - Aggregate validation passes with no blocking violations.

@@ -13,15 +13,26 @@ demo for a crisp proof path.
 make demo-ui
 ```
 
-Open `http://127.0.0.1:5173/` and show:
+Open `http://127.0.0.1:5173/` and use **Presenter Script** as the on-camera
+guide:
 
-1. Workflow selector and demo presets.
-2. Editable workflow inputs.
-3. Validation/readiness panels.
-4. Workflow result timeline and export package.
+1. Load the POC path.
+2. Review inputs and guardrails.
+3. Run the sequential workflow.
+4. Export the evidence packet.
+5. Close with the architecture summary.
 
-Select **Institutional CSV Liquidity Stress** in the preset selector when you
-want the browser to mirror the video story with file-backed inputs.
+Select **Institutional CSV Liquidity Base Case** first if you want to show a
+calmer comparison run. Then switch to **Institutional CSV Liquidity Stress** or
+click **Load POC Path** when you want the browser to mirror the primary video
+story with tighter file-backed inputs.
+
+After the workflow completes, use **Export Evidence** to download:
+
+- `*-evidence.json`: structured inputs, solver metadata, allocations,
+  dependency effects, validation, and raw response.
+- `*-evidence.pdf`: compact stakeholder proof packet for review or screen
+  share.
 
 Then run the terminal proof:
 
@@ -81,10 +92,13 @@ Call out:
 
 - The workflow has ordered optimizer steps, not one isolated solve.
 - The institutional data packet points each optimizer to CSV inputs.
+- The base packet gives a calmer comparison case; the stress packet creates
+  larger dependency deltas into the final liquidity allocation.
 - Cross-step dependency effects are printed with before/after values.
 - Aggregate validation summarizes whether the recommendation is ready, needs
   review, or is blocked.
 - The explanation report gives key drivers and next actions.
+- Export Evidence produces JSON and PDF artifacts for the exact completed run.
 
 ## Shot List
 
@@ -99,7 +113,8 @@ Call out:
 | 7 | Data packet panel | CSV files backing each optimizer step |
 | 8 | Executive workflow timeline | Financing, collateral, money-market chain |
 | 9 | Dependency effects table | Upstream stress changes downstream constraints |
-| 10 | Explanation and next actions | Recommendation is explainable and auditable |
+| 10 | Export Evidence button | JSON and PDF proof packet from the completed run |
+| 11 | Explanation and next actions | Recommendation is explainable and auditable |
 
 ## Fallback Commands
 
@@ -122,3 +137,4 @@ di run money_market --solver scipy --problem-type milp --scenario stress
 - The executive workflow completes all planned steps.
 - Dependency effects are visible before the final money-market recommendation.
 - Validation and explanation are shown as first-class outputs.
+- The evidence JSON/PDF packet exports from the browser after the run.
