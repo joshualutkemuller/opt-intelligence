@@ -513,7 +513,8 @@ h2 {
   padding-top: 2px;
 }
 
-.workflow-review-action .status-pill {
+.workflow-review-action .status-pill,
+.workflow-review-action .status-strip {
   justify-self: start;
 }
 
@@ -2375,6 +2376,8 @@ h2 {
 
 .topbar-controls {
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .workspace {
@@ -2387,12 +2390,14 @@ h2 {
 .sidebar {
   gap: 8px;
   top: 58px;
+  min-width: 0;
 }
 
 .main-stage {
   grid-template-columns: minmax(380px, 0.95fr) minmax(460px, 1.1fr);
   align-items: start;
   gap: 10px;
+  min-width: 0;
 }
 
 .chat-panel {
@@ -2455,6 +2460,12 @@ h2 {
   gap: 10px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(26, 45, 66, 0.72);
+  min-width: 0;
+}
+
+.section-header > div,
+.panel-heading > div {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -2485,6 +2496,37 @@ h2 {
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 10px currentColor;
+}
+
+.status-strip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  color: var(--body);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-strip > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.status-strip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-ready {
@@ -2796,6 +2838,7 @@ h2 {
 .metric {
   min-height: 76px;
   padding: 9px;
+  min-width: 0;
 }
 
 .metric span,
@@ -2810,6 +2853,8 @@ h2 {
 .metric strong {
   color: var(--ink);
   font-size: 22px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .metric.accent {
@@ -2909,6 +2954,7 @@ h2 {
 .workflow-step-heading strong {
   color: var(--ink);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .workflow-step-heading div > span {
@@ -2931,6 +2977,7 @@ h2 {
   color: var(--body);
   background: #08111d;
   font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .workflow-dependency-list {

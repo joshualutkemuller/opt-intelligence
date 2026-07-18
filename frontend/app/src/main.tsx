@@ -1608,9 +1608,10 @@ function App() {
           <section className="panel compact">
             <div className="panel-heading">
               <span className="eyebrow">Workflow</span>
-              <span className={`status-pill ${result ? "status-optimal" : "status-ready"}`}>
-                {result ? "Complete" : apiConnected ? "API ready" : "Static"}
-              </span>
+              <StatusStrip
+                label={result ? "Complete" : apiConnected ? "API ready" : "Static"}
+                statusClass={result ? "status-optimal" : "status-ready"}
+              />
             </div>
             <dl className="state-list">
               <StateRow label="Domain" value={display.domain} />
@@ -2688,7 +2689,7 @@ function DataPacketPanel({ packet }: { packet: DemoDataPacketCatalogItem | null 
       <section className="panel compact data-packet-panel">
         <div className="panel-heading">
           <span className="eyebrow">Data Packet</span>
-          <span className="status-pill status-ready">Simulated</span>
+          <StatusStrip label="Simulated" statusClass="status-ready" />
         </div>
         <p>Select the institutional CSV preset to show file-backed inputs.</p>
       </section>
@@ -2699,7 +2700,7 @@ function DataPacketPanel({ packet }: { packet: DemoDataPacketCatalogItem | null 
     <section className="panel compact data-packet-panel">
       <div className="panel-heading">
         <span className="eyebrow">Data Packet</span>
-        <span className="status-pill status-optimal">{packet.source_type.toUpperCase()}</span>
+        <StatusStrip label={packet.source_type.toUpperCase()} statusClass="status-optimal" />
       </div>
       <strong>{packet.name}</strong>
       <p>{packet.description}</p>
@@ -2735,7 +2736,7 @@ function DemoPresetSelector({
     <section className="panel compact workflow-selector">
       <div className="panel-heading">
         <span className="eyebrow">Demo Preset</span>
-        <span className="status-pill">{selected?.duration_minutes || 0} min</span>
+        <StatusStrip label={`${selected?.duration_minutes || 0} min`} />
       </div>
       <select
         className="select-input"
@@ -2841,9 +2842,7 @@ function WorkflowInputPanel({
         ))}
       </div>
       <div className="workflow-review-action">
-        <span className={`status-pill ${presenterStatusClass(reviewStatus)}`}>
-          {titleCase(reviewStatus)}
-        </span>
+        <StatusStrip label={titleCase(reviewStatus)} statusClass={presenterStatusClass(reviewStatus)} />
         <button className="primary-button" type="button" onClick={onReview} disabled={disabled}>
           {disabled ? "Running" : "Review & Run Demo"}
         </button>
@@ -2894,7 +2893,7 @@ function RunHistoryPanel({
     <section className="panel compact run-history-panel">
       <div className="panel-heading">
         <span className="eyebrow">Run History</span>
-        <span className="status-pill">{entries.length}</span>
+        <StatusStrip label={String(entries.length)} />
       </div>
       {entries.length ? (
         <>
@@ -2971,7 +2970,7 @@ function WorkflowSelector({
     <section className="panel compact workflow-selector">
       <div className="panel-heading">
         <span className="eyebrow">Workflow Template</span>
-        <span className="status-pill">{workflows.length}</span>
+        <StatusStrip label={String(workflows.length)} />
       </div>
       <select
         className="select-input"
@@ -3025,9 +3024,7 @@ function PresenterReviewPanel({
           <span className="eyebrow">Presenter Review</span>
           <h2>Confirm the demo run</h2>
         </div>
-        <span className={`status-pill ${presenterStatusClass(review.status)}`}>
-          {titleCase(review.status)}
-        </span>
+        <StatusStrip label={titleCase(review.status)} statusClass={presenterStatusClass(review.status)} />
       </div>
 
       <div className="presenter-context-grid">
@@ -3100,9 +3097,10 @@ function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
     <section className="panel compact plan-panel">
       <div className="panel-heading">
         <span className="eyebrow">Agent Plan</span>
-        <span className={`status-pill ${plan?.ready_to_run ? "status-optimal" : "status-ready"}`}>
-          {plan?.ready_to_run ? "Ready" : `${missingFields.length || 0} inputs`}
-        </span>
+        <StatusStrip
+          label={plan?.ready_to_run ? "Ready" : `${missingFields.length || 0} inputs`}
+          statusClass={plan?.ready_to_run ? "status-optimal" : "status-ready"}
+        />
       </div>
       <p>{plan?.summary || "Start a request to generate an execution plan."}</p>
       {nextLabels.length > 0 ? (
@@ -3152,9 +3150,10 @@ function WorkflowTimelinePanel({
           <span className="eyebrow">Sequential Workflow</span>
           <h2>{workflowRun?.name || selectedWorkflow.name}</h2>
         </div>
-        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
-          {workflowRun ? titleCase(workflowRun.status) : "Not run"}
-        </span>
+        <StatusStrip
+          label={workflowRun ? titleCase(workflowRun.status) : "Not run"}
+          statusClass={workflowStatusClass(workflowRun?.status)}
+        />
       </div>
 
       <div className="workflow-validation-strip">
@@ -3194,9 +3193,10 @@ function WorkflowTimelinePanel({
                       <strong>{step.name}</strong>
                       <span>{titleCase(step.domain.replaceAll("_", " "))}</span>
                     </div>
-                    <span className={`status-pill ${stepStatusClass(step.status)}`}>
-                      {titleCase(step.status)}
-                    </span>
+                    <StatusStrip
+                      label={titleCase(step.status)}
+                      statusClass={stepStatusClass(step.status)}
+                    />
                   </div>
                   <div className="workflow-step-metrics">
                     <span>Objective {formatNumber(step.summary.objective_value)}</span>
@@ -3305,9 +3305,10 @@ function GovernanceReviewPanel({
           <span className="eyebrow">Governance Review</span>
           <h2>Approval and materiality controls</h2>
         </div>
-        <span className={`status-pill ${governanceStatusClass(status)}`}>
-          {titleCase(status.replaceAll("_", " "))}
-        </span>
+        <StatusStrip
+          label={titleCase(status.replaceAll("_", " "))}
+          statusClass={governanceStatusClass(status)}
+        />
       </div>
 
       <div className="governance-metric-grid">
@@ -3444,9 +3445,14 @@ function WorkflowComparisonPanel({
           <span className="eyebrow">Workflow Comparison</span>
           <h2>Step impact across the run</h2>
         </div>
-        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
-          {workflowRun ? titleCase(visual?.chart_kind.replaceAll("_", " ") || "Summary") : "Pending"}
-        </span>
+        <StatusStrip
+          label={
+            workflowRun
+              ? titleCase(visual?.chart_kind.replaceAll("_", " ") || "Summary")
+              : "Pending"
+          }
+          statusClass={workflowStatusClass(workflowRun?.status)}
+        />
       </div>
 
       {visual && points.length ? (
@@ -3594,9 +3600,10 @@ function WorkflowExplanationPanel({
           <span className="eyebrow">Workflow Explanation</span>
           <h2>What the workflow concluded</h2>
         </div>
-        <span className={`status-pill ${workflowStatusClass(workflowRun?.status)}`}>
-          {workflowRun ? titleCase(workflowRun.status) : "Pending"}
-        </span>
+        <StatusStrip
+          label={workflowRun ? titleCase(workflowRun.status) : "Pending"}
+          statusClass={workflowStatusClass(workflowRun?.status)}
+        />
       </div>
 
       <p className="explanation-summary">
@@ -3650,7 +3657,7 @@ function TracePanel({
     <section className="panel compact trace-panel">
       <div className="panel-heading">
         <span className="eyebrow">Agent Trace</span>
-        <span className="status-pill">{trace.length}</span>
+        <StatusStrip label={String(trace.length)} />
       </div>
       {trace.length ? (
         <ol>
@@ -3733,9 +3740,10 @@ function ValidationPanel({ result }: { result: OptimizationResult }) {
           <span className="eyebrow">Validation</span>
           <h2>Readiness checks</h2>
         </div>
-        <span className={`status-pill ${validationStatusClass(report?.recommendation)}`}>
-          {titleCase(report?.recommendation || "ready")}
-        </span>
+        <StatusStrip
+          label={titleCase(report?.recommendation || "ready")}
+          statusClass={validationStatusClass(report?.recommendation)}
+        />
       </div>
       <div className="validation-summary">
         <Metric
@@ -3828,6 +3836,21 @@ function StateRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function StatusStrip({
+  label,
+  statusClass = "",
+}: {
+  label: string;
+  statusClass?: string;
+}) {
+  return (
+    <span className={`status-strip ${statusClass}`.trim()}>
+      <span aria-hidden="true" />
+      <strong>{label}</strong>
+    </span>
+  );
+}
+
 function ResultPanel({ result }: { result: OptimizationResult }) {
   const metrics = resultPanelMetrics(result);
   return (
@@ -3837,7 +3860,7 @@ function ResultPanel({ result }: { result: OptimizationResult }) {
           <span className="eyebrow">Recommendation</span>
           <h2>Optimization result</h2>
         </div>
-        <span className="status-pill status-optimal">{titleCase(result.status)}</span>
+        <StatusStrip label={titleCase(result.status)} statusClass="status-optimal" />
       </div>
 
       <div className="metric-grid">

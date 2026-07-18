@@ -432,11 +432,19 @@ Completed in the first pass:
   system.
 - Kept React behavior and API contracts unchanged.
 
+Completed in the QA hardening pass:
+
+- Replaced transitional React `.status-pill` markup with a reusable
+  `StatusStrip` component.
+- Added responsive hardening for topbar wrapping, sidebar/main-stage overflow,
+  panel headers, metric values, and workflow step labels.
+- Confirmed the live local UI and API respond successfully when started with
+  `make demo-ui`.
+
 Still pending:
 
-- Browser screenshot QA across desktop and mobile viewports.
-- Fine-grained markup cleanup for true status-strip elements instead of the
-  transitional `.status-pill` styling.
+- Browser screenshot QA across desktop and mobile viewports in an environment
+  with an exposed browser target.
 - Any chart-specific canvas/SVG refinement after visual review.
 
 ### Phase 1: Tokens And Reset
