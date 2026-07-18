@@ -1,3 +1,48 @@
+// ── pre-trade: health gauge ──
+function drawHealthGauge(canvasId, score) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h - 8;
+  const r = Math.min(cx, cy) - 10;
+  const startAngle = Math.PI;
+  const endAngle = 2 * Math.PI;
+  const scoreAngle = startAngle + (score / 100) * Math.PI;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // track
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.strokeStyle = "#dbe2ea";
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // fill
+  const fillColor = score >= 80 ? "#15803d" : score >= 60 ? "#b45309" : "#b91c1c";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, scoreAngle);
+  ctx.strokeStyle = fillColor;
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.stroke();
+}
+
+drawHealthGauge("healthGauge", 74);
+
+// mark pre-trade as ready after short delay
+setTimeout(() => {
+  const pill = document.getElementById("pretradeStatus");
+  if (pill) {
+    pill.textContent = "Ready";
+    pill.className = "status-pill status-optimal";
+  }
+}, 800);
+
 const messages = document.querySelector("#messages");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");

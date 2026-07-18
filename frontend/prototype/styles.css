@@ -1685,3 +1685,280 @@ tbody tr:hover {
     text-align: left;
   }
 }
+
+/* ── pre-trade analytics panel ── */
+
+.pretrade-panel {
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+/* top row: gauge + metrics strip */
+.pretrade-top {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* health score gauge block */
+.health-gauge-block {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.health-gauge-block .gauge-label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.health-gauge-block .gauge-score {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-top: -4px;
+}
+
+.health-gauge-block .gauge-score.score-amber { color: var(--amber); }
+.health-gauge-block .gauge-score.score-green { color: var(--green); }
+.health-gauge-block .gauge-score.score-red   { color: #b91c1c; }
+
+.health-gauge-block .gauge-sub {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* metrics risk strip */
+.risk-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.risk-metric {
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  display: grid;
+  gap: 5px;
+}
+
+.risk-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.risk-metric-name {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.risk-tag {
+  font-size: 10px;
+  font-weight: 750;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.risk-tag.good       { color: var(--green); background: var(--green-soft); border: 1px solid #b7e0c5; }
+.risk-tag.caution    { color: var(--amber); background: var(--amber-soft); border: 1px solid #f1cf91; }
+.risk-tag.tight      { color: #92400e; background: #fde68a33; border: 1px solid #f59e0b55; }
+.risk-tag.opportunity { color: var(--blue-deep); background: #eef4ff; border: 1px solid #b8c8f7; }
+
+.risk-metric-value {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* constraint proximity bar */
+.proximity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.proximity-track {
+  height: 5px;
+  background: var(--ink-soft);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.proximity-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.proximity-fill.fill-green  { background: var(--green); }
+.proximity-fill.fill-amber  { background: var(--amber); }
+.proximity-fill.fill-blue   { background: var(--blue); }
+.proximity-fill.fill-red    { background: #b91c1c; }
+
+.proximity-cap {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* assessment agent section */
+.assessment-section {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.assessment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--blue-deep);
+  background: #eef4ff;
+  border: 1px solid #b8c8f7;
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+}
+
+.agent-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.assessment-col {
+  display: grid;
+  gap: 6px;
+}
+
+.assessment-col-head {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.assessment-col-head.strengths { color: var(--green); }
+.assessment-col-head.concerns  { color: var(--amber); }
+
+.assessment-item {
+  padding: 8px 10px 8px 13px;
+  border-radius: 7px;
+  border-left: 3px solid;
+  background: var(--panel-strong);
+  border-color: var(--line);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.assessment-item strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.assessment-item span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.assessment-item.strength { border-color: #b7e0c5; background: #f5fbf7; }
+.assessment-item.concern  { border-color: #f1cf91; background: #fffbf0; }
+.assessment-item.critical { border-color: #fecaca; background: #fff5f5; }
+
+/* current holdings table inside pre-trade */
+.pretrade-holdings {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.pretrade-holdings-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.holding-card {
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.holding-name {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.holding-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.holding-stat span { color: var(--muted); }
+.holding-stat strong { font-variant-numeric: tabular-nums; }
+.holding-stat strong.flag-amber { color: var(--amber); }
+.holding-stat strong.flag-blue  { color: var(--blue-deep); }
+.holding-stat strong.flag-red   { color: #b91c1c; }
+
+@media (max-width: 820px) {
+  .pretrade-top,
+  .assessment-grid,
+  .pretrade-holdings-grid {
+    grid-template-columns: 1fr;
+  }
+  .risk-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
