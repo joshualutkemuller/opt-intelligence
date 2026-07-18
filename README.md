@@ -99,6 +99,17 @@ Produces a rich terminal output showing:
 - Scenario analysis (stress, downside)
 - Audit log entry count
 
+For a presenter-ready proof-of-concept recording:
+
+```bash
+make demo-video
+```
+
+This runs a deterministic terminal story covering guided chat intake, true MILP
+money-market fund selection, solver backend comparison, and the executive
+liquidity-stress workflow. The companion shot list is in
+`docs/demo_video_runbook.md`.
+
 ## Solver Backends
 
 Run the focused solver comparison:
