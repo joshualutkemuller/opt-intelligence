@@ -8,6 +8,13 @@ The matching code scaffold lives in:
 
 `src/decision_intelligence/production_optimizers/`
 
+## Implemented Production Adapters
+
+- `production.asset_allocation.mvo`: wraps the phase 1 Asset Allocation MVO
+  optimizer with production config, preflight, normalized output, and evidence.
+- `production.collateral.allocation`: wraps the phase 1 Collateral optimizer
+  with production config, data preflight, normalized output, and evidence.
+
 ## Documents
 
 - [Production Optimizer Adapter Handoff](Production_Optimizer_Adapter_Handoff.md)

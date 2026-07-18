@@ -20,6 +20,8 @@ All production optimizer framework code should be easy to find in:
 Initial scaffold:
 
 - `adapter.py`: formal adapter lifecycle.
+- `adapters/asset_allocation`: production wrapper for Asset Allocation MVO.
+- `adapters/collateral`: production wrapper for Collateral Optimization.
 - `contracts.py`: typed model config, data contract, result, preflight, and
   evidence schemas.
 - `execution.py`: execution-isolation boundary.
@@ -170,3 +172,19 @@ model risk governance, and client-facing demo credibility.
 - Runs produce reproducibility metadata.
 - Execution can move from in-process to service/container without changing the
   API response shape.
+
+## Current Implementation Status
+
+Implemented:
+
+- Asset Allocation MVO production adapter and `ModelConfigSpec`.
+- Collateral production adapter and `ModelConfigSpec`.
+- Default production registry containing both adapters.
+- Focused tests for successful runs, blocked preflight, evidence attachment,
+  and registry discovery.
+
+Next:
+
+- Bridge the production registry into the workflow/API layer so demos can choose
+  the phase 1 optimizer path or the production adapter path.
+- Surface model config, data contract, and evidence sections in the UI.

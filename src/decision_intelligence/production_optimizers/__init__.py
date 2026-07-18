@@ -6,6 +6,7 @@ defines the production-grade contracts those optimizers can migrate toward.
 """
 
 from .adapter import ProductionOptimizerAdapter
+from .adapters import AssetAllocationMVOProductionAdapter, CollateralProductionAdapter
 from .contracts import (
     ConstraintFamilySpec,
     DataContractSpec,
@@ -20,9 +21,11 @@ from .contracts import (
     ScenarioKnobSpec,
     SolverBackendSpec,
 )
-from .registry import ProductionOptimizerRegistry
+from .registry import ProductionOptimizerRegistry, build_default_production_registry
 
 __all__ = [
+    "AssetAllocationMVOProductionAdapter",
+    "CollateralProductionAdapter",
     "ConstraintFamilySpec",
     "DataContractSpec",
     "ExecutionIsolationSpec",
@@ -37,4 +40,5 @@ __all__ = [
     "ProductionOptimizerRegistry",
     "ScenarioKnobSpec",
     "SolverBackendSpec",
+    "build_default_production_registry",
 ]

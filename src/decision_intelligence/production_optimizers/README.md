@@ -8,6 +8,10 @@ Current scaffold:
 - `adapter.py` defines the formal optimizer adapter lifecycle:
   `validate_inputs`, `build_problem`, `solve`, `explain_outputs`, and
   `serialize_evidence`.
+- `adapters/asset_allocation` wraps the current Asset Allocation MVO optimizer
+  behind the production adapter lifecycle.
+- `adapters/collateral` wraps the current Collateral optimizer behind the
+  production adapter lifecycle.
 - `contracts.py` defines richer model configuration, data contracts, execution
   isolation, preflight, normalized result, and evidence contracts.
 - `execution.py` defines the execution-isolation boundary for in-process,

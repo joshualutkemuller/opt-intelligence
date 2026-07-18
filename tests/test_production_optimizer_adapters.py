@@ -6,6 +6,8 @@ import pytest
 
 from decision_intelligence.contracts import Objective, ObjectiveDirection, OptimizationRequest
 from decision_intelligence.production_optimizers import (
+    AssetAllocationMVOProductionAdapter,
+    CollateralProductionAdapter,
     ConstraintFamilySpec,
     DataContractSpec,
     ExecutionIsolationSpec,
@@ -18,6 +20,7 @@ from decision_intelligence.production_optimizers import (
     ProductionOptimizerEvidence,
     ProductionOptimizerRegistry,
     SolverBackendSpec,
+    build_default_production_registry,
 )
 
 
@@ -194,3 +197,76 @@ def test_production_optimizer_registry_rejects_duplicates() -> None:
 
     with pytest.raises(ValueError, match="already registered"):
         registry.register(DemoProductionAdapter())
+
+
+def test_asset_allocation_mvo_production_adapter_runs_native_optimizer() -> None:
+    request = OptimizationRequest(
+        domain="asset_allocation",
+        portfolio_id="PORT_MVO_PROD",
+        objective=Objective(
+            name="mvo_rebalance",
+            direction=ObjectiveDirection.MAXIMIZE,
+            metric="risk_adjusted_return",
+        ),
+        context={
+            "seed": 42,
+            "portfolio_notional": 250_000_000,
+            "target_return": 0.05,
+            "risk_aversion": 3.0,
+            "max_single_asset_weight": 0.45,
+            "min_cash_weight": 0.02,
+            "data_snapshot_id": "SNAP_MVO_001",
+        },
+    )
+
+    result = AssetAllocationMVOProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.asset_allocation.mvo"
+    assert result.status == "optimal"
+    assert result.allocations
+    assert result.domain_attachments["expected_return"] >= 0.05
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_MVO_001"
+    assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
+        "production.asset_allocation.mvo"
+    )
+
+
+def test_collateral_production_adapter_runs_native_optimizer() -> None:
+    request = OptimizationRequest(
+        domain="collateral",
+        portfolio_id="PORT_COLLAT_PROD",
+        objective=Objective(
+            name="minimize_funding_cost",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="funding_cost",
+        ),
+        context={
+            "seed": 42,
+            "concentration_limit": 0.60,
+            "solver_backend": "scipy",
+            "problem_type": "lp",
+            "data_snapshot_id": "SNAP_COLLATERAL_001",
+        },
+    )
+
+    result = CollateralProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.collateral.allocation"
+    assert result.status == "optimal"
+    assert result.allocations
+    assert result.baseline_value > result.objective_value
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_COLLATERAL_001"
+    assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
+        "production.collateral.allocation"
+    )
+
+
+def test_default_production_registry_contains_mvo_and_collateral() -> None:
+    registry = build_default_production_registry()
+
+    assert registry.list_ids() == [
+        "production.asset_allocation.mvo",
+        "production.collateral.allocation",
+    ]

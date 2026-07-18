@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .adapter import ProductionOptimizerAdapter
+from .adapters import AssetAllocationMVOProductionAdapter, CollateralProductionAdapter
 
 
 class ProductionOptimizerRegistry:
@@ -30,3 +31,12 @@ class ProductionOptimizerRegistry:
 
     def __contains__(self, optimizer_id: str) -> bool:
         return optimizer_id in self._adapters
+
+
+def build_default_production_registry() -> ProductionOptimizerRegistry:
+    """Create a registry with production adapters currently implemented."""
+
+    registry = ProductionOptimizerRegistry()
+    registry.register(AssetAllocationMVOProductionAdapter())
+    registry.register(CollateralProductionAdapter())
+    return registry
