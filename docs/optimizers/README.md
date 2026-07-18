@@ -31,10 +31,11 @@ collateral and financing optimizers currently build continuous LPs.
 
 ## Pages
 
-- [Asset Allocation MVO Optimizer](asset_allocation.md)
-- [Money Market Optimizer](money_market.md)
-- [Collateral Optimizer](collateral.md)
-- [Financing Optimizer](financing.md)
+- [Asset Allocation MVO Optimizer](phase%201/asset_allocation.md)
+- [Money Market Optimizer](phase%201/money_market.md)
+- [Collateral Optimizer](phase%201/collateral.md)
+- [Financing Optimizer](phase%201/financing.md)
+- [Production Optimizer Adapter Handoff](production/README.md)
 
 ## Shared Output Pattern
 
