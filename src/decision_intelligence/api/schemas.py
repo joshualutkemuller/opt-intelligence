@@ -224,3 +224,14 @@ class AuditNarrativeRequest(BaseModel):
 
 class AuditNarrativeResponse(BaseModel):
     narrative: dict[str, Any]
+
+
+class ConstraintNegotiationRequest(BaseModel):
+    result: dict[str, Any]
+    target_improvement: float = 0.0
+    target_units: str = "bps"
+    max_proposals: int = Field(default=5, ge=1, le=20)
+
+
+class ConstraintNegotiationResponse(BaseModel):
+    negotiation: dict[str, Any]

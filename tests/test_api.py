@@ -799,6 +799,43 @@ def test_audit_narrative_endpoint_returns_markdown_sections():
     assert narrative["json_payload"]["workflow_id"] == "liquidity_stress_funding_workflow"
 
 
+def test_constraint_negotiation_endpoint_returns_ranked_proposals():
+    run_response = client.post(
+        "/api/optimizations/run",
+        json={
+            "domain": "money_market",
+            "portfolio_id": "PORT_NEGOTIATE",
+            "context": {
+                "seed": 42,
+                "total_cash": 500_000_000,
+                "daily_liquidity_req": 0.30,
+                "weekly_liquidity_req": 0.60,
+                "max_prime_fraction": 0.40,
+                "max_wam_days": 60,
+                "solver_backend": "scipy",
+                "problem_type": "lp",
+            },
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        "/api/constraints/negotiate",
+        json={
+            "result": run_response.json()["result"],
+            "target_improvement": 5.0,
+            "target_units": "bps",
+        },
+    )
+
+    assert response.status_code == 200
+    negotiation = response.json()["negotiation"]
+    assert negotiation["domain"] == "money_market"
+    assert negotiation["proposals"]
+    assert negotiation["proposals"][0]["governance_tier"] >= 2
+    assert negotiation["recommendation"].startswith("Start with")
+
+
 def test_unknown_workflow_returns_400():
     response = client.post(
         "/api/workflows/run",

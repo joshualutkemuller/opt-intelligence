@@ -685,6 +685,18 @@ optimum" to "here is what you would need to change to close the gap" —
 a direct decision-support capability for portfolio managers and
 treasurers.
 
+**Status:** ✅ **Constraint Negotiation / Inversion (POC implemented)** — the
+platform now exposes `/api/constraints/negotiate`, which accepts a completed
+optimizer result, reads sensitivities and binding constraints, and returns a
+ranked set of relaxation proposals with estimated impact, rationale, source
+evidence, confidence, and required governance tier. The first deterministic
+rule set covers money-market liquidity/concentration limits, financing capacity
+constraints, collateral requirements, and MVO risk/return controls.
+
+**Next:** wire this into the browser as a "What would need to change?" action,
+then add re-solve-backed proposal bundles that test combinations of relaxations
+against a requested bps or utility target.
+
 ---
 
 ## 3. Governance Escalation Orchestration

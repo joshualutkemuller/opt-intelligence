@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
+from decision_intelligence.agents import negotiate_constraints
 from decision_intelligence.chat import ChatSession
 from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
@@ -54,6 +55,8 @@ from .schemas import (
     AuditNarrativeResponse,
     ChatMessageRequest,
     ChatSessionResponse,
+    ConstraintNegotiationRequest,
+    ConstraintNegotiationResponse,
     CreateChatSessionRequest,
     DemoDataPacketCatalogResponse,
     DemoPresetCatalogResponse,
@@ -387,6 +390,19 @@ def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeRe
         workflow=payload.workflow,
     )
     return AuditNarrativeResponse(narrative=_json(narrative))
+
+
+@app.post("/api/constraints/negotiate", response_model=ConstraintNegotiationResponse)
+def negotiate_result_constraints(
+    payload: ConstraintNegotiationRequest,
+) -> ConstraintNegotiationResponse:
+    negotiation = negotiate_constraints(
+        payload.result,
+        target_improvement=payload.target_improvement,
+        target_units=payload.target_units,
+        max_proposals=payload.max_proposals,
+    )
+    return ConstraintNegotiationResponse(negotiation=_json(negotiation))
 
 
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:
