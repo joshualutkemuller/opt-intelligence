@@ -179,6 +179,11 @@ def ingest_policy(payload: PolicyIngestionRequest) -> PolicyIngestionResponse:
             text=payload.text,
             pdf_base64=payload.pdf_base64,
             filename=payload.filename,
+            backend=payload.backend,
+            llm_provider=payload.provider,
+            model=payload.model,
+            base_url=payload.base_url,
+            api_key=payload.api_key,
         )
     except IngestionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

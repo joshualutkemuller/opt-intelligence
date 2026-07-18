@@ -48,6 +48,11 @@ class PolicyIngestionRequest(BaseModel):
     text: str | None = None
     pdf_base64: str | None = None
     filename: str | None = None
+    backend: Literal["auto", "deterministic", "llm"] = "deterministic"
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class PolicyIngestionResponse(BaseModel):

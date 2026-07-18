@@ -1,8 +1,12 @@
 """IPS / policy-document ingestion for workflow-ready constraints.
 
-This module is intentionally deterministic. It accepts pasted policy text or a
-PDF payload, extracts known constraint fields, and returns a reviewable context
-patch that can be applied to a registered workflow before execution.
+This module accepts pasted policy text or a PDF payload, extracts known
+constraint fields, and returns a reviewable context patch that can be applied to
+a registered workflow before execution.
+
+The default backend is deterministic. An LLM-assisted backend can be enabled for
+messier policy language, but its output still passes through the same
+deterministic validator before it reaches the workflow context patch.
 """
 
 from __future__ import annotations
@@ -11,11 +15,31 @@ import base64
 import re
 from collections.abc import Iterable
 from io import BytesIO
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from .mapper import IngestionError
+
+if TYPE_CHECKING:
+    from decision_intelligence.llm import LLMProvider
+
+Backend = Literal["auto", "deterministic", "llm"]
+
+
+_LLM_SYSTEM_PROMPT = (
+    "You are an IPS ingestion agent for a financial optimization platform. "
+    "Extract only workflow input fields that are explicitly supported for the "
+    "requested workflow. Do not invent values. Use decimals for fractions "
+    "where possible, for example 5.25% may be returned as 0.0525 or '5.25%'. "
+    "Preserve short evidence snippets from the source document."
+)
+
+_LLM_INSTRUCTION = (
+    "Extract supported Investment Policy Statement fields into the provided "
+    "schema. Return only fields that are present or strongly implied in the "
+    "document. Unsupported or uncertain fields should be omitted."
+)
 
 
 class PolicyFieldExtraction(BaseModel):
@@ -38,6 +62,23 @@ class PolicyIngestionResult(BaseModel):
     context_patch: dict[str, Any] = Field(default_factory=dict)
     extracted_fields: list[PolicyFieldExtraction] = Field(default_factory=list)
     review_summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMPolicyFieldExtraction(BaseModel):
+    """One field proposed by an LLM before deterministic validation."""
+
+    key: str
+    label: str = ""
+    value: str | int | float | bool
+    confidence: float = Field(default=0.70, ge=0.0, le=1.0)
+    evidence: str = ""
+
+
+class LLMPolicyExtractionResult(BaseModel):
+    """LLM extraction envelope for IPS ingestion."""
+
+    fields: list[LLMPolicyFieldExtraction] = Field(default_factory=list)
+    notes: str = ""
 
 
 class _FieldRule(BaseModel):
@@ -64,6 +105,12 @@ def ingest_policy_document(
     text: str | None = None,
     pdf_base64: str | None = None,
     filename: str | None = None,
+    backend: Backend = "deterministic",
+    provider: LLMProvider | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> PolicyIngestionResult:
     """Extract workflow inputs from pasted policy text or a base64 PDF."""
 
@@ -83,7 +130,21 @@ def ingest_policy_document(
     if not document_text:
         raise IngestionError("Policy ingestion requires either text or pdf_base64.")
 
-    extracted = _extract_fields(document_text, _RULES[workflow_id])
+    chosen_backend = _choose_backend(backend, provider)
+    if chosen_backend == "llm":
+        extracted, llm_notes = _extract_fields_with_llm(
+            workflow_id,
+            document_text,
+            provider=provider,
+            model=model,
+            llm_provider=llm_provider,
+            base_url=base_url,
+            api_key=api_key,
+        )
+    else:
+        extracted = _extract_fields(document_text, _RULES[workflow_id])
+        llm_notes = ""
+
     input_values = {field.key: _stringify(field.value) for field in extracted if field.applied}
     context_patch: dict[str, Any] = {}
     for field in extracted:
@@ -95,6 +156,7 @@ def ingest_policy_document(
     if filename:
         context_patch.setdefault("policy_ingestion", {})["filename"] = filename
     context_patch.setdefault("policy_ingestion", {})["source_type"] = source_type
+    context_patch["policy_ingestion"]["backend"] = chosen_backend
     context_patch["policy_ingestion"]["field_count"] = len(extracted)
 
     return PolicyIngestionResult(
@@ -105,9 +167,12 @@ def ingest_policy_document(
         extracted_fields=extracted,
         review_summary={
             "ready": not required_missing,
-            "applied_count": len(extracted),
+            "applied_count": sum(1 for field in extracted if field.applied),
+            "extracted_count": len(extracted),
             "missing_required": required_missing,
             "warnings": warnings,
+            "backend": chosen_backend,
+            "llm_notes": llm_notes,
         },
     )
 
@@ -329,6 +394,236 @@ def _extract_fields(text: str, rules: Iterable[_FieldRule]) -> list[PolicyFieldE
     return fields
 
 
+def _choose_backend(
+    backend: Backend,
+    provider: LLMProvider | None,
+) -> Literal["deterministic", "llm"]:
+    if backend == "deterministic":
+        return "deterministic"
+    if backend == "llm":
+        return "llm"
+    if backend == "auto":
+        if provider is not None:
+            return "llm"
+        from decision_intelligence.llm import provider_available
+
+        return "llm" if provider_available() else "deterministic"
+    raise IngestionError(f"Unknown policy ingestion backend '{backend}'.")
+
+
+def _extract_fields_with_llm(
+    workflow_id: str,
+    text: str,
+    *,
+    provider: LLMProvider | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> tuple[list[PolicyFieldExtraction], str]:
+    from decision_intelligence.llm import LLMConfigError, LLMError, resolve_provider
+
+    resolved = provider
+    if resolved is None:
+        try:
+            resolved = resolve_provider(
+                llm_provider,
+                model=model,
+                base_url=base_url,
+                api_key=api_key,
+            )
+        except LLMConfigError as exc:
+            raise IngestionError(str(exc)) from exc
+    if resolved is None:
+        raise IngestionError(
+            "No LLM provider is configured for policy ingestion. For local Ollama, "
+            "use provider 'openai' with base_url 'http://localhost:11434/v1'."
+        )
+
+    rules = _rules_by_key(workflow_id)
+    allowed_fields = [
+        {
+            "key": rule.key,
+            "label": rule.label,
+            "value_type": rule.value_type,
+        }
+        for rule in rules.values()
+    ]
+    required = _required_missing(workflow_id, {})
+    instruction = (
+        f"{_LLM_INSTRUCTION}\n\n"
+        f"Workflow ID: {workflow_id}\n"
+        f"Required keys: {required}\n"
+        f"Allowed fields: {allowed_fields}\n"
+        "Return evidence snippets short enough for a reviewer table."
+    )
+
+    try:
+        llm_result = resolved.extract(
+            LLMPolicyExtractionResult,
+            instruction=instruction,
+            system=_LLM_SYSTEM_PROMPT,
+            text=text,
+        )
+    except LLMError as exc:
+        raise IngestionError(str(exc)) from exc
+
+    return _validate_llm_fields(workflow_id, llm_result.fields), llm_result.notes
+
+
+def _validate_llm_fields(
+    workflow_id: str,
+    fields: Iterable[LLMPolicyFieldExtraction],
+) -> list[PolicyFieldExtraction]:
+    rules = _rules_by_key(workflow_id)
+    validated: list[PolicyFieldExtraction] = []
+    seen: set[str] = set()
+
+    for field in fields:
+        key = field.key.strip()
+        if key in seen:
+            validated.append(
+                _unapplied_field(
+                    key=key,
+                    label=field.label or key,
+                    value=field.value,
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    reason="duplicate_field",
+                )
+            )
+            continue
+        seen.add(key)
+        rule = rules.get(key)
+        if rule is None:
+            validated.append(
+                _unapplied_field(
+                    key=key,
+                    label=field.label or key,
+                    value=field.value,
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    reason="unsupported_field",
+                )
+            )
+            continue
+        try:
+            value = _coerce_llm_value(field.value, rule.value_type)
+        except (TypeError, ValueError) as exc:
+            validated.append(
+                _unapplied_field(
+                    key=key,
+                    label=field.label or rule.label,
+                    value=field.value,
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    reason=f"invalid_{rule.value_type}: {exc}",
+                )
+            )
+            continue
+        if issue := _value_issue(value, rule.value_type):
+            validated.append(
+                _unapplied_field(
+                    key=key,
+                    label=field.label or rule.label,
+                    value=value,
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    reason=issue,
+                )
+            )
+            continue
+        validated.append(
+            PolicyFieldExtraction(
+                key=key,
+                label=field.label or rule.label,
+                value=value,
+                confidence=field.confidence,
+                evidence=field.evidence,
+                applied=True,
+            )
+        )
+
+    return validated
+
+
+def _unapplied_field(
+    *,
+    key: str,
+    label: str,
+    value: str | int | float | bool,
+    confidence: float,
+    evidence: str,
+    reason: str,
+) -> PolicyFieldExtraction:
+    suffix = f"validator rejected: {reason}"
+    full_evidence = f"{evidence} ({suffix})" if evidence else suffix
+    return PolicyFieldExtraction(
+        key=key,
+        label=label,
+        value=value,
+        confidence=confidence,
+        evidence=full_evidence,
+        applied=False,
+    )
+
+
+def _rules_by_key(workflow_id: str) -> dict[str, _FieldRule]:
+    return {rule.key: rule for rule in _RULES[workflow_id]}
+
+
+def _coerce_llm_value(value: str | int | float | bool, value_type: str) -> str | int | float | bool:
+    if value_type == "boolean":
+        if isinstance(value, bool):
+            return value
+        normalized = str(value).strip().lower()
+        if normalized in {"true", "yes", "y", "1", "required", "change"}:
+            return True
+        if normalized in {"false", "no", "n", "0", "not required", "none"}:
+            return False
+        raise ValueError(f"expected boolean, got {value!r}")
+    if value_type == "string":
+        return str(value).strip().upper().replace("-", "_")
+
+    raw = str(value).strip().lower().replace(",", "")
+    percent = raw.endswith("%")
+    raw = raw.replace("$", "").replace("%", "").strip()
+    multiplier = 1.0
+    for suffix, scale in (
+        ("billion", 1_000_000_000.0),
+        ("bn", 1_000_000_000.0),
+        ("million", 1_000_000.0),
+        ("mm", 1_000_000.0),
+        ("m", 1_000_000.0),
+    ):
+        if raw.endswith(suffix):
+            multiplier = scale
+            raw = raw[: -len(suffix)].strip()
+            break
+    number = float(raw) * multiplier
+
+    if value_type == "currency":
+        return number
+    if value_type == "fraction":
+        return round(number / 100.0, 6) if percent or number > 1.0 else number
+    if value_type == "integer":
+        return int(number)
+    return number
+
+
+def _value_issue(value: str | int | float | bool, value_type: str) -> str | None:
+    if value_type == "fraction":
+        if not isinstance(value, int | float) or not 0.0 <= float(value) <= 1.0:
+            return "fraction_out_of_range"
+    if value_type == "currency":
+        if not isinstance(value, int | float) or float(value) < 0:
+            return "currency_out_of_range"
+    if value_type in {"integer", "number"}:
+        if not isinstance(value, int | float) or float(value) < 0:
+            return "number_out_of_range"
+    return None
+
+
 def _first_match(text: str, patterns: Iterable[str]) -> re.Match[str] | None:
     for pattern in patterns:
         if match := re.search(pattern, text, re.IGNORECASE):
@@ -402,6 +697,9 @@ def _review_warnings(
     ]
     if fields and min(field.confidence for field in fields) < 0.80:
         warnings.append("One or more extracted fields should be reviewed before applying.")
+    rejected = [field.key for field in fields if not field.applied]
+    if rejected:
+        warnings.append(f"Rejected unsupported or invalid fields: {', '.join(rejected)}.")
     if not fields:
         warnings.append("No supported workflow inputs were extracted from the document.")
     return warnings

@@ -6,6 +6,7 @@ import importlib
 from fastapi.testclient import TestClient
 
 from decision_intelligence.api.app import app
+from decision_intelligence.ingestion import PolicyIngestionResult
 
 api_app = importlib.import_module("decision_intelligence.api.app")
 
@@ -178,6 +179,44 @@ def test_policy_ingestion_endpoint_returns_workflow_patch():
     assert body["context_patch"]["asset_allocation"]["target_return"] == 0.05
     assert body["context_patch"]["policy_ingestion"]["filename"] == "ips.txt"
     assert body["review_summary"]["ready"] is True
+
+
+def test_policy_ingestion_endpoint_accepts_llm_configuration(monkeypatch):
+    captured = {}
+
+    def fake_ingest_policy_document(**kwargs):
+        captured.update(kwargs)
+        return PolicyIngestionResult(
+            workflow_id=kwargs["workflow_id"],
+            source_type="text",
+            input_values={"portfolio_id": "PORT_MVO_900"},
+            context_patch={"policy_ingestion": {"backend": kwargs["backend"]}},
+            extracted_fields=[],
+            review_summary={"ready": True, "backend": kwargs["backend"]},
+        )
+
+    monkeypatch.setattr(api_app, "ingest_policy_document", fake_ingest_policy_document)
+
+    response = client.post(
+        "/api/policy/ingest",
+        json={
+            "workflow_id": "portfolio_rebalance_mvo",
+            "text": "Portfolio PORT_MVO_900.",
+            "backend": "llm",
+            "provider": "openai",
+            "model": "llama3.1:8b",
+            "base_url": "http://localhost:11434/v1",
+            "api_key": "not-needed",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["backend"] == "llm"
+    assert captured["llm_provider"] == "openai"
+    assert captured["model"] == "llama3.1:8b"
+    assert captured["base_url"] == "http://localhost:11434/v1"
+    assert captured["api_key"] == "not-needed"
+    assert response.json()["review_summary"]["backend"] == "llm"
 
 
 def test_workflow_catalog_endpoint_lists_registered_workflows():

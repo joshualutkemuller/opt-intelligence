@@ -9,6 +9,25 @@ from decision_intelligence.ingestion import IngestionError, ingest_policy_docume
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+class FakePolicyProvider:
+    name = "fake"
+    model = "fake-policy-model"
+    supports_native_pdf = False
+
+    def __init__(self, fields):
+        self.fields = fields
+
+    def extract(self, schema, *, instruction, system=None, pdf_path=None, text=None):
+        assert "portfolio_rebalance_mvo" in instruction
+        assert "Allowed fields" in instruction
+        assert system
+        assert text
+        return schema(fields=self.fields, notes="fake extraction")
+
+    def generate(self, prompt, *, system=None, max_tokens=1024):
+        return "not used"
+
+
 def test_policy_ingestion_extracts_mvo_workflow_inputs():
     result = ingest_policy_document(
         workflow_id="portfolio_rebalance_mvo",
@@ -63,6 +82,130 @@ def test_policy_ingestion_reports_missing_required_fields():
 def test_policy_ingestion_rejects_unknown_workflow():
     with pytest.raises(IngestionError):
         ingest_policy_document(workflow_id="unknown", text="Portfolio PORT_1.")
+
+
+def test_policy_ingestion_llm_backend_validates_supported_fields():
+    provider = FakePolicyProvider(
+        [
+            {
+                "key": "portfolio_id",
+                "label": "Portfolio ID",
+                "value": "PORT-MVO-901",
+                "confidence": 0.91,
+                "evidence": "Portfolio PORT-MVO-901.",
+            },
+            {
+                "key": "asset_allocation.portfolio_notional",
+                "label": "Portfolio notional",
+                "value": "$250 million",
+                "confidence": 0.89,
+                "evidence": "portfolio value is $250 million",
+            },
+            {
+                "key": "asset_allocation.target_return",
+                "label": "Target annual return",
+                "value": "5.25%",
+                "confidence": 0.88,
+                "evidence": "target annual return should be 5.25%",
+            },
+            {
+                "key": "asset_allocation.max_single_asset_weight",
+                "label": "Single asset max",
+                "value": "40%",
+                "confidence": 0.87,
+                "evidence": "single asset class exposure must not exceed 40%",
+            },
+            {
+                "key": "asset_allocation.min_cash_weight",
+                "label": "Cash floor",
+                "value": 0.03,
+                "confidence": 0.86,
+                "evidence": "cash floor must be at least 3%",
+            },
+            {
+                "key": "asset_allocation.unapproved_limit",
+                "label": "Unsupported field",
+                "value": "10%",
+                "confidence": 0.75,
+                "evidence": "model invented a field",
+            },
+            {
+                "key": "asset_allocation.risk_aversion",
+                "label": "Risk aversion",
+                "value": -2,
+                "confidence": 0.80,
+                "evidence": "invalid negative risk aversion",
+            },
+        ]
+    )
+
+    result = ingest_policy_document(
+        workflow_id="portfolio_rebalance_mvo",
+        text="Messy IPS text that the fake LLM interprets.",
+        backend="llm",
+        provider=provider,
+        filename="messy_ips.pdf",
+    )
+
+    assert result.review_summary["ready"] is True
+    assert result.review_summary["backend"] == "llm"
+    assert result.review_summary["applied_count"] == 5
+    assert result.review_summary["extracted_count"] == 7
+    assert result.review_summary["llm_notes"] == "fake extraction"
+    assert result.input_values["portfolio_id"] == "PORT_MVO_901"
+    assert result.input_values["asset_allocation.target_return"] == "0.0525"
+    assert result.context_patch["asset_allocation"]["portfolio_notional"] == 250_000_000
+    assert result.context_patch["asset_allocation"]["max_single_asset_weight"] == 0.4
+    assert result.context_patch["asset_allocation"]["min_cash_weight"] == 0.03
+    assert "asset_allocation.unapproved_limit" not in result.input_values
+    assert "asset_allocation.risk_aversion" not in result.input_values
+    rejected = [field for field in result.extracted_fields if not field.applied]
+    assert [field.key for field in rejected] == [
+        "asset_allocation.unapproved_limit",
+        "asset_allocation.risk_aversion",
+    ]
+    assert any(
+        "Rejected unsupported or invalid fields" in warning
+        for warning in result.review_summary["warnings"]
+    )
+
+
+def test_policy_ingestion_auto_uses_passed_provider():
+    provider = FakePolicyProvider(
+        [
+            {
+                "key": "portfolio_id",
+                "label": "Portfolio ID",
+                "value": "PORT_MVO_777",
+                "confidence": 0.91,
+                "evidence": "Portfolio PORT_MVO_777.",
+            },
+            {
+                "key": "asset_allocation.portfolio_notional",
+                "label": "Portfolio notional",
+                "value": 100_000_000,
+                "confidence": 0.89,
+                "evidence": "portfolio notional is $100 million",
+            },
+            {
+                "key": "asset_allocation.target_return",
+                "label": "Target annual return",
+                "value": 0.05,
+                "confidence": 0.88,
+                "evidence": "target annual return should be 5%",
+            },
+        ]
+    )
+
+    result = ingest_policy_document(
+        workflow_id="portfolio_rebalance_mvo",
+        text="Auto backend should prefer the explicit provider.",
+        backend="auto",
+        provider=provider,
+    )
+
+    assert result.review_summary["backend"] == "llm"
+    assert result.review_summary["ready"] is True
 
 
 def test_bundled_policy_demo_samples_are_ingestable():
