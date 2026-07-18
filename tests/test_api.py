@@ -728,6 +728,7 @@ def test_workflow_export_package_endpoint_returns_shareable_html():
                 "workflow_id": "funding_capacity_shock",
                 "name": "Funding Capacity Shock",
             },
+            "comparison": _sample_comparison_payload(),
         },
     )
 
@@ -738,6 +739,8 @@ def test_workflow_export_package_endpoint_returns_shareable_html():
     assert "<!doctype html>" in body["html"]
     assert "Funding Capacity Shock" in body["html"]
     assert "Workflow Timeline" in body["html"]
+    assert "Comparison Evidence" in body["html"]
+    assert "Base vs Stress" in body["html"]
     assert "Audit Payload" in body["html"]
     assert "PORT_EXPORT" in body["html"]
 
@@ -827,6 +830,7 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
                 "workflow_id": "liquidity_stress_funding_workflow",
                 "name": "Liquidity Stress Funding Workflow",
             },
+            "comparison": _sample_comparison_payload(),
         },
     )
 
@@ -847,6 +851,19 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
         "governance.production_constraint_change"
     )
     assert packet["governance_evidence"]["summary"]["policy_driven_constraint_change"] is True
+    assert packet["comparison_evidence"]["summary"]["name"] == "Base vs Stress"
+    assert packet["comparison_evidence"]["runs"][1]["label"] == "Stress"
+    csv_files = body["csv_files"]
+    assert {item["filename"] for item in csv_files} >= {
+        "overview.csv",
+        "comparison.csv",
+        "governance.csv",
+    }
+    comparison_csv = next(item for item in csv_files if item["filename"] == "comparison.csv")
+    assert "Base vs Stress" in comparison_csv["content"]
+    xlsx_bytes = base64.b64decode(body["xlsx_base64"])
+    assert body["xlsx_filename"] == "liquidity-stress-funding-workflow-evidence.xlsx"
+    assert xlsx_bytes.startswith(b"PK")
     pdf_bytes = base64.b64decode(body["pdf_base64"])
     assert pdf_bytes.startswith(b"%PDF")
 
@@ -947,3 +964,50 @@ def _pending_approval_ids(body):
         for record in _governance_records(body)
         if record["status"] == "pending" and record["approval_id"]
     ]
+
+
+def _sample_comparison_payload():
+    return {
+        "name": "Base vs Stress",
+        "comparison": {
+            "baseline_run_id": "base",
+            "best_run_id": "stress",
+            "run_count": 2,
+            "comparison_ready": True,
+            "runs": [
+                {
+                    "run_id": "base",
+                    "label": "Base",
+                    "workflow_id": "liquidity_stress_funding_workflow",
+                    "status": "complete",
+                    "step_count": 3,
+                    "final_domain": "money_market",
+                    "final_objective_value": 0.05,
+                    "final_improvement_pct": 1.0,
+                    "average_improvement_pct": 0.5,
+                    "total_dependency_effects": 1,
+                    "warning_count": 0,
+                    "violation_count": 0,
+                    "validation_passed": True,
+                    "deltas": {},
+                },
+                {
+                    "run_id": "stress",
+                    "label": "Stress",
+                    "workflow_id": "liquidity_stress_funding_workflow",
+                    "status": "complete",
+                    "step_count": 3,
+                    "final_domain": "money_market",
+                    "final_objective_value": 0.06,
+                    "final_improvement_pct": 2.0,
+                    "average_improvement_pct": 1.0,
+                    "total_dependency_effects": 4,
+                    "warning_count": 1,
+                    "violation_count": 0,
+                    "validation_passed": False,
+                    "deltas": {"final_improvement_pct": 1.0},
+                },
+            ],
+            "insights": ["Stress has the strongest final-step improvement."],
+        },
+    }

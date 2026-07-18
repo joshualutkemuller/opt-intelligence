@@ -14,6 +14,7 @@ def generate_workflow_demo_package(
     payload: dict[str, Any] | None = None,
     preset: dict[str, Any] | None = None,
     workflow: dict[str, Any] | None = None,
+    comparison: dict[str, Any] | None = None,
 ) -> str:
     """Build a self-contained HTML report for a completed workflow demo."""
 
@@ -22,12 +23,14 @@ def generate_workflow_demo_package(
     preset = _record(preset)
     workflow = _record(workflow)
     payload = _record(payload)
+    comparison = _record(comparison)
     package = _build_package(
         result=result,
         plan=plan,
         preset=preset,
         workflow=workflow,
         payload=payload,
+        comparison=comparison,
         generated_at=datetime.now(UTC).isoformat(),
     )
     return _render_html(package)
@@ -40,6 +43,7 @@ def _build_package(
     preset: dict[str, Any],
     workflow: dict[str, Any],
     payload: dict[str, Any],
+    comparison: dict[str, Any],
     generated_at: str,
 ) -> dict[str, Any]:
     validation = _record(result.get("validation_summary"))
@@ -83,6 +87,7 @@ def _build_package(
             "allocation_count": len(final_result.get("allocations", []) or []),
         },
         "steps": [_step_summary(step) for step in steps],
+        "comparison": _comparison_summary(comparison),
         "payload": payload,
         "raw_response": {"plan": plan, "result": result},
     }
@@ -246,6 +251,10 @@ def _render_html(package: dict[str, Any]) -> str:
         {_steps_table(package.get("steps", []))}
       </article>
       <article class="card wide">
+        <h2>Comparison Evidence</h2>
+        {_comparison_table(_record(package.get("comparison")))}
+      </article>
+      <article class="card wide">
         <h2>Validation Summary</h2>
         {_validation_table(_record(package.get("validation")))}
       </article>
@@ -337,6 +346,54 @@ def _validation_table(validation: dict[str, Any]) -> str:
         f"<li>{_escape(str(item))}</li>" for item in [*warnings, *violations]
     ) or "<li>No warnings or violations recorded.</li>"
     return f"<table><tbody>{summary}</tbody></table><h3>Issues</h3><ul>{issues}</ul>"
+
+
+def _comparison_summary(comparison: dict[str, Any]) -> dict[str, Any]:
+    if not comparison:
+        return {"name": "No comparison set", "runs": [], "insights": []}
+    body = _record(comparison.get("comparison") or comparison)
+    return {
+        "name": comparison.get("name") or body.get("name") or "Workflow comparison",
+        "run_count": body.get("run_count", 0),
+        "baseline_run_id": body.get("baseline_run_id"),
+        "best_run_id": body.get("best_run_id"),
+        "comparison_ready": body.get("comparison_ready", False),
+        "runs": [_record(run) for run in _list(body.get("runs"))],
+        "insights": _list(body.get("insights")),
+    }
+
+
+def _comparison_table(comparison: dict[str, Any]) -> str:
+    runs = [_record(run) for run in _list(comparison.get("runs"))]
+    rows = []
+    for run in runs:
+        deltas = _record(run.get("deltas"))
+        rows.append(
+            "<tr>"
+            f"<td>{_escape(str(run.get('label', '')))}</td>"
+            f"<td>{_escape(str(run.get('final_domain') or 'workflow'))}</td>"
+            f"<td>{_format_pct(run.get('final_improvement_pct'))}</td>"
+            f"<td>{_format_pct(deltas.get('final_improvement_pct'))}</td>"
+            f"<td>{_escape(str(run.get('total_dependency_effects', 0)))}</td>"
+            f"<td>{_escape(str(run.get('warning_count', 0)))}/"
+            f"{_escape(str(run.get('violation_count', 0)))}</td>"
+            "</tr>"
+        )
+    if not rows:
+        rows.append('<tr><td colspan="6">No named comparison set attached.</td></tr>')
+    insights = "".join(
+        f"<li>{_escape(str(item))}</li>" for item in _list(comparison.get("insights"))
+    )
+    insight_block = f"<h3>Insights</h3><ul>{insights}</ul>" if insights else ""
+    return (
+        f"<p class=\"muted\">{_escape(str(comparison.get('name') or 'Comparison set'))}</p>"
+        "<table><thead><tr>"
+        "<th>Run</th><th>Final Domain</th><th>Improvement</th>"
+        "<th>Delta</th><th>Deps</th><th>Review</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + f"</tbody></table>{insight_block}"
+    )
 
 
 def _record(value: Any) -> dict[str, Any]:

@@ -1,7 +1,9 @@
 from .evidence_packet import (
     build_workflow_evidence_packet,
     encode_pdf_base64,
+    generate_workflow_evidence_csvs,
     generate_workflow_evidence_pdf,
+    generate_workflow_evidence_xlsx,
 )
 from .html_report import generate_report
 from .json_csv import export_csv, export_json
@@ -13,6 +15,8 @@ __all__ = [
     "export_json",
     "export_csv",
     "generate_report",
+    "generate_workflow_evidence_csvs",
     "generate_workflow_evidence_pdf",
+    "generate_workflow_evidence_xlsx",
     "generate_workflow_demo_package",
 ]

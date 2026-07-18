@@ -609,8 +609,11 @@ decision-intelligence-platform/
     validation burden, dependency-effect counts, and risk/return metrics where
     available. The browser demo uses local run history to surface base vs stress
     vs replayed scenarios in the workflow comparison panel.
--   Next: add named comparison sets and export the comparison table inside the
-    evidence PDF/package.
+-   ✅ **Named Comparison Sets + Spreadsheet Evidence (POC)** — the browser demo
+    can now save named comparison sets from local run history, select/delete
+    those sets, and attach the active comparison to evidence exports. Evidence
+    export now persists comparison tables into JSON, PDF, HTML package, CSV
+    tables, and an XLSX workbook.
 
 ## Phase 6
 
@@ -750,10 +753,13 @@ can be applied to registered workflow templates before execution. The first
 deterministic extraction map covers liquidity stress funding, funding capacity,
 collateral liquidity review, and portfolio rebalance MVO workflows.
 
-**Next:** wire the browser "Upload IPS" affordance to this endpoint, add
-LLM-assisted extraction behind the same response contract for less formulaic
-policy language, and persist the reviewed extraction into the run evidence
-packet.
+**Status Update:** ✅ Browser IPS upload/review/apply is wired to the ingestion
+endpoint, local Ollama-assisted extraction is available through the same
+response contract, and reviewed extraction evidence is persisted into workflow
+run payloads and evidence exports.
+
+**Next:** persist audit narratives by workflow/session ID and include the
+narrative markdown in the same evidence export bundle.
 
 ---
 

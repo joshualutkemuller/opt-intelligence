@@ -1750,6 +1750,26 @@ h2 {
   gap: 12px;
 }
 
+.comparison-set-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(140px, 0.9fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.comparison-set-controls select,
+.comparison-set-controls input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+}
+
 .scenario-comparison-head h3 {
   margin: 0 0 4px;
   color: var(--text);

@@ -312,6 +312,10 @@ type WorkflowEvidenceExportApiResponse = {
   pdf_filename: string;
   pdf_content_type: string;
   pdf_base64: string;
+  csv_files: Array<{ filename: string; content_type: string; content: string }>;
+  xlsx_filename: string;
+  xlsx_content_type: string;
+  xlsx_base64: string;
 };
 
 type PolicyExtractedField = {
@@ -441,6 +445,13 @@ type RunHistoryEntry = {
   validation_passed: boolean;
 };
 
+type ComparisonSet = {
+  id: string;
+  name: string;
+  created_at: string;
+  run_ids: string[];
+};
+
 type PresenterScriptAction = "load" | "review" | "run" | "export" | "none";
 
 type PresenterScriptStep = {
@@ -486,7 +497,9 @@ const defaultMessages: Message[] = [
 ];
 
 const RUN_HISTORY_KEY = "decision-intelligence.workflowRunHistory.v1";
+const COMPARISON_SETS_KEY = "decision-intelligence.comparisonSets.v1";
 const MAX_RUN_HISTORY = 12;
+const MAX_COMPARISON_SETS = 8;
 const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
 
 const pocPresenterScript: PresenterScriptStep[] = [
@@ -848,6 +861,10 @@ function App() {
   const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory());
   const [scenarioComparison, setScenarioComparison] =
     useState<WorkflowScenarioComparison | null>(null);
+  const [comparisonSets, setComparisonSets] = useState<ComparisonSet[]>(() =>
+    loadComparisonSets(),
+  );
+  const [selectedComparisonSetId, setSelectedComparisonSetId] = useState<string>("auto");
   const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -897,8 +914,8 @@ function App() {
   ]);
 
   useEffect(() => {
-    void loadScenarioComparison(runHistory);
-  }, [runHistory]);
+    void loadScenarioComparison(runHistory, selectedComparisonSetId, comparisonSets);
+  }, [comparisonSets, runHistory, selectedComparisonSetId]);
 
   async function createSession() {
     try {
@@ -1001,14 +1018,23 @@ function App() {
     }
   }
 
-  async function loadScenarioComparison(entries: RunHistoryEntry[]) {
+  async function loadScenarioComparison(
+    entries: RunHistoryEntry[],
+    comparisonSetId: string,
+    sets: ComparisonSet[],
+  ) {
     const comparable = entries.filter((entry) => entry.response?.result?.step_results?.length);
-    if (comparable.length < 2) {
+    const comparisonSet = sets.find((item) => item.id === comparisonSetId);
+    const selected = comparisonSet
+      ? comparisonSet.run_ids
+          .map((runId) => comparable.find((entry) => entry.id === runId))
+          .filter((entry): entry is RunHistoryEntry => Boolean(entry))
+      : comparable.slice(0, 4);
+    if (selected.length < 2) {
       setScenarioComparison(null);
       return;
     }
 
-    const selected = comparable.slice(0, 4);
     try {
       const response = await fetchWithTimeout(
         `${API_BASE}/api/workflows/compare`,
@@ -1444,6 +1470,11 @@ function App() {
               {},
             preset: selectedPreset,
             workflow: selectedWorkflow,
+            comparison: comparisonExportPayload(
+              scenarioComparison,
+              selectedComparisonSetId,
+              comparisonSets,
+            ),
           }),
         },
         10000,
@@ -1500,6 +1531,11 @@ function App() {
               {},
             preset: selectedPreset,
             workflow: selectedWorkflow,
+            comparison: comparisonExportPayload(
+              scenarioComparison,
+              selectedComparisonSetId,
+              comparisonSets,
+            ),
           }),
         },
         10000,
@@ -1516,12 +1552,21 @@ function App() {
         body.pdf_base64,
         body.pdf_content_type || "application/pdf",
       );
+      body.csv_files.forEach((file) => {
+        downloadTextFile(file.filename, file.content, file.content_type || "text/csv");
+      });
+      downloadBase64File(
+        body.xlsx_filename,
+        body.xlsx_base64,
+        body.xlsx_content_type ||
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
       setScriptStepIndex((current) => Math.max(current, 4));
       setMessages((items) => [
         ...items,
         {
           role: "assistant",
-          content: `Exported ${body.json_filename} and ${body.pdf_filename}.`,
+          content: `Exported ${body.json_filename}, ${body.pdf_filename}, ${body.xlsx_filename}, and ${body.csv_files.length} CSV files.`,
         },
       ]);
     } catch (error) {
@@ -1738,6 +1783,45 @@ function App() {
 
   function clearRunHistory() {
     setRunHistory(persistRunHistory([]));
+    setComparisonSets(persistComparisonSets([]));
+    setSelectedComparisonSetId("auto");
+  }
+
+  function createComparisonSet(name: string) {
+    const comparable = runHistory.filter((entry) => entry.response?.result?.step_results?.length);
+    const selected = comparable.slice(0, 4);
+    if (selected.length < 2) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: "Run or restore at least two workflows before saving a comparison set.",
+        },
+      ]);
+      return;
+    }
+    const set: ComparisonSet = {
+      id: makeHistoryId(),
+      name: name.trim() || `Comparison ${comparisonSets.length + 1}`,
+      created_at: new Date().toISOString(),
+      run_ids: selected.map((entry) => entry.id),
+    };
+    setComparisonSets((current) => persistComparisonSets([set, ...current]));
+    setSelectedComparisonSetId(set.id);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content: `Saved comparison set ${set.name} with ${set.run_ids.length} runs.`,
+      },
+    ]);
+  }
+
+  function deleteComparisonSet(setId: string) {
+    setComparisonSets((current) => persistComparisonSets(current.filter((item) => item.id !== setId)));
+    if (selectedComparisonSetId === setId) {
+      setSelectedComparisonSetId("auto");
+    }
   }
 
   const solverProfile = solverProfiles[solver];
@@ -2089,6 +2173,11 @@ function App() {
           <WorkflowComparisonPanel
             workflowRun={workflowRun}
             scenarioComparison={scenarioComparison}
+            comparisonSets={comparisonSets}
+            selectedComparisonSetId={selectedComparisonSetId}
+            onSelectComparisonSet={setSelectedComparisonSetId}
+            onCreateComparisonSet={createComparisonSet}
+            onDeleteComparisonSet={deleteComparisonSet}
           />
 
           {presenterReviewOpen ? (
@@ -2196,6 +2285,22 @@ function latestWorkflowRunPayloadFromHistory(
   return history.find((entry) => entry.response.result.timestamp === workflowRun.timestamp)?.payload || null;
 }
 
+function comparisonExportPayload(
+  comparison: WorkflowScenarioComparison | null,
+  selectedComparisonSetId: string,
+  sets: ComparisonSet[],
+): Record<string, unknown> {
+  if (!comparison?.comparison_ready) return {};
+  const selectedSet = sets.find((item) => item.id === selectedComparisonSetId);
+  return {
+    id: selectedSet?.id || "auto",
+    name: selectedSet?.name || "Auto comparison",
+    created_at: selectedSet?.created_at || new Date().toISOString(),
+    run_ids: selectedSet?.run_ids || comparison.runs.map((run) => run.run_id),
+    comparison,
+  };
+}
+
 function loadRunHistory(): RunHistoryEntry[] {
   try {
     const raw = window.localStorage.getItem(RUN_HISTORY_KEY);
@@ -2213,6 +2318,27 @@ function persistRunHistory(entries: RunHistoryEntry[]): RunHistoryEntry[] {
     window.localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(next));
   } catch {
     // Keep the in-memory history for the session when browser storage is blocked.
+  }
+  return next;
+}
+
+function loadComparisonSets(): ComparisonSet[] {
+  try {
+    const raw = window.localStorage.getItem(COMPARISON_SETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_COMPARISON_SETS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistComparisonSets(entries: ComparisonSet[]): ComparisonSet[] {
+  const next = entries.slice(0, MAX_COMPARISON_SETS);
+  try {
+    window.localStorage.setItem(COMPARISON_SETS_KEY, JSON.stringify(next));
+  } catch {
+    // Keep the in-memory comparison sets for the session when storage is blocked.
   }
   return next;
 }
@@ -3836,13 +3962,25 @@ function GovernanceReviewPanel({
 function WorkflowComparisonPanel({
   workflowRun,
   scenarioComparison,
+  comparisonSets,
+  selectedComparisonSetId,
+  onSelectComparisonSet,
+  onCreateComparisonSet,
+  onDeleteComparisonSet,
 }: {
   workflowRun: WorkflowRunResult | null;
   scenarioComparison: WorkflowScenarioComparison | null;
+  comparisonSets: ComparisonSet[];
+  selectedComparisonSetId: string;
+  onSelectComparisonSet: (setId: string) => void;
+  onCreateComparisonSet: (name: string) => void;
+  onDeleteComparisonSet: (setId: string) => void;
 }) {
+  const [newSetName, setNewSetName] = useState("Base vs Stress");
   const visual = workflowRun?.visual_summary;
   const points = visual?.points || [];
   const scenarioRuns = scenarioComparison?.runs || [];
+  const selectedSet = comparisonSets.find((item) => item.id === selectedComparisonSetId);
   const maxAbsImprovement = Math.max(
     1,
     ...points.map((point) => Math.abs(point.improvement_pct)),
@@ -3871,10 +4009,48 @@ function WorkflowComparisonPanel({
         <div className="scenario-comparison-block">
           <div className="scenario-comparison-head">
             <div>
-              <h3>Saved Run Comparison</h3>
-              <p>Baseline is the newest selected history entry; deltas compare each run to it.</p>
+              <h3>{selectedSet?.name || "Saved Run Comparison"}</h3>
+              <p>
+                {selectedSet
+                  ? "Baseline is the first run in this named set."
+                  : "Auto mode uses the newest comparable history entries."}
+              </p>
             </div>
             <StatusStrip label="History" statusClass="status-optimal" />
+          </div>
+          <div className="comparison-set-controls">
+            <select
+              value={selectedComparisonSetId}
+              onChange={(event) => onSelectComparisonSet(event.target.value)}
+              aria-label="Comparison set"
+            >
+              <option value="auto">Auto: newest comparable runs</option>
+              {comparisonSets.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={newSetName}
+              onChange={(event) => setNewSetName(event.target.value)}
+              aria-label="New comparison set name"
+            />
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => onCreateComparisonSet(newSetName)}
+            >
+              Save Set
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => onDeleteComparisonSet(selectedComparisonSetId)}
+              disabled={selectedComparisonSetId === "auto"}
+            >
+              Delete
+            </button>
           </div>
           <div className="scenario-comparison-table">
             <table>

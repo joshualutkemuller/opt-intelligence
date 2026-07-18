@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import csv
 from datetime import UTC, datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 def build_workflow_evidence_packet(
@@ -14,6 +16,7 @@ def build_workflow_evidence_packet(
     payload: dict[str, Any] | None = None,
     preset: dict[str, Any] | None = None,
     workflow: dict[str, Any] | None = None,
+    comparison: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build a structured evidence packet from a completed workflow run."""
@@ -23,6 +26,7 @@ def build_workflow_evidence_packet(
     payload = _record(payload)
     preset = _record(preset)
     workflow = _record(workflow)
+    comparison = _record(comparison)
     steps = [_record(step) for step in result.get("step_results", []) or []]
     final_step = steps[-1] if steps else {}
     final_result = _record(final_step.get("result"))
@@ -31,6 +35,7 @@ def build_workflow_evidence_packet(
     explanation = _record(result.get("explanation_report"))
     policy_ingestion = _policy_ingestion_evidence(payload)
     governance_evidence = _governance_evidence(steps, policy_ingestion)
+    comparison_evidence = _comparison_evidence(comparison)
     workflow_id = (
         result.get("workflow_id")
         or workflow.get("workflow_id")
@@ -84,6 +89,7 @@ def build_workflow_evidence_packet(
             "effects": _list(dependency.get("context_changes")),
         },
         "governance_evidence": governance_evidence,
+        "comparison_evidence": comparison_evidence,
         "validation_evidence": {
             "summary": validation,
             "step_reports": [_step_validation_summary(step) for step in steps],
@@ -160,6 +166,9 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
         Paragraph("Governance Evidence", heading_style),
         _governance_table(_record(packet.get("governance_evidence"))),
         Spacer(1, 8),
+        Paragraph("Comparison Evidence", heading_style),
+        _comparison_table(_record(packet.get("comparison_evidence"))),
+        Spacer(1, 8),
         Paragraph("Dependency Evidence", heading_style),
         _dependency_table(_list(_dig(packet, "dependency_evidence", "effects"))),
         Spacer(1, 8),
@@ -178,6 +187,40 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
 
 def encode_pdf_base64(pdf_bytes: bytes) -> str:
     return base64.b64encode(pdf_bytes).decode("ascii")
+
+
+def generate_workflow_evidence_csvs(packet: dict[str, Any]) -> list[dict[str, str]]:
+    """Render evidence packet tables as CSV artifacts."""
+
+    tables = _evidence_tables(packet)
+    csv_files = []
+    for table_name, rows in tables.items():
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerows(rows)
+        csv_files.append(
+            {
+                "filename": f"{table_name}.csv",
+                "content_type": "text/csv",
+                "content": output.getvalue(),
+            }
+        )
+    return csv_files
+
+
+def generate_workflow_evidence_xlsx(packet: dict[str, Any]) -> bytes:
+    """Render evidence packet tables as a compact XLSX workbook."""
+
+    tables = _evidence_tables(packet)
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as workbook:
+        _write_xlsx_static_files(workbook, list(tables))
+        for index, (table_name, rows) in enumerate(tables.items(), start=1):
+            workbook.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                _worksheet_xml(rows),
+            )
+    return buffer.getvalue()
 
 
 def _solver_summary(step: dict[str, Any]) -> dict[str, Any]:
@@ -318,6 +361,255 @@ def _governance_evidence(
     }
 
 
+def _comparison_evidence(comparison: dict[str, Any]) -> dict[str, Any]:
+    if not comparison:
+        return {
+            "summary": {"present": False, "name": None, "run_count": 0},
+            "runs": [],
+            "insights": [],
+        }
+    body = _record(comparison.get("comparison") or comparison)
+    return {
+        "summary": {
+            "present": True,
+            "name": comparison.get("name") or body.get("name") or "Workflow comparison",
+            "created_at": comparison.get("created_at"),
+            "run_count": body.get("run_count", 0),
+            "baseline_run_id": body.get("baseline_run_id"),
+            "best_run_id": body.get("best_run_id"),
+            "comparison_ready": body.get("comparison_ready", False),
+        },
+        "runs": [_record(run) for run in _list(body.get("runs"))],
+        "insights": _list(body.get("insights")),
+    }
+
+
+def _evidence_tables(packet: dict[str, Any]) -> dict[str, list[list[Any]]]:
+    overview = _record(packet.get("overview"))
+    policy = _record(packet.get("policy_ingestion_evidence"))
+    governance = _record(packet.get("governance_evidence"))
+    comparison = _record(packet.get("comparison_evidence"))
+    validation = _record(_dig(packet, "validation_evidence", "summary"))
+    return {
+        "overview": [
+            ["Field", "Value"],
+            ["Generated at", packet.get("generated_at")],
+            ["Workflow", overview.get("workflow_id")],
+            ["Preset", overview.get("preset_name")],
+            ["Portfolio", overview.get("portfolio_id")],
+            ["Status", overview.get("status")],
+            ["Source policy", overview.get("source_policy")],
+            ["Validation passed", overview.get("validation_passed")],
+            ["Dependency effects", overview.get("dependency_effect_count")],
+        ],
+        "workflow_steps": _workflow_step_rows(_list(packet.get("solver_evidence"))),
+        "allocations": _allocation_rows(_list(packet.get("allocation_evidence"))),
+        "dependencies": _dependency_rows(_list(_dig(packet, "dependency_evidence", "effects"))),
+        "validation": _validation_rows(validation),
+        "governance": _governance_rows(governance),
+        "policy_fields": _policy_rows(policy),
+        "comparison": _comparison_rows(comparison),
+    }
+
+
+def _workflow_step_rows(items: list[Any]) -> list[list[Any]]:
+    rows = [
+        [
+            "Step ID",
+            "Step",
+            "Domain",
+            "Status",
+            "Solver",
+            "Problem",
+            "Objective",
+            "Baseline",
+            "Improvement %",
+            "Binding Constraints",
+        ]
+    ]
+    for item in items:
+        record = _record(item)
+        rows.append(
+            [
+                record.get("step_id"),
+                record.get("name"),
+                record.get("domain"),
+                record.get("status"),
+                record.get("solver_backend"),
+                record.get("problem_type"),
+                record.get("objective_value"),
+                record.get("baseline_value"),
+                record.get("improvement_pct"),
+                "; ".join(str(value) for value in _list(record.get("binding_constraints"))),
+            ]
+        )
+    return _with_empty_row(rows, "No workflow steps recorded.")
+
+
+def _allocation_rows(items: list[Any]) -> list[list[Any]]:
+    rows = [
+        [
+            "Step ID",
+            "Step",
+            "Domain",
+            "Allocation Label",
+            "Allocated Value",
+            "Allocated Fraction",
+        ]
+    ]
+    for item in items:
+        record = _record(item)
+        for allocation in [_record(value) for value in _list(record.get("allocations"))]:
+            rows.append(
+                [
+                    record.get("step_id"),
+                    record.get("name"),
+                    record.get("domain"),
+                    allocation.get("label"),
+                    allocation.get("allocated_value"),
+                    allocation.get("allocated_fraction"),
+                ]
+            )
+    return _with_empty_row(rows, "No allocations recorded.")
+
+
+def _dependency_rows(items: list[Any]) -> list[list[Any]]:
+    rows = [["Source", "Target", "Context Key", "Before", "After", "Delta", "Reason"]]
+    for item in [_record(value) for value in items]:
+        rows.append(
+            [
+                item.get("source_step_id"),
+                item.get("target_step_id"),
+                item.get("target_context_key"),
+                item.get("previous_value"),
+                item.get("new_value"),
+                item.get("delta"),
+                item.get("reason"),
+            ]
+        )
+    return _with_empty_row(rows, "No dependency effects recorded.")
+
+
+def _validation_rows(summary: dict[str, Any]) -> list[list[Any]]:
+    rows = [
+        ["Metric", "Value"],
+        ["Passed", summary.get("passed")],
+        ["Total steps", summary.get("total_steps")],
+        ["Total checks", summary.get("total_checks")],
+        ["Warnings", summary.get("warning_count")],
+        ["Violations", summary.get("violation_count")],
+    ]
+    for warning in _list(summary.get("warnings")):
+        rows.append(["Warning", warning])
+    for violation in _list(summary.get("violations")):
+        rows.append(["Violation", violation])
+    return rows
+
+
+def _governance_rows(governance: dict[str, Any]) -> list[list[Any]]:
+    rows = [
+        [
+            "Step ID",
+            "Domain",
+            "Tier",
+            "Status",
+            "Required",
+            "Escalated",
+            "Reason",
+            "Approval ID",
+        ]
+    ]
+    for record in [_record(value) for value in _list(governance.get("records"))]:
+        rows.append(
+            [
+                record.get("step_id"),
+                record.get("domain"),
+                record.get("tier"),
+                record.get("status"),
+                record.get("required"),
+                record.get("escalated"),
+                record.get("escalation_reason"),
+                record.get("approval_id"),
+            ]
+        )
+    return _with_empty_row(rows, "No governance records recorded.")
+
+
+def _policy_rows(policy: dict[str, Any]) -> list[list[Any]]:
+    rows = [["Key", "Label", "Value", "Confidence", "Applied", "Evidence"]]
+    for field in [_record(value) for value in _list(policy.get("extracted_fields"))]:
+        rows.append(
+            [
+                field.get("key"),
+                field.get("label"),
+                field.get("value"),
+                field.get("confidence"),
+                field.get("applied"),
+                field.get("evidence"),
+            ]
+        )
+    return _with_empty_row(rows, "No policy fields extracted.")
+
+
+def _comparison_rows(comparison: dict[str, Any]) -> list[list[Any]]:
+    summary = _record(comparison.get("summary"))
+    rows = [
+        [
+            "Set Name",
+            "Run ID",
+            "Label",
+            "Workflow",
+            "Status",
+            "Final Domain",
+            "Final Objective",
+            "Improvement %",
+            "Improvement Delta",
+            "Avg Improvement %",
+            "Dependencies",
+            "Warnings",
+            "Violations",
+            "Expected Return",
+            "Volatility",
+            "Sharpe",
+            "Best Run",
+            "Baseline",
+        ]
+    ]
+    for run in [_record(value) for value in _list(comparison.get("runs"))]:
+        deltas = _record(run.get("deltas"))
+        rows.append(
+            [
+                summary.get("name"),
+                run.get("run_id"),
+                run.get("label"),
+                run.get("workflow_id"),
+                run.get("status"),
+                run.get("final_domain"),
+                run.get("final_objective_value"),
+                run.get("final_improvement_pct"),
+                deltas.get("final_improvement_pct"),
+                run.get("average_improvement_pct"),
+                run.get("total_dependency_effects"),
+                run.get("warning_count"),
+                run.get("violation_count"),
+                run.get("expected_return"),
+                run.get("volatility"),
+                run.get("sharpe"),
+                run.get("run_id") == summary.get("best_run_id"),
+                run.get("run_id") == summary.get("baseline_run_id"),
+            ]
+        )
+    for insight in _list(comparison.get("insights")):
+        rows.append([summary.get("name"), "Insight", insight])
+    return _with_empty_row(rows, "No comparison set attached.")
+
+
+def _with_empty_row(rows: list[list[Any]], message: str) -> list[list[Any]]:
+    if len(rows) == 1:
+        rows.append([message])
+    return rows
+
+
 def _table(rows: list[list[Any]], widths: list[float] | None = None) -> Any:
     from reportlab.lib import colors
     from reportlab.platypus import Table, TableStyle
@@ -395,6 +687,25 @@ def _governance_table(governance: dict[str, Any]) -> Any:
     return _table(rows)
 
 
+def _comparison_table(comparison: dict[str, Any]) -> Any:
+    summary = _record(comparison.get("summary"))
+    rows = [["Run", "Improvement", "Delta", "Deps", "Review"]]
+    for run in [_record(value) for value in _list(comparison.get("runs"))][:6]:
+        deltas = _record(run.get("deltas"))
+        rows.append(
+            [
+                run.get("label"),
+                _format_pct(run.get("final_improvement_pct")),
+                _format_pct(deltas.get("final_improvement_pct")),
+                run.get("total_dependency_effects"),
+                f"{run.get('warning_count', 0)}W/{run.get('violation_count', 0)}V",
+            ]
+        )
+    if len(rows) == 1:
+        rows.append([summary.get("name") or "None", "No comparison set attached.", "", "", ""])
+    return _table(rows)
+
+
 def _dependency_table(items: list[Any]) -> Any:
     rows = [["Source", "Target", "Context", "Before", "After", "Reason"]]
     for item in items[:8]:
@@ -426,6 +737,109 @@ def _validation_table(summary: dict[str, Any]) -> Any:
             ["Violations", summary.get("violation_count", 0)],
         ],
         widths=[1.55 * inch, 5.15 * inch],
+    )
+
+
+def _write_xlsx_static_files(workbook: ZipFile, sheet_names: list[str]) -> None:
+    workbook.writestr(
+        "[Content_Types].xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+        'relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        + "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            for index in range(1, len(sheet_names) + 1)
+        )
+        + "</Types>",
+    )
+    workbook.writestr(
+        "_rels/.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/>'
+        "</Relationships>",
+    )
+    workbook.writestr(
+        "xl/workbook.xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        "<sheets>"
+        + "".join(
+            f'<sheet name="{_xml_escape(_sheet_name(name))}" sheetId="{index}" '
+            f'r:id="rId{index}"/>'
+            for index, name in enumerate(sheet_names, start=1)
+        )
+        + "</sheets></workbook>",
+    )
+    workbook.writestr(
+        "xl/_rels/workbook.xml.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        + "".join(
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            f'Target="worksheets/sheet{index}.xml"/>'
+            for index in range(1, len(sheet_names) + 1)
+        )
+        + "</Relationships>",
+    )
+
+
+def _worksheet_xml(rows: list[list[Any]]) -> str:
+    xml_rows = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = []
+        for column_index, value in enumerate(row, start=1):
+            reference = f"{_column_name(column_index)}{row_index}"
+            cells.append(_cell_xml(reference, value))
+        xml_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheetData>"
+        + "".join(xml_rows)
+        + "</sheetData></worksheet>"
+    )
+
+
+def _cell_xml(reference: str, value: Any) -> str:
+    if isinstance(value, bool):
+        return f'<c r="{reference}" t="b"><v>{1 if value else 0}</v></c>'
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return f'<c r="{reference}"><v>{value}</v></c>'
+    text = "" if value is None else str(value)
+    return (
+        f'<c r="{reference}" t="inlineStr"><is><t>{_xml_escape(text)}</t></is></c>'
+    )
+
+
+def _column_name(index: int) -> str:
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def _sheet_name(value: str) -> str:
+    safe = "".join(character for character in value.title() if character not in "[]:*?/\\")
+    return safe[:31] or "Sheet"
+
+
+def _xml_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
     )
 
 

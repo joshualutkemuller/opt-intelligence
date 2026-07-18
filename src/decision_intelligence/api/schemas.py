@@ -196,6 +196,7 @@ class WorkflowExportPackageRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     preset: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, Any] = Field(default_factory=dict)
+    comparison: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowExportPackageResponse(BaseModel):
@@ -209,6 +210,7 @@ class WorkflowEvidenceExportRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     preset: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, Any] = Field(default_factory=dict)
+    comparison: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowEvidenceExportResponse(BaseModel):
@@ -218,6 +220,12 @@ class WorkflowEvidenceExportResponse(BaseModel):
     pdf_filename: str
     pdf_content_type: str = "application/pdf"
     pdf_base64: str
+    csv_files: list[dict[str, str]] = Field(default_factory=list)
+    xlsx_filename: str
+    xlsx_content_type: str = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    xlsx_base64: str
 
 
 class AuditNarrativeRequest(BaseModel):

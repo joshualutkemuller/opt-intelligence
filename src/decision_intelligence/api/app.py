@@ -20,7 +20,9 @@ from decision_intelligence.export import (
     build_workflow_evidence_packet,
     encode_pdf_base64,
     generate_workflow_demo_package,
+    generate_workflow_evidence_csvs,
     generate_workflow_evidence_pdf,
+    generate_workflow_evidence_xlsx,
 )
 from decision_intelligence.governance import (
     ApprovalDecision,
@@ -347,6 +349,7 @@ def export_workflow_package(
         payload=payload.payload,
         preset=payload.preset,
         workflow=payload.workflow,
+        comparison=payload.comparison,
     )
     workflow_id = (
         payload.response.get("result", {}).get("workflow_id")
@@ -369,8 +372,11 @@ def export_workflow_evidence(
         payload=payload.payload,
         preset=payload.preset,
         workflow=payload.workflow,
+        comparison=payload.comparison,
     )
     pdf = generate_workflow_evidence_pdf(packet)
+    csv_files = generate_workflow_evidence_csvs(packet)
+    xlsx = generate_workflow_evidence_xlsx(packet)
     workflow_id = (
         payload.response.get("result", {}).get("workflow_id")
         or payload.workflow.get("workflow_id")
@@ -383,6 +389,9 @@ def export_workflow_evidence(
         json_payload=packet,
         pdf_filename=f"{filename}-evidence.pdf",
         pdf_base64=encode_pdf_base64(pdf),
+        csv_files=csv_files,
+        xlsx_filename=f"{filename}-evidence.xlsx",
+        xlsx_base64=encode_pdf_base64(xlsx),
     )
 
 
