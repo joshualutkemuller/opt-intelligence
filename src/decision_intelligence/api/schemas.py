@@ -68,6 +68,8 @@ class DirectOptimizationRequest(BaseModel):
     domain: Literal["asset_allocation", "collateral", "money_market", "financing"]
     portfolio_id: str = "PORT_001"
     objective_metric: str | None = None
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)
     scenarios: list[str] = Field(default_factory=list)
     execution_mode: str = "recommendation"
@@ -76,6 +78,23 @@ class DirectOptimizationRequest(BaseModel):
 class OptimizationResponse(BaseModel):
     result: dict[str, Any]
     request: dict[str, Any]
+
+
+class ProductionOptimizerCatalogItem(BaseModel):
+    optimizer_id: str
+    domain: str
+    model_name: str
+    model_version: str
+    config_version: str
+    objectives: list[dict[str, Any]] = Field(default_factory=list)
+    constraints: list[dict[str, Any]] = Field(default_factory=list)
+    data_contract: dict[str, Any] = Field(default_factory=dict)
+    solver: dict[str, Any] = Field(default_factory=dict)
+    execution: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProductionOptimizerCatalogResponse(BaseModel):
+    optimizers: list[ProductionOptimizerCatalogItem]
 
 
 class WorkflowCatalogInput(BaseModel):
@@ -154,6 +173,8 @@ class WorkflowRunRequest(BaseModel):
     portfolio_id: str = "PORT_001"
     seed: int = 42
     execution_mode: str | None = None
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)
 
 

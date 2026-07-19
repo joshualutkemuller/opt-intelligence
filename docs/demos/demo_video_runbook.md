@@ -100,6 +100,30 @@ Call out:
 - The explanation report gives key drivers and next actions.
 - Export Evidence produces JSON and PDF artifacts for the exact completed run.
 
+## Collateral Management Presentation Clips
+
+Use these when the presentation needs a markets-facing collateral stress story:
+
+- `video_examples/collateral/collateral-schedule-ingestion-stress-example.mp4`
+- `video_examples/collateral/collateral-liquidity-hqla-orchestration-example.mp4`
+
+Suggested narration:
+
+> This collateral example starts with the controls that actually govern the
+> desk: haircuts, eligibility, and concentration limits from a collateral
+> schedule. The agent guides the review, the deterministic optimizer allocates
+> scarce collateral under stress, and the output is shown as before/after
+> liquidity, HQLA tier exposure, and reviewer-ready evidence.
+
+Call out:
+
+- Haircuts and concentration caps are treated as model inputs, not slide notes.
+- Preflight validation blocks missing inventory, obligations, or eligibility.
+- The collateral optimizer preserves higher-quality liquidity where possible.
+- HQLA and capital-tier exposure make the result legible to treasury and risk.
+- Governance and export evidence are visible before the recommendation becomes
+  an action.
+
 ## Shot List
 
 | Shot | Screen | What to emphasize |
@@ -115,6 +139,8 @@ Call out:
 | 9 | Dependency effects table | Upstream stress changes downstream constraints |
 | 10 | Export Evidence button | JSON and PDF proof packet from the completed run |
 | 11 | Explanation and next actions | Recommendation is explainable and auditable |
+| 12 | Collateral schedule clip | Haircuts and concentration limits become optimizer controls |
+| 13 | Collateral HQLA clip | Before/after liquidity and HQLA tier exposure under stress |
 
 ## Fallback Commands
 

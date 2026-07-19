@@ -180,11 +180,18 @@ Implemented:
 - Asset Allocation MVO production adapter and `ModelConfigSpec`.
 - Collateral production adapter and `ModelConfigSpec`.
 - Default production registry containing both adapters.
+- Orchestrator runtime switch via `context["optimizer_runtime"]`.
+- Normalization bridge from `NormalizedOptimizerResult` into the existing
+  `OptimizationResult` shape.
+- Direct API and workflow API runtime fields.
+- Production optimizer catalog endpoint for UI discovery.
 - Focused tests for successful runs, blocked preflight, evidence attachment,
   and registry discovery.
 
 Next:
 
-- Bridge the production registry into the workflow/API layer so demos can choose
-  the phase 1 optimizer path or the production adapter path.
 - Surface model config, data contract, and evidence sections in the UI.
+- Add front-end controls for `optimizer_runtime` and production adapter
+  selection.
+- Add production adapters for money market and financing when those models are
+  ready for the same contract.

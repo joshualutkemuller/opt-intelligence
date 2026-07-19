@@ -15,6 +15,60 @@ The matching code scaffold lives in:
 - `production.collateral.allocation`: wraps the phase 1 Collateral optimizer
   with production config, data preflight, normalized output, and evidence.
 
+## Runtime Selection
+
+Direct optimization and workflow API calls can opt into the production adapter
+runtime with:
+
+```json
+{
+  "optimizer_runtime": "production"
+}
+```
+
+The default remains `"phase1"` for backward compatibility.
+
+Supported production adapter discovery:
+
+```text
+GET /api/production-optimizers
+```
+
+Direct optimization example:
+
+```json
+{
+  "domain": "collateral",
+  "portfolio_id": "PORT_001",
+  "optimizer_runtime": "production",
+  "context": {
+    "data_snapshot_id": "SNAP_COLLATERAL_001"
+  }
+}
+```
+
+Workflow example:
+
+```json
+{
+  "workflow": "portfolio_rebalance_mvo",
+  "portfolio_id": "PORT_MVO_001",
+  "optimizer_runtime": "production",
+  "context": {
+    "asset_allocation": {
+      "data_snapshot_id": "SNAP_MVO_001"
+    }
+  }
+}
+```
+
+Production results are normalized back into the existing `OptimizationResult`
+shape. Adapter evidence is available under:
+
+```text
+result.solver_metadata.production_evidence
+```
+
 ## Documents
 
 - [Production Optimizer Adapter Handoff](Production_Optimizer_Adapter_Handoff.md)

@@ -42,6 +42,7 @@ from decision_intelligence.optimizers import (
     FinancingOptimizer,
     MoneyMarketOptimizer,
 )
+from decision_intelligence.production_optimizers import build_default_production_registry
 from decision_intelligence.workflows import (
     DEFAULT_DEMO_PRESET_DIR,
     DEFAULT_WORKFLOW_REGISTRY,
@@ -69,6 +70,7 @@ from .schemas import (
     PendingApprovalsResponse,
     PolicyIngestionRequest,
     PolicyIngestionResponse,
+    ProductionOptimizerCatalogResponse,
     WorkflowCatalogResponse,
     WorkflowEvidenceExportRequest,
     WorkflowEvidenceExportResponse,
@@ -239,6 +241,36 @@ def run_optimization(payload: DirectOptimizationRequest) -> OptimizationResponse
     return OptimizationResponse(result=_json(result), request=_json(request))
 
 
+@app.get("/api/production-optimizers", response_model=ProductionOptimizerCatalogResponse)
+def list_production_optimizers() -> ProductionOptimizerCatalogResponse:
+    registry = build_default_production_registry()
+    optimizers = []
+    for optimizer_id in registry.list_ids():
+        adapter = registry.get(optimizer_id)
+        config = adapter.model_config
+        optimizers.append(
+            {
+                "optimizer_id": optimizer_id,
+                "domain": config.domain,
+                "model_name": config.lineage.model_name,
+                "model_version": config.lineage.model_version,
+                "config_version": config.lineage.config_version,
+                "objectives": [
+                    objective.model_dump(mode="json")
+                    for objective in config.objectives
+                ],
+                "constraints": [
+                    constraint.model_dump(mode="json")
+                    for constraint in config.constraints
+                ],
+                "data_contract": config.data_contract.model_dump(mode="json"),
+                "solver": config.solver.model_dump(mode="json"),
+                "execution": config.execution.model_dump(mode="json"),
+            }
+        )
+    return ProductionOptimizerCatalogResponse(optimizers=optimizers)
+
+
 @app.get("/api/workflows", response_model=WorkflowCatalogResponse)
 def list_workflows() -> WorkflowCatalogResponse:
     return WorkflowCatalogResponse(workflows=DEFAULT_WORKFLOW_REGISTRY.list_catalog())
@@ -268,6 +300,10 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
     context = dict(payload.context)
     if payload.execution_mode:
         context["execution_mode"] = payload.execution_mode
+    if payload.optimizer_runtime != "phase1":
+        context["optimizer_runtime"] = payload.optimizer_runtime
+    if payload.production_optimizer_id:
+        context["production_optimizer_id"] = payload.production_optimizer_id
     try:
         plan = DEFAULT_WORKFLOW_REGISTRY.build(
             payload.workflow,
@@ -422,6 +458,10 @@ def negotiate_result_constraints(
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:
     spec = WORKFLOWS[payload.domain]
     context = {**spec.base_context, **payload.context}
+    if payload.optimizer_runtime != "phase1":
+        context["optimizer_runtime"] = payload.optimizer_runtime
+    if payload.production_optimizer_id:
+        context["production_optimizer_id"] = payload.production_optimizer_id
     objective_metric = payload.objective_metric or spec.objective_metric
     scenarios = [
         Scenario(

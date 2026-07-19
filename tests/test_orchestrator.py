@@ -97,6 +97,65 @@ def test_asset_allocation_mvo_optimal(orchestrator):
     assert result.solver_metadata["expected_return"] >= 0.05
 
 
+def test_asset_allocation_mvo_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "asset_allocation",
+            optimizer_runtime="production",
+            portfolio_notional=250_000_000,
+            risk_aversion=3.0,
+            target_return=0.05,
+            max_single_asset_weight=0.45,
+            data_snapshot_id="SNAP_MVO_ORCH",
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == "production.asset_allocation.mvo"
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == "SNAP_MVO_ORCH"
+    assert result.solver_metadata["domain_attachments"]["expected_return"] >= 0.05
+    assert len(result.allocations) == 6
+    assert result.validation.passed
+
+
+def test_collateral_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "collateral",
+            optimizer_runtime="production",
+            data_snapshot_id="SNAP_COLLATERAL_ORCH",
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == (
+        "production.collateral.allocation"
+    )
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_COLLATERAL_ORCH"
+    )
+    assert result.improvement_pct > 0
+    assert result.validation.passed
+
+
+def test_production_runtime_unknown_domain_returns_error(orchestrator):
+    result = orchestrator.run(_req("money_market", optimizer_runtime="production"))
+
+    assert result.status == SolveStatus.ERROR
+    assert not result.validation.passed
+    assert "Production optimizer" in result.explanation
+
+
+def test_unknown_optimizer_runtime_returns_error(orchestrator):
+    result = orchestrator.run(_req("collateral", optimizer_runtime="experimental"))
+
+    assert result.status == SolveStatus.ERROR
+    assert not result.validation.passed
+    assert "optimizer_runtime" in result.explanation
+
+
 def test_financing_optimal(orchestrator):
     result = orchestrator.run(_req("financing"))
     assert result.status == SolveStatus.OPTIMAL

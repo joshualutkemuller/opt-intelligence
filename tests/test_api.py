@@ -118,6 +118,54 @@ def test_direct_asset_allocation_endpoint():
     assert body["request"]["context"]["risk_aversion"] == 3.0
 
 
+def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
+    response = client.get("/api/production-optimizers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["optimizer_id"] for item in body["optimizers"]] == [
+        "production.asset_allocation.mvo",
+        "production.collateral.allocation",
+    ]
+    mvo = body["optimizers"][0]
+    assert mvo["domain"] == "asset_allocation"
+    assert mvo["model_name"] == "Asset Allocation MVO"
+    assert mvo["data_contract"]["required_datasets"] == [
+        "asset_universe",
+        "covariance_matrix",
+    ]
+    collateral = body["optimizers"][1]
+    assert collateral["domain"] == "collateral"
+    assert collateral["solver"]["problem_family"] == "lp"
+
+
+def test_direct_optimization_endpoint_supports_production_runtime():
+    response = client.post(
+        "/api/optimizations/run",
+        json={
+            "domain": "collateral",
+            "portfolio_id": "PORT_COLLATERAL_PROD_API",
+            "optimizer_runtime": "production",
+            "context": {
+                "seed": 42,
+                "data_snapshot_id": "SNAP_COLLATERAL_API",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["status"] == "optimal"
+    assert body["result"]["solver_metadata"]["optimizer_runtime"] == "production"
+    assert body["result"]["solver_metadata"]["production_optimizer_id"] == (
+        "production.collateral.allocation"
+    )
+    assert body["result"]["solver_metadata"]["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_COLLATERAL_API"
+    )
+    assert body["request"]["context"]["optimizer_runtime"] == "production"
+
+
 def test_llm_chat_endpoint_uses_configured_provider(monkeypatch):
     class FakeProvider:
         name = "openai"
@@ -423,6 +471,39 @@ def test_workflow_endpoint_runs_liquidity_stress_workflow():
     assert body["result"]["explanation_report"]["dependency_changes"]
     assert body["result"]["step_results"][-1]["dependency_effects"]
     assert body["result"]["trace"][-1]["event"] == "workflow_completed"
+
+
+def test_workflow_endpoint_supports_production_runtime_for_mvo():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "portfolio_rebalance_mvo",
+            "portfolio_id": "PORT_MVO_PROD_API",
+            "seed": 42,
+            "optimizer_runtime": "production",
+            "context": {
+                "asset_allocation": {
+                    "target_return": 0.05,
+                    "risk_aversion": 3.0,
+                    "data_snapshot_id": "SNAP_MVO_WORKFLOW_API",
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    step_result = body["result"]["step_results"][0]["result"]
+    assert body["result"]["status"] == "complete"
+    assert step_result["status"] == "optimal"
+    assert step_result["solver_metadata"]["optimizer_runtime"] == "production"
+    assert step_result["solver_metadata"]["production_optimizer_id"] == (
+        "production.asset_allocation.mvo"
+    )
+    assert step_result["solver_metadata"]["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_MVO_WORKFLOW_API"
+    )
+    assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
 
 
 def test_workflow_compare_endpoint_returns_scenario_deltas():

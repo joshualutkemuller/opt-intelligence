@@ -7,14 +7,14 @@ platform.
 
 | File | Purpose |
 |---|---|
-| `decision-intelligence-demo.mp4` | Primary proof-of-concept video path. |
-| `governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
-| `ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
-| `ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
-| `llm-assisted-ips-interactive-optimization-example.mp4` | 86 second silent clip showing local Ollama IPS extraction, chat interaction, deterministic validation, optimization, and before/after analytics. |
-| `liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
-| `mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
-| `policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
+| `audit/policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
+| `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing agent chat, orchestration, liquidity profile changes, HQLA tier exposure, and governance review. |
+| `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
+| `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
+| `mvo/governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
+| `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
+| `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
+| `mvo/mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
 
 ## Regenerate Compelling WebM Examples
 
@@ -26,6 +26,19 @@ The WebM generator uses local Playwright Chromium to record deterministic
 1280x720 canvas animations. Convert generated WebM files to MP4 before checking
 them into `video_examples/`. Each clip is designed for a 1 to 1.5 minute
 presentation slot and uses a compressed 1.25x demo pacing.
+
+## Regenerate Collateral MP4 Examples
+
+```bash
+.venv/bin/python scripts/generate_collateral_video_examples.py
+```
+
+This generator renders deterministic 1280x720 Pillow frames and encodes them
+with the bundled FFmpeg binary from `frontend/app/node_modules`. The two
+outputs are:
+
+- `video_examples/collateral/collateral-schedule-ingestion-stress-example.mp4`
+- `video_examples/collateral/collateral-liquidity-hqla-orchestration-example.mp4`
 
 ## Regenerate IPS Analytics MP4
 
