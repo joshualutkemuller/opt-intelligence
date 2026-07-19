@@ -8,7 +8,7 @@ platform.
 | File | Purpose |
 |---|---|
 | `audit/policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
-| `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing agent chat, orchestration, liquidity profile changes, HQLA tier exposure, and governance review. |
+| `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
 | `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
 | `mvo/governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |

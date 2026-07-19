@@ -249,126 +249,152 @@ SCENARIOS = [
         workflow="Collateral Pressure to Liquidity Response",
         audience="Treasury, liquidity risk, collateral desk, and executive stakeholders",
         request=(
-            "A counterparty raises margin calls; optimize collateral posting and show "
-            "the liquidity reserve response."
+            "Upload the schedule, ask the local LLM to interpret controls, then "
+            "optimize collateral and compare liquidity."
         ),
         metrics=[
-            ("Margin call shock", "+65%"),
+            ("Schedule upload", "PDF"),
             ("HQLA retained", "$241M"),
-            ("Approval tier", "Tier 4"),
+            ("Liquidity lift", "+9 pts"),
         ],
         timeline=[
-            "Chat intake",
+            "Upload schedule",
+            "LLM chat",
             "Plan workflow",
             "Run collateral",
-            "Adjust liquidity",
-            "Govern review",
+            "Compare profile",
         ],
         scenes=[
             Scene(
                 0,
-                "The business request starts in chat, not in a terminal",
+                "The stress run starts by uploading the collateral schedule",
                 (
-                    "A user describes margin stress in plain English. The agent turns it "
-                    "into a sequenced workflow with collateral first and liquidity second."
+                    "The presenter drops in a schedule PDF with haircuts, eligibility, "
+                    "concentration limits, and stress notes before asking for a decision."
                 ),
-                "User request",
+                "Uploaded schedule",
                 [
-                    "Counterparty A raised IM by 65%",
-                    "Preserve daily liquidity buffer",
-                    "Avoid overusing Level 1 HQLA",
-                    "Show before and after exposure",
+                    "Global Collateral Schedule Q3.pdf",
+                    "Haircut table: base and stress columns",
+                    "Counterparty eligibility by asset class",
+                    "Single class cap: 55% per obligation",
                 ],
-                "Agent plan",
+                "Extracted controls",
                 [
-                    "Run collateral pressure optimization",
-                    "Apply dependency effect to liquidity reserve",
-                    "Surface governance tier and evidence",
-                    "Prepare presenter review",
+                    "Treasury haircut: 2% to 6% stress",
+                    "Agency MBS haircut: 5% to 12%",
+                    "Equity collateral capped by stress haircut",
+                    "Level 1 HQLA preservation noted",
                 ],
                 chat=[
-                    ("User", "We have a margin shock. What collateral should we post?"),
-                    ("Assistant", "I will optimize coverage, then update liquidity."),
+                    ("User", "PDF uploaded."),
+                    ("Ollama", "Controls found."),
                 ],
             ),
             Scene(
                 18,
+                "Live LLM chat turns the schedule into an optimization workflow",
+                (
+                    "The local model explains the schedule in business terms, while the "
+                    "deterministic validator decides which fields are safe to use."
+                ),
+                "LLM-assisted interpretation",
+                [
+                    "Maps clauses to model config fields",
+                    "Flags haircut and concentration sources",
+                    "Proposes stress scenario context",
+                    "Requires deterministic preflight approval",
+                ],
+                "Workflow orchestration",
+                [
+                    "Run collateral production adapter first",
+                    "Pass collateral pressure to liquidity reserve",
+                    "Compare before and after analytics",
+                    "Keep evidence attached to the run",
+                ],
+                chat=[
+                    ("User", "Optimize without draining HQLA."),
+                    ("Ollama", "Collateral, then liquidity."),
+                ],
+            ),
+            Scene(
+                35,
                 "The workflow shows orchestration instead of one isolated solve",
                 (
                     "Collateral pressure feeds downstream liquidity planning, so the final "
                     "recommendation reflects the whole stress chain."
                 ),
-                "Step 1: collateral",
+                "Collateral step",
                 [
                     "Minimize funding cost of posted collateral",
-                    "Cover all haircut-adjusted obligations",
+                    "Cover haircut-adjusted obligations",
                     "Enforce schedule concentration caps",
                     "Retain scarce HQLA where possible",
                 ],
-                "Step 2: liquidity",
+                "Liquidity step",
                 [
-                    "Raise daily liquidity floor",
-                    "Increase weekly liquidity target",
+                    "Raise daily liquidity floor from 22% to 31%",
+                    "Increase weekly liquidity target to 74%",
                     "Preserve cash reserve after posting",
                     "Explain dependency changes",
                 ],
                 "Workflow progress",
                 [
-                    ("Chat intake", 1.00, COLORS["green"]),
-                    ("Collateral solve", 0.86, COLORS["blue"]),
-                    ("Dependency update", 0.72, COLORS["amber"]),
-                    ("Liquidity review", 0.58, COLORS["cyan"]),
+                    ("Upload", 1.00, COLORS["green"]),
+                    ("LLM review", 0.90, COLORS["cyan"]),
+                    ("Collateral", 0.82, COLORS["blue"]),
+                    ("Liquidity", 0.68, COLORS["amber"]),
                 ],
             ),
             Scene(
-                38,
-                "Before and after analytics make the stress understandable",
+                52,
+                "Before and after analytics make the recommendation tangible",
                 (
-                    "The output connects optimizer decisions to liquidity profile, HQLA "
-                    "retention, funding cost, and operational readiness."
+                    "The output shows liquidity profile, HQLA retention, posted allocation "
+                    "mix, concentration usage, and funding-cost impact side by side."
                 ),
-                "Before optimization",
+                "Before analytics",
                 [
-                    "Naive posting consumes Level 1 first",
-                    "Daily cash buffer falls to 22%",
-                    "Agency and corporate collateral underused",
-                    "Counterparty concentration near breach",
+                    "Daily cash buffer: 22%",
+                    "Weekly liquidity: 58%",
+                    "Level 1 consumed: $94M",
+                    "Largest class usage: 61%",
                 ],
-                "After optimization",
+                "After analytics",
                 [
-                    "Level 1 retained for liquidity buffer",
-                    "Daily cash buffer restored to 31%",
-                    "Coverage met using lower-cost assets",
-                    "Concentration limit satisfied",
+                    "Daily cash buffer: 31%",
+                    "Weekly liquidity: 74%",
+                    "Level 1 retained: $241M",
+                    "Funding cost: -$1.8M annualized",
                 ],
                 "Liquidity profile",
                 [
-                    ("Before daily", 0.44, COLORS["red"]),
-                    ("After daily", 0.62, COLORS["green"]),
-                    ("Before weekly", 0.58, COLORS["amber"]),
-                    ("After weekly", 0.74, COLORS["cyan"]),
+                    ("Daily before", 0.44, COLORS["red"]),
+                    ("Daily after", 0.62, COLORS["green"]),
+                    ("Weekly before", 0.58, COLORS["amber"]),
+                    ("Weekly after", 0.74, COLORS["cyan"]),
                 ],
             ),
             Scene(
-                58,
+                68,
                 "Fed HQLA tier exposure is visible before the decision",
                 (
                     "The committee sees how the recommendation changes the quality of "
                     "the collateral pool, not only the solver objective."
                 ),
-                "HQLA exposure retained",
+                "HQLA tier exposure",
                 [
                     "Level 1 retained: $241M",
-                    "Level 2A deployed selectively",
-                    "Level 2B capped by haircut schedule",
-                    "Non-HQLA excluded from critical calls",
+                    "Level 2A allocation: $74M",
+                    "Level 2B allocation: $31M",
+                    "Non-HQLA avoided for critical calls",
                 ],
-                "Model evidence",
+                "Allocation stats",
                 [
-                    "Production adapter: collateral allocation",
-                    "Data snapshot: stress schedule",
-                    "Fingerprint: reproducible run",
-                    "Validation: no blocking violations",
+                    "Treasuries: 41% of posted pool",
+                    "Agency MBS: 24% of posted pool",
+                    "Corporate credit: 27% of posted pool",
+                    "Cash reserve remains above floor",
                 ],
                 "Capital tier exposure",
                 [
@@ -379,7 +405,7 @@ SCENARIOS = [
                 ],
             ),
             Scene(
-                74,
+                80,
                 "The final screen is built for a nontechnical decision maker",
                 (
                     "The presenter can tell the whole story: what happened, how the plan "
@@ -493,7 +519,7 @@ def _request_panel(draw: ImageDraw.ImageDraw, scenario: Scenario, scene_progress
     _panel(draw, (830, 308, 1224, 442))
     draw.text((854, 329), "Current prompt", font=_font(16, "bold"), fill=COLORS["faint"])
     _wrap(draw, scenario.request, (854, 362), 342, 3, 19, COLORS["ink"], "medium")
-    _round(draw, (854, 432, 854 + int(320 * _ease(scene_progress)), 436), 2, scenario.secondary)
+    _round(draw, (854, 438, 854 + int(320 * _ease(scene_progress)), 440), 2, scenario.secondary)
 
 
 def _main_panels(
@@ -517,7 +543,12 @@ def _main_panels(
     )
     _panel(draw, (920, y, 1224, y + 166))
     if scene.chat:
-        draw.text((944, y + 18), "Agent chat", font=_font(15, "bold"), fill=COLORS["faint"])
+        chat_title = (
+            "LLM chat"
+            if any(speaker == "Ollama" for speaker, _ in scene.chat)
+            else "Agent chat"
+        )
+        draw.text((944, y + 18), chat_title, font=_font(15, "bold"), fill=COLORS["faint"])
         line_y = y + 54
         for speaker, message in scene.chat:
             color = COLORS["amber"] if speaker == "User" else scenario.accent
