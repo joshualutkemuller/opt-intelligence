@@ -96,6 +96,10 @@ async function main() {
 
     await panelFocus(page, "IPS Ingestion");
     await page.getByLabel("Upload IPS document").setInputFiles(samplePdf);
+    await page.getByLabel("Uploaded PDF preview").waitFor({ timeout: 8000 });
+    await page.getByLabel("Uploaded PDF preview").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    await panelFocus(page, "IPS Ingestion");
     await caption(
       page,
       stage(

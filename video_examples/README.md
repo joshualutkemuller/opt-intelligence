@@ -12,7 +12,7 @@ platform.
 | `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
 | `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
-| `money_market/money-market-pdf-policy-optimization-demo.mp4` | 104 second MP4 with burned-in dynamic captions showing a visible first-page PDF preview, money-market PDF upload, ingestion, Ollama-assisted discussion, optimization, before/after analytics, traceability, governance, and evidence review. |
+| `money_market/money-market-pdf-policy-optimization-demo.mp4` | 104 second real front-end browser capture with burned-in dynamic captions showing a visible first-page PDF preview, money-market PDF upload, ingestion, Ollama-assisted discussion, optimization, before/after analytics, traceability, governance, and evidence review. |
 | `mvo/governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
 | `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
@@ -101,7 +101,8 @@ The workflow shown is `money_market_policy_optimization`:
 
 The ingestion path uses auto mode: local Ollama-assisted extraction can be used
 when available, while deterministic validation keeps the converted fields
-structured and repeatable before solve.
+structured and repeatable before solve. The upload stage shows the sample PDF's
+first page inside the actual front-end ingestion panel.
 
 If local browser recording is unavailable, generate the deterministic MP4
 directly:

@@ -1437,6 +1437,7 @@ function App() {
   const [policyText, setPolicyText] = useState("");
   const [policyFilename, setPolicyFilename] = useState("");
   const [policyPdfBase64, setPolicyPdfBase64] = useState<string | null>(null);
+  const [policyPdfPreviewUrl, setPolicyPdfPreviewUrl] = useState<string | null>(null);
   const [policyBackend, setPolicyBackend] =
     useState<"deterministic" | "llm" | "auto">("deterministic");
   const [policyModel, setPolicyModel] = useState("llama3.1:8b");
@@ -1464,6 +1465,12 @@ function App() {
   const [scriptModeEnabled, setScriptModeEnabled] = useState(true);
   const [scriptStepIndex, setScriptStepIndex] = useState(0);
   const [presenterReviewOpen, setPresenterReviewOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (policyPdfPreviewUrl) URL.revokeObjectURL(policyPdfPreviewUrl);
+    };
+  }, [policyPdfPreviewUrl]);
   const didCreateSession = useRef(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
@@ -1728,6 +1735,7 @@ function App() {
     setPolicyText(COLLATERAL_SCHEDULE_SAMPLE);
     setPolicyFilename("sample_collateral_schedule.txt");
     setPolicyPdfBase64(null);
+    setPolicyPdfPreviewUrl(null);
     setPolicyResult(null);
     setPolicyApplied(false);
     setPolicyBackend("auto");
@@ -1764,6 +1772,7 @@ function App() {
     setPolicyText(MONEY_MARKET_POLICY_SAMPLE);
     setPolicyFilename("sample_money_market_policy.pdf");
     setPolicyPdfBase64(null);
+    setPolicyPdfPreviewUrl(null);
     setPolicyResult(null);
     setPolicyApplied(false);
     setPolicyBackend("auto");
@@ -2040,14 +2049,20 @@ function App() {
     setPolicyFilename(file.name);
     setPolicyResult(null);
     setPolicyApplied(false);
+    if (policyPdfPreviewUrl) {
+      URL.revokeObjectURL(policyPdfPreviewUrl);
+      setPolicyPdfPreviewUrl(null);
+    }
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       const dataUrl = await readFileAsDataUrl(file);
       setPolicyPdfBase64(dataUrl.split(",")[1] || "");
+      setPolicyPdfPreviewUrl(URL.createObjectURL(file));
       setPolicyText("");
       return;
     }
     const text = await file.text();
     setPolicyPdfBase64(null);
+    setPolicyPdfPreviewUrl(null);
     setPolicyText(text);
   }
 
@@ -2707,9 +2722,14 @@ function App() {
             onTextChange={(value) => {
               setPolicyText(value);
               setPolicyPdfBase64(null);
+              if (policyPdfPreviewUrl) {
+                URL.revokeObjectURL(policyPdfPreviewUrl);
+                setPolicyPdfPreviewUrl(null);
+              }
               setPolicyResult(null);
               setPolicyApplied(false);
             }}
+            pdfPreviewUrl={policyPdfPreviewUrl}
             onFileChange={handlePolicyFileChange}
             onBackendChange={setPolicyBackend}
             onModelChange={setPolicyModel}
@@ -5346,6 +5366,7 @@ function PolicyIngestionPanel({
   isIngesting,
   disabled,
   documentKind,
+  pdfPreviewUrl,
   onTextChange,
   onFileChange,
   onBackendChange,
@@ -5364,6 +5385,7 @@ function PolicyIngestionPanel({
   isIngesting: boolean;
   disabled: boolean;
   documentKind: "ips" | "collateral_schedule";
+  pdfPreviewUrl: string | null;
   onTextChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
@@ -5385,6 +5407,10 @@ function PolicyIngestionPanel({
     : "Paste IPS language here if you are not uploading a file.";
   const ingestLabel = isCollateralSchedule ? "Ingest Schedule" : "Ingest IPS";
   const appliedLabel = isCollateralSchedule ? "Apply Schedule" : "Apply Fields";
+  const samplePdfPreview =
+    filename === "sample_money_market_policy.pdf"
+      ? "/demo-assets/sample_money_market_policy_preview.png"
+      : null;
   return (
     <section className="panel compact policy-ingestion-panel">
       <div className="panel-heading">
@@ -5405,6 +5431,26 @@ function PolicyIngestionPanel({
           aria-label="Upload IPS document"
         />
       </label>
+
+      {pdfPreviewUrl ? (
+        <div className="policy-pdf-preview" aria-label="Uploaded PDF preview">
+          <div className="policy-pdf-preview-header">
+            <strong>PDF Preview</strong>
+            <span>{filename}</span>
+          </div>
+          {samplePdfPreview ? (
+            <img src={samplePdfPreview} alt={`${filename} first page preview`} />
+          ) : (
+            <object
+              data={`${pdfPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&page=1`}
+              type="application/pdf"
+              aria-label={`${filename} first page preview`}
+            >
+              <p>{filename} is attached and ready for ingestion.</p>
+            </object>
+          )}
+        </div>
+      ) : null}
 
       <textarea
         value={text}
