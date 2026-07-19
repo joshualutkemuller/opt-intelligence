@@ -238,6 +238,7 @@ def test_bundled_policy_demo_samples_are_ingestable():
             {
                 "portfolio_id": "PORT_COLL_210",
                 "collateral.obligation_scale": "1.65",
+                "collateral.concentration_limit": "0.48",
                 "money_market.total_cash": "420000000",
                 "money_market.daily_liquidity_req": "0.35",
                 "money_market.max_prime_fraction": "0.3",

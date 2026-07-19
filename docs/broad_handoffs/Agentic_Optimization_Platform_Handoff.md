@@ -766,22 +766,33 @@ collateral-to-money-market workflow run path, and before/after HQLA analytics
 for liquidity profile, Fed HQLA tier exposure, concentration usage, allocation
 counts, dependency effects, and governance evidence.
 
+**Collateral Scenario UI Update:** ✅ The HQLA lane now includes explicit
+scenario comparison cards for base schedule, stress schedule, severe haircut,
+and relaxed-concentration cases. Selecting a scenario updates the actual
+workflow inputs for collateral concentration, obligation scale, money-market
+cash, liquidity floors, WAM, prime exposure, and single-fund cap before review
+and execution.
+
 **Production Adapter UI Update:** ✅ The browser demo now exposes the production
 optimizer catalog and runtime switch in a **Production Adapter** panel. The MVO
 workflow can be run through `production.asset_allocation.mvo`, and the UI shows
 model version, config version, solver version, data snapshot ID, data contract,
 execution isolation mode, adapter coverage by workflow domain, and the
 reproducibility fingerprint after a production-backed run. The collateral
-liquidity workflow now supports hybrid production runtime as well:
-`collateral_001` runs through `production.collateral.allocation`, while the
-money-market downstream step remains phase 1 until a production money-market
-adapter is registered.
+liquidity workflow now supports full production runtime:
+`collateral_001` runs through `production.collateral.allocation`, and the
+downstream liquidity step runs through `production.money_market.allocation`.
 
 **Evidence Room UI Update:** ✅ The React demo now includes a live
 **Evidence Room** / audit viewer that combines document extraction snippets,
 model/runtime evidence, solver metadata, validation checks, governance state,
 workflow trace events, and run identifiers before the user exports the formal
 JSON/PDF/CSV/XLSX evidence package.
+
+**Traceability UI Update:** ✅ The React demo now includes a
+document-to-constraint traceability table that maps each applied IPS/schedule
+field from source evidence into the validated workflow input, optimizer
+constraint family, and target workflow step.
 
 **Next:** persist audit narratives by workflow/session ID and include the
 narrative markdown in the same evidence export bundle.

@@ -13,6 +13,7 @@ from decision_intelligence.production_optimizers import (
     ExecutionIsolationSpec,
     ModelConfigSpec,
     ModelLineageSpec,
+    MoneyMarketProductionAdapter,
     NormalizedOptimizerResult,
     ObjectiveTermSpec,
     PreflightReport,
@@ -263,10 +264,47 @@ def test_collateral_production_adapter_runs_native_optimizer() -> None:
     )
 
 
-def test_default_production_registry_contains_mvo_and_collateral() -> None:
+def test_money_market_production_adapter_runs_native_optimizer() -> None:
+    request = OptimizationRequest(
+        domain="money_market",
+        portfolio_id="PORT_MM_PROD",
+        objective=Objective(
+            name="maximize_yield",
+            direction=ObjectiveDirection.MAXIMIZE,
+            metric="yield",
+        ),
+        context={
+            "seed": 42,
+            "total_cash": 500_000_000,
+            "daily_liquidity_req": 0.30,
+            "weekly_liquidity_req": 0.60,
+            "max_prime_fraction": 0.40,
+            "max_wam_days": 60,
+            "max_single_fund": 0.50,
+            "solver_backend": "scipy",
+            "problem_type": "lp",
+            "data_snapshot_id": "SNAP_MM_001",
+        },
+    )
+
+    result = MoneyMarketProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.money_market.allocation"
+    assert result.status == "optimal"
+    assert result.allocations
+    assert result.domain_attachments["daily_liquidity"] >= 0.30
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_MM_001"
+    assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
+        "production.money_market.allocation"
+    )
+
+
+def test_default_production_registry_contains_current_adapters() -> None:
     registry = build_default_production_registry()
 
     assert registry.list_ids() == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.money_market.allocation",
     ]

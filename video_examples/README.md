@@ -8,6 +8,7 @@ platform.
 | File | Purpose |
 |---|---|
 | `audit/policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
+| `collateral/collateral-hqla-frontend-orchestration-demo.mp4` | 102 second real front-end browser capture showing collateral schedule ingestion, production runtime, scenario comparison, workflow execution, traceability, analytics, governance, and evidence room review. |
 | `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
 | `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
@@ -45,6 +46,21 @@ the UI with `make demo-ui`, click **Load Collateral HQLA**, ingest the sample
 collateral schedule, use **Ollama Chat** for the live explanation, then run the
 collateral liquidity workflow and show **Collateral HQLA Analytics** for
 before/after liquidity, HQLA tier exposure, and allocation stats.
+
+## Record Real Front-End Collateral HQLA Demo
+
+```bash
+node scripts/record_collateral_hqla_frontend_video.mjs
+```
+
+This recorder starts the local FastAPI backend and Vite React app when they are
+not already running, drives the actual browser UI with Playwright, records the
+collateral HQLA schedule path, and converts the captured browser video to:
+
+- `video_examples/collateral/collateral-hqla-frontend-orchestration-demo.mp4`
+
+The clip is intentionally paced for a 1:30 to 2:00 presentation slot and shows
+the live UI rather than a rendered storyboard.
 
 ## Regenerate IPS Analytics MP4
 

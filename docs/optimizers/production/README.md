@@ -14,6 +14,9 @@ The matching code scaffold lives in:
   optimizer with production config, preflight, normalized output, and evidence.
 - `production.collateral.allocation`: wraps the phase 1 Collateral optimizer
   with production config, data preflight, normalized output, and evidence.
+- `production.money_market.allocation`: wraps the phase 1 Money Market
+  optimizer with production config, liquidity preflight, normalized output, and
+  reproducibility evidence.
 
 ## Runtime Selection
 
@@ -61,6 +64,28 @@ Workflow example:
   }
 }
 ```
+
+Multi-domain workflow example:
+
+```json
+{
+  "workflow": "collateral_liquidity_review",
+  "portfolio_id": "PORT_HQLA_224",
+  "optimizer_runtime": "production",
+  "context": {
+    "collateral": {
+      "data_snapshot_id": "SNAP_COLLATERAL_001"
+    },
+    "money_market": {
+      "data_snapshot_id": "SNAP_MM_001"
+    }
+  }
+}
+```
+
+When a production workflow spans multiple domains, omit
+`production_optimizer_id` unless intentionally overriding a single-domain
+workflow. The runner assigns the registered default adapter per domain.
 
 Production results are normalized back into the existing `OptimizationResult`
 shape. Adapter evidence is available under:

@@ -126,6 +126,7 @@ def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
     assert [item["optimizer_id"] for item in body["optimizers"]] == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.money_market.allocation",
     ]
     mvo = body["optimizers"][0]
     assert mvo["domain"] == "asset_allocation"
@@ -137,6 +138,9 @@ def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
     collateral = body["optimizers"][1]
     assert collateral["domain"] == "collateral"
     assert collateral["solver"]["problem_family"] == "lp"
+    money_market = body["optimizers"][2]
+    assert money_market["domain"] == "money_market"
+    assert money_market["solver"]["backend"] == "scipy"
 
 
 def test_direct_optimization_endpoint_supports_production_runtime():
@@ -164,6 +168,37 @@ def test_direct_optimization_endpoint_supports_production_runtime():
         "SNAP_COLLATERAL_API"
     )
     assert body["request"]["context"]["optimizer_runtime"] == "production"
+
+
+def test_direct_money_market_endpoint_supports_production_runtime():
+    response = client.post(
+        "/api/optimizations/run",
+        json={
+            "domain": "money_market",
+            "portfolio_id": "PORT_MM_PROD_API",
+            "optimizer_runtime": "production",
+            "context": {
+                "seed": 42,
+                "total_cash": 500_000_000,
+                "daily_liquidity_req": 0.30,
+                "weekly_liquidity_req": 0.60,
+                "max_prime_fraction": 0.40,
+                "max_wam_days": 60,
+                "data_snapshot_id": "SNAP_MM_API",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["status"] == "optimal"
+    assert body["result"]["solver_metadata"]["optimizer_runtime"] == "production"
+    assert body["result"]["solver_metadata"]["production_optimizer_id"] == (
+        "production.money_market.allocation"
+    )
+    assert body["result"]["solver_metadata"]["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_MM_API"
+    )
 
 
 def test_llm_chat_endpoint_uses_configured_provider(monkeypatch):
@@ -297,10 +332,58 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
             "options": [],
         },
         {
+            "key": "collateral.concentration_limit",
+            "label": "Collateral concentration cap",
+            "type": "fraction",
+            "default": 0.55,
+            "required": True,
+            "options": [],
+        },
+        {
             "key": "money_market.total_cash",
             "label": "Money-market cash",
             "type": "currency",
             "default": 450_000_000,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "money_market.daily_liquidity_req",
+            "label": "Daily liquidity floor",
+            "type": "fraction",
+            "default": 0.35,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "money_market.weekly_liquidity_req",
+            "label": "Weekly liquidity floor",
+            "type": "fraction",
+            "default": 0.65,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "money_market.max_prime_fraction",
+            "label": "Prime concentration cap",
+            "type": "fraction",
+            "default": 0.40,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "money_market.max_wam_days",
+            "label": "Max WAM days",
+            "type": "integer",
+            "default": 55,
+            "required": True,
+            "options": [],
+        },
+        {
+            "key": "money_market.max_single_fund",
+            "label": "Single fund cap",
+            "type": "fraction",
+            "default": 0.45,
             "required": True,
             "options": [],
         },
@@ -507,7 +590,7 @@ def test_workflow_endpoint_supports_production_runtime_for_mvo():
     assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
 
 
-def test_workflow_endpoint_supports_hybrid_production_runtime_for_collateral():
+def test_workflow_endpoint_supports_full_production_runtime_for_collateral():
     response = client.post(
         "/api/workflows/run",
         json={
@@ -515,7 +598,6 @@ def test_workflow_endpoint_supports_hybrid_production_runtime_for_collateral():
             "portfolio_id": "PORT_COLLATERAL_PROD_WORKFLOW",
             "seed": 42,
             "optimizer_runtime": "production",
-            "production_optimizer_id": "production.collateral.allocation",
             "context": {
                 "collateral": {
                     "obligation_scale": 1.65,
@@ -525,6 +607,7 @@ def test_workflow_endpoint_supports_hybrid_production_runtime_for_collateral():
                     "total_cash": 450_000_000,
                     "daily_liquidity_req": 0.35,
                     "weekly_liquidity_req": 0.65,
+                    "data_snapshot_id": "SNAP_MM_WORKFLOW_API",
                 },
             },
         },
@@ -546,10 +629,16 @@ def test_workflow_endpoint_supports_hybrid_production_runtime_for_collateral():
         "SNAP_COLLATERAL_WORKFLOW_API"
     )
     assert money_market_step["domain"] == "money_market"
-    assert money_market_step["request"]["context"]["optimizer_runtime"] == "phase1"
-    assert money_market_metadata.get("optimizer_runtime") != "production"
+    assert money_market_step["request"]["context"]["optimizer_runtime"] == "production"
+    assert money_market_metadata["optimizer_runtime"] == "production"
+    assert money_market_metadata["production_optimizer_id"] == (
+        "production.money_market.allocation"
+    )
+    assert money_market_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_MM_WORKFLOW_API"
+    )
     assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
-    assert body["plan"]["steps"][1]["request"]["context"]["optimizer_runtime"] == "phase1"
+    assert body["plan"]["steps"][1]["request"]["context"]["optimizer_runtime"] == "production"
 
 
 def test_workflow_compare_endpoint_returns_scenario_deltas():

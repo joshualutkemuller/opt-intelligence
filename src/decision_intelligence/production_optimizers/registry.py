@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .adapter import ProductionOptimizerAdapter
-from .adapters import AssetAllocationMVOProductionAdapter, CollateralProductionAdapter
 
 
 class ProductionOptimizerRegistry:
@@ -36,7 +35,14 @@ class ProductionOptimizerRegistry:
 def build_default_production_registry() -> ProductionOptimizerRegistry:
     """Create a registry with production adapters currently implemented."""
 
+    from .adapters import (
+        AssetAllocationMVOProductionAdapter,
+        CollateralProductionAdapter,
+        MoneyMarketProductionAdapter,
+    )
+
     registry = ProductionOptimizerRegistry()
     registry.register(AssetAllocationMVOProductionAdapter())
     registry.register(CollateralProductionAdapter())
+    registry.register(MoneyMarketProductionAdapter())
     return registry

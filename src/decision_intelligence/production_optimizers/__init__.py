@@ -6,7 +6,11 @@ defines the production-grade contracts those optimizers can migrate toward.
 """
 
 from .adapter import ProductionOptimizerAdapter
-from .adapters import AssetAllocationMVOProductionAdapter, CollateralProductionAdapter
+from .adapters import (
+    AssetAllocationMVOProductionAdapter,
+    CollateralProductionAdapter,
+    MoneyMarketProductionAdapter,
+)
 from .contracts import (
     ConstraintFamilySpec,
     DataContractSpec,
@@ -32,6 +36,7 @@ __all__ = [
     "LimitSourceSpec",
     "ModelConfigSpec",
     "ModelLineageSpec",
+    "MoneyMarketProductionAdapter",
     "NormalizedOptimizerResult",
     "ObjectiveTermSpec",
     "PreflightReport",

@@ -315,6 +315,17 @@ def _build_rules() -> dict[str, list[_FieldRule]]:
                 ],
             ),
             _FieldRule(
+                key="collateral.concentration_limit",
+                label="Collateral concentration cap",
+                value_type="fraction",
+                patterns=[
+                    rf"(?:collateral asset class|asset class|asset-class|collateral concentration)"
+                    rf"[^.\n]*?{_MAX}\s*{_PCT}",
+                    rf"no single collateral asset class[^.\n]*?{_PCT}",
+                ],
+                confidence=0.84,
+            ),
+            _FieldRule(
                 key="money_market.total_cash",
                 label="Money-market cash",
                 value_type="currency",

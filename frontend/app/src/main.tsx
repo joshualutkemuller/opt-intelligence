@@ -496,6 +496,31 @@ type PresenterScriptStep = {
   actionLabel: string;
 };
 
+type CollateralScenario = {
+  id: string;
+  name: string;
+  description: string;
+  inputs: Record<string, string>;
+  before: {
+    dailyLiquidity: number;
+    weeklyLiquidity: number;
+    level1: number;
+    reusableValue: number;
+    concentrationUsage: number;
+    coverageBuffer: number;
+    fundingCostBps: number;
+  };
+  after: {
+    dailyLiquidity: number;
+    weeklyLiquidity: number;
+    level1: number;
+    reusableValue: number;
+    concentrationUsage: number;
+    coverageBuffer: number;
+    fundingCostBps: number;
+  };
+};
+
 type ChatApiResponse = {
   session_id: string;
   assistant_message: string;
@@ -655,10 +680,52 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
         required: true,
       },
       {
+        key: "collateral.concentration_limit",
+        label: "Collateral concentration cap",
+        type: "fraction",
+        default: 0.55,
+        required: true,
+      },
+      {
         key: "money_market.total_cash",
         label: "Money-market cash",
         type: "currency",
         default: 450_000_000,
+        required: true,
+      },
+      {
+        key: "money_market.daily_liquidity_req",
+        label: "Daily liquidity floor",
+        type: "fraction",
+        default: 0.35,
+        required: true,
+      },
+      {
+        key: "money_market.weekly_liquidity_req",
+        label: "Weekly liquidity floor",
+        type: "fraction",
+        default: 0.65,
+        required: true,
+      },
+      {
+        key: "money_market.max_prime_fraction",
+        label: "Prime concentration cap",
+        type: "fraction",
+        default: 0.40,
+        required: true,
+      },
+      {
+        key: "money_market.max_wam_days",
+        label: "Max WAM days",
+        type: "integer",
+        default: 55,
+        required: true,
+      },
+      {
+        key: "money_market.max_single_fund",
+        label: "Single fund cap",
+        type: "fraction",
+        default: 0.45,
         required: true,
       },
       {
@@ -1018,6 +1085,182 @@ const fallbackProductionOptimizers: ProductionOptimizerCatalogItem[] = [
     },
     execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
   },
+  {
+    optimizer_id: "production.money_market.allocation",
+    domain: "money_market",
+    model_name: "Money Market Allocation Optimizer",
+    model_version: "0.1.0",
+    config_version: "2026.07.18",
+    objectives: [
+      {
+        name: "net_yield",
+        direction: "maximize",
+        weight: 1,
+        units: "annual_percent",
+      },
+    ],
+    constraints: [
+      { name: "cash_budget", constraint_type: "budget", hard: true },
+      { name: "daily_liquidity", constraint_type: "liquidity", hard: true },
+      { name: "weekly_liquidity", constraint_type: "liquidity", hard: true },
+      { name: "prime_concentration", constraint_type: "regulatory", hard: true },
+      { name: "wam_limit", constraint_type: "risk", hard: true },
+      { name: "single_fund_limit", constraint_type: "bounds", hard: true },
+    ],
+    data_contract: {
+      required_datasets: ["money_market_fund_universe", "cash_position"],
+      optional_datasets: ["fund_eligibility_overrides", "liquidity_policy_limits"],
+      quality_checks: [
+        "fund yields are finite",
+        "liquidity percentages are between 0 and 1",
+        "cash balance is positive",
+      ],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "scipy",
+      problem_family: "lp",
+      vendor: "scipy",
+      version: "HiGHS",
+      parameters: { method: "highs", supports_milp: true },
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
+];
+
+const collateralScenarios: CollateralScenario[] = [
+  {
+    id: "base_schedule",
+    name: "Base Schedule",
+    description: "Moderate margin call with existing concentration and liquidity policy limits.",
+    inputs: {
+      "collateral.obligation_scale": "1.3",
+      "collateral.concentration_limit": "0.6",
+      "money_market.total_cash": "475000000",
+      "money_market.daily_liquidity_req": "0.3",
+      "money_market.weekly_liquidity_req": "0.6",
+      "money_market.max_prime_fraction": "0.4",
+      "money_market.max_wam_days": "55",
+      "money_market.max_single_fund": "0.5",
+    },
+    before: {
+      dailyLiquidity: 0.28,
+      weeklyLiquidity: 0.55,
+      level1: 0.52,
+      reusableValue: 318_000_000,
+      concentrationUsage: 0.58,
+      coverageBuffer: 0.08,
+      fundingCostBps: 41,
+    },
+    after: {
+      dailyLiquidity: 0.32,
+      weeklyLiquidity: 0.62,
+      level1: 0.57,
+      reusableValue: 342_000_000,
+      concentrationUsage: 0.54,
+      coverageBuffer: 0.12,
+      fundingCostBps: 37,
+    },
+  },
+  {
+    id: "stress_schedule",
+    name: "Stress Schedule",
+    description: "Higher margin call, tighter concentration cap, and elevated liquidity floors.",
+    inputs: {
+      "collateral.obligation_scale": "1.85",
+      "collateral.concentration_limit": "0.48",
+      "money_market.total_cash": "420000000",
+      "money_market.daily_liquidity_req": "0.35",
+      "money_market.weekly_liquidity_req": "0.65",
+      "money_market.max_prime_fraction": "0.3",
+      "money_market.max_wam_days": "50",
+      "money_market.max_single_fund": "0.45",
+    },
+    before: {
+      dailyLiquidity: 0.31,
+      weeklyLiquidity: 0.58,
+      level1: 0.54,
+      reusableValue: 305_000_000,
+      concentrationUsage: 0.63,
+      coverageBuffer: 0.04,
+      fundingCostBps: 58,
+    },
+    after: {
+      dailyLiquidity: 0.36,
+      weeklyLiquidity: 0.67,
+      level1: 0.62,
+      reusableValue: 348_000_000,
+      concentrationUsage: 0.48,
+      coverageBuffer: 0.12,
+      fundingCostBps: 49,
+    },
+  },
+  {
+    id: "severe_haircut",
+    name: "Severe Haircut",
+    description: "Conservative schedule with harsher reusable-value assumptions and cash floor pressure.",
+    inputs: {
+      "collateral.obligation_scale": "2.05",
+      "collateral.concentration_limit": "0.42",
+      "money_market.total_cash": "390000000",
+      "money_market.daily_liquidity_req": "0.4",
+      "money_market.weekly_liquidity_req": "0.7",
+      "money_market.max_prime_fraction": "0.25",
+      "money_market.max_wam_days": "45",
+      "money_market.max_single_fund": "0.4",
+    },
+    before: {
+      dailyLiquidity: 0.30,
+      weeklyLiquidity: 0.56,
+      level1: 0.50,
+      reusableValue: 282_000_000,
+      concentrationUsage: 0.68,
+      coverageBuffer: -0.01,
+      fundingCostBps: 72,
+    },
+    after: {
+      dailyLiquidity: 0.41,
+      weeklyLiquidity: 0.71,
+      level1: 0.66,
+      reusableValue: 331_000_000,
+      concentrationUsage: 0.42,
+      coverageBuffer: 0.07,
+      fundingCostBps: 61,
+    },
+  },
+  {
+    id: "relaxed_concentration",
+    name: "Relaxed Concentration",
+    description: "Same stressed obligation with more concentration capacity for sensitivity comparison.",
+    inputs: {
+      "collateral.obligation_scale": "1.85",
+      "collateral.concentration_limit": "0.6",
+      "money_market.total_cash": "420000000",
+      "money_market.daily_liquidity_req": "0.35",
+      "money_market.weekly_liquidity_req": "0.65",
+      "money_market.max_prime_fraction": "0.35",
+      "money_market.max_wam_days": "55",
+      "money_market.max_single_fund": "0.5",
+    },
+    before: {
+      dailyLiquidity: 0.31,
+      weeklyLiquidity: 0.58,
+      level1: 0.54,
+      reusableValue: 305_000_000,
+      concentrationUsage: 0.63,
+      coverageBuffer: 0.04,
+      fundingCostBps: 58,
+    },
+    after: {
+      dailyLiquidity: 0.35,
+      weeklyLiquidity: 0.66,
+      level1: 0.59,
+      reusableValue: 358_000_000,
+      concentrationUsage: 0.55,
+      coverageBuffer: 0.14,
+      fundingCostBps: 45,
+    },
+  },
 ];
 
 function App() {
@@ -1065,6 +1308,7 @@ function App() {
   const [policyResult, setPolicyResult] = useState<PolicyIngestionResponse | null>(null);
   const [policyApplied, setPolicyApplied] = useState(false);
   const [isPolicyIngesting, setIsPolicyIngesting] = useState(false);
+  const [collateralScenarioId, setCollateralScenarioId] = useState("stress_schedule");
   const [historyInputOverride, setHistoryInputOverride] =
     useState<Record<string, string> | null>(null);
   const [latestPayload, setLatestPayload] = useState<unknown>(null);
@@ -1352,6 +1596,7 @@ function App() {
     setPolicyResult(null);
     setPolicyApplied(false);
     setPolicyBackend("auto");
+    setCollateralScenarioId("stress_schedule");
     setOllamaInput(
       "Explain how this collateral schedule changes the liquidity optimization workflow.",
     );
@@ -1714,6 +1959,25 @@ function App() {
         role: "assistant",
         content:
           "Applied IPS fields to the workflow inputs. Run presenter review to confirm guardrails before executing.",
+      },
+    ]);
+  }
+
+  function applyCollateralScenario(scenario: CollateralScenario) {
+    setCollateralScenarioId(scenario.id);
+    setWorkflowInputValues((current) => ({
+      ...current,
+      ...scenario.inputs,
+    }));
+    setResult(null);
+    setWorkflowRun(null);
+    setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content: `${scenario.name} applied to the collateral workflow inputs. Open presenter review before running the updated workflow.`,
       },
     ]);
   }
@@ -2468,11 +2732,28 @@ function App() {
           </section>
 
           {isCollateralHqlaSelected ? (
-            <CollateralHqlaAnalyticsPanel
-              workflowRun={workflowRun}
+            <>
+              <CollateralHqlaAnalyticsPanel
+                workflowRun={workflowRun}
+                policyResult={policyResult}
+                policyApplied={policyApplied}
+                selectedPreset={selectedPreset}
+              />
+              <CollateralScenarioComparisonPanel
+                scenarios={collateralScenarios}
+                selectedScenarioId={collateralScenarioId}
+                inputValues={workflowInputValues}
+                workflowRun={workflowRun}
+                onApplyScenario={applyCollateralScenario}
+                disabled={isWorkflowRunning}
+              />
+            </>
+          ) : null}
+
+          {policyResult ? (
+            <DocumentConstraintTraceabilityPanel
               policyResult={policyResult}
-              policyApplied={policyApplied}
-              selectedPreset={selectedPreset}
+              selectedWorkflow={selectedWorkflow}
             />
           ) : null}
 
@@ -2755,6 +3036,10 @@ function buildWorkflowPayload(
   const effectiveRuntime = optimizerRuntime === "production" && supportsProduction
     ? "production"
     : "phase1";
+  const explicitProductionOptimizerId =
+    effectiveRuntime === "production" && workflowDomains.length === 1
+      ? selectedProductionOptimizer?.optimizer_id
+      : undefined;
 
   return {
     workflow: preset?.workflow_id || workflowId,
@@ -2762,14 +3047,15 @@ function buildWorkflowPayload(
     seed: Number(compiled.seed || collected.seed || preset?.seed || 42),
     execution_mode: compiled.execution_mode || "recommendation",
     optimizer_runtime: effectiveRuntime,
-    production_optimizer_id:
-      effectiveRuntime === "production" ? selectedProductionOptimizer?.optimizer_id : undefined,
+    production_optimizer_id: explicitProductionOptimizerId,
     context: {
       ...mergedContext,
       ...(effectiveRuntime === "production"
         ? {
             optimizer_runtime: "production",
-            production_optimizer_id: selectedProductionOptimizer?.optimizer_id,
+            ...(explicitProductionOptimizerId
+              ? { production_optimizer_id: explicitProductionOptimizerId }
+              : {}),
           }
         : {}),
       solver_backend: solverProfile.backend,
@@ -2806,6 +3092,12 @@ function buildWorkflowPayload(
           collected.max_wam_days,
           presetMoneyMarket.max_wam_days,
           60,
+        ),
+        max_single_fund: numberFrom(
+          compiledMoneyMarket.max_single_fund,
+          collected.max_single_fund,
+          presetMoneyMarket.max_single_fund,
+          0.50,
         ),
       },
     },
@@ -2870,6 +3162,109 @@ function workflowHasProductionRuntime(
   return workflow.domains.some((domain) =>
     productionOptimizers.some((optimizer) => optimizer.domain === domain),
   );
+}
+
+function constraintTraceForPolicyField(
+  key: string,
+  workflow: WorkflowCatalogItem,
+): { constraint: string; family: string; step: string; domain: string } {
+  const explicit: Record<string, { constraint: string; family: string; domain: string }> = {
+    portfolio_id: {
+      constraint: "Portfolio scope",
+      family: "request identity",
+      domain: "workflow",
+    },
+    "collateral.obligation_scale": {
+      constraint: "Collateral coverage requirement",
+      family: "coverage",
+      domain: "collateral",
+    },
+    "collateral.concentration_limit": {
+      constraint: "Asset-class concentration cap",
+      family: "concentration",
+      domain: "collateral",
+    },
+    "money_market.total_cash": {
+      constraint: "Cash budget",
+      family: "budget",
+      domain: "money_market",
+    },
+    "money_market.daily_liquidity_req": {
+      constraint: "Daily liquidity floor",
+      family: "liquidity",
+      domain: "money_market",
+    },
+    "money_market.weekly_liquidity_req": {
+      constraint: "Weekly liquidity floor",
+      family: "liquidity",
+      domain: "money_market",
+    },
+    "money_market.max_prime_fraction": {
+      constraint: "Prime concentration cap",
+      family: "regulatory",
+      domain: "money_market",
+    },
+    "money_market.max_wam_days": {
+      constraint: "Weighted-average maturity limit",
+      family: "risk",
+      domain: "money_market",
+    },
+    "money_market.max_single_fund": {
+      constraint: "Single fund concentration cap",
+      family: "bounds",
+      domain: "money_market",
+    },
+    "asset_allocation.target_return": {
+      constraint: "Target return floor",
+      family: "risk-return",
+      domain: "asset_allocation",
+    },
+    "asset_allocation.max_single_asset_weight": {
+      constraint: "Single asset weight cap",
+      family: "bounds",
+      domain: "asset_allocation",
+    },
+    "asset_allocation.min_cash_weight": {
+      constraint: "Cash allocation floor",
+      family: "bounds",
+      domain: "asset_allocation",
+    },
+    "asset_allocation.risk_aversion": {
+      constraint: "Risk-aversion objective weight",
+      family: "objective",
+      domain: "asset_allocation",
+    },
+    "asset_allocation.portfolio_notional": {
+      constraint: "Portfolio budget",
+      family: "budget",
+      domain: "asset_allocation",
+    },
+    "governance.materiality_notional": {
+      constraint: "Approval materiality threshold",
+      family: "governance",
+      domain: "governance",
+    },
+    "governance.estimated_pnl_impact": {
+      constraint: "Approval impact threshold",
+      family: "governance",
+      domain: "governance",
+    },
+    "governance.production_constraint_change": {
+      constraint: "Tier 5 constraint-change gate",
+      family: "governance",
+      domain: "governance",
+    },
+  };
+  const fallbackDomain = key.includes(".") ? key.split(".")[0] : workflow.domains[0] || "workflow";
+  const item = explicit[key] || {
+    constraint: titleCase(key.split(".").at(-1)?.replaceAll("_", " ") || key),
+    family: "workflow input",
+    domain: fallbackDomain,
+  };
+  const step = workflow.domains.includes(item.domain)
+    ? `${titleCase(item.domain.replaceAll("_", " "))} optimizer step`
+    : titleCase(item.domain.replaceAll("_", " "));
+  return { ...item, step };
 }
 
 function productionEvidenceFromWorkflowRun(
@@ -3770,6 +4165,207 @@ function HqlaTierBar({
   );
 }
 
+function CollateralScenarioComparisonPanel({
+  scenarios,
+  selectedScenarioId,
+  inputValues,
+  workflowRun,
+  onApplyScenario,
+  disabled,
+}: {
+  scenarios: CollateralScenario[];
+  selectedScenarioId: string;
+  inputValues: Record<string, string>;
+  workflowRun: WorkflowRunResult | null;
+  onApplyScenario: (scenario: CollateralScenario) => void;
+  disabled: boolean;
+}) {
+  const selected = scenarios.find((item) => item.id === selectedScenarioId) || scenarios[0];
+  const runStatus = workflowRun ? "Run Complete" : "Ready";
+  const currentCap = optionalNumber(inputValues["collateral.concentration_limit"]);
+  const currentCash = optionalNumber(inputValues["money_market.total_cash"]);
+
+  return (
+    <section className="panel collateral-scenario-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Collateral Scenario Comparison</span>
+          <h2>Schedule stress paths and liquidity tradeoffs</h2>
+        </div>
+        <StatusStrip label={runStatus} statusClass={workflowRun ? "status-optimal" : "status-ready"} />
+      </div>
+
+      <div className="collateral-scenario-grid">
+        {scenarios.map((scenario) => (
+          <button
+            className={`collateral-scenario-card ${scenario.id === selected.id ? "active" : ""}`}
+            type="button"
+            key={scenario.id}
+            onClick={() => onApplyScenario(scenario)}
+            disabled={disabled}
+          >
+            <span>{scenario.name}</span>
+            <strong>{formatFraction(Number(scenario.inputs["collateral.obligation_scale"]))} obligations</strong>
+            <em>{scenario.description}</em>
+          </button>
+        ))}
+      </div>
+
+      <div className="scenario-detail-grid">
+        <BeforeAfterCard
+          title={`${selected.name} analytics`}
+          before={[
+            ["Daily liquidity", formatFraction(selected.before.dailyLiquidity)],
+            ["Weekly liquidity", formatFraction(selected.before.weeklyLiquidity)],
+            ["Reusable collateral", formatCurrency(selected.before.reusableValue)],
+            ["Funding cost", `${selected.before.fundingCostBps.toFixed(0)} bps`],
+          ]}
+          after={[
+            ["Daily liquidity", formatFraction(selected.after.dailyLiquidity)],
+            ["Weekly liquidity", formatFraction(selected.after.weeklyLiquidity)],
+            ["Reusable collateral", formatCurrency(selected.after.reusableValue)],
+            ["Funding cost", `${selected.after.fundingCostBps.toFixed(0)} bps`],
+          ]}
+        />
+        <div className="scenario-constraint-card">
+          <div className="card-heading">
+            <strong>Active request settings</strong>
+            <span>{selected.name}</span>
+          </div>
+          <div className="scenario-stat-strip">
+            <Metric
+              label="Cash sleeve"
+              value={formatCurrency(currentCash ?? Number(selected.inputs["money_market.total_cash"]))}
+              note="Workflow input"
+            />
+            <Metric
+              label="Concentration cap"
+              value={formatFraction(currentCap ?? Number(selected.inputs["collateral.concentration_limit"]))}
+              note="Schedule limit"
+            />
+            <Metric
+              label="Coverage buffer"
+              value={formatFraction(selected.after.coverageBuffer)}
+              note="Post optimization"
+            />
+            <Metric
+              label="Level 1 HQLA"
+              value={formatFraction(selected.after.level1)}
+              note="Post optimization"
+            />
+          </div>
+          <div className="scenario-bars">
+            <ScenarioBar
+              label="Concentration usage"
+              before={selected.before.concentrationUsage}
+              after={selected.after.concentrationUsage}
+              lowerIsBetter
+            />
+            <ScenarioBar
+              label="Coverage buffer"
+              before={selected.before.coverageBuffer}
+              after={selected.after.coverageBuffer}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ScenarioBar({
+  label,
+  before,
+  after,
+  lowerIsBetter = false,
+}: {
+  label: string;
+  before: number;
+  after: number;
+  lowerIsBetter?: boolean;
+}) {
+  const beforeWidth = `${Math.max(0, Math.min(1, before)) * 100}%`;
+  const afterWidth = `${Math.max(0, Math.min(1, after)) * 100}%`;
+  const improved = lowerIsBetter ? after <= before : after >= before;
+
+  return (
+    <div className="scenario-bar-row">
+      <div>
+        <strong>{label}</strong>
+        <span className={improved ? "improved" : "review"}>
+          {formatFraction(before)} to {formatFraction(after)}
+        </span>
+      </div>
+      <div className="scenario-bar-track">
+        <i className="before" style={{ width: beforeWidth }} />
+        <i className="after" style={{ width: afterWidth }} />
+      </div>
+    </div>
+  );
+}
+
+function DocumentConstraintTraceabilityPanel({
+  policyResult,
+  selectedWorkflow,
+}: {
+  policyResult: PolicyIngestionResponse;
+  selectedWorkflow: WorkflowCatalogItem;
+}) {
+  const traces = policyResult.extracted_fields
+    .filter((field) => field.applied)
+    .map((field) => ({
+      field,
+      trace: constraintTraceForPolicyField(field.key, selectedWorkflow),
+    }));
+
+  return (
+    <section className="panel document-traceability-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Document-To-Constraint Traceability</span>
+          <h2>Source evidence mapped into optimizer controls</h2>
+        </div>
+        <StatusStrip label={`${traces.length} mapped`} statusClass="status-optimal" />
+      </div>
+
+      <div className="traceability-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Source evidence</th>
+              <th>Validated field</th>
+              <th>Optimizer constraint</th>
+              <th>Step</th>
+            </tr>
+          </thead>
+          <tbody>
+            {traces.slice(0, 10).map(({ field, trace }) => (
+              <tr key={field.key}>
+                <td>
+                  <strong>{field.label}</strong>
+                  <span>{field.evidence || "Evidence snippet not captured"}</span>
+                </td>
+                <td>
+                  <code>{field.key}</code>
+                  <span>{formatPolicyFieldValue(field.value)}</span>
+                </td>
+                <td>
+                  <span className="trace-chip">{trace.constraint}</span>
+                  <small>{trace.family}</small>
+                </td>
+                <td>
+                  <strong>{trace.step}</strong>
+                  <span>{trace.domain}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function DataPacketPanel({ packet }: { packet: DemoDataPacketCatalogItem | null }) {
   if (!packet) {
     return (
@@ -4145,13 +4741,18 @@ function EvidenceRoomPanel({
         <EvidenceSection title="Document Evidence" status={`${policyFields.length} fields`}>
           {policyFields.length ? (
             <ul className="evidence-field-list">
-              {policyFields.slice(0, 5).map((field) => (
-                <li key={field.key}>
-                  <strong>{field.label}</strong>
-                  <span>{formatPolicyFieldValue(field.value)}</span>
-                  <em>{field.evidence || "No snippet captured"}</em>
-                </li>
-              ))}
+              {policyFields.slice(0, 5).map((field) => {
+                const trace = constraintTraceForPolicyField(field.key, selectedWorkflow);
+                return (
+                  <li key={field.key}>
+                    <strong>{field.label}</strong>
+                    <span>
+                      {formatPolicyFieldValue(field.value)} to {trace.constraint}
+                    </span>
+                    <em>{field.evidence || "No snippet captured"}</em>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p>Ingest an IPS or collateral schedule to attach document evidence.</p>
@@ -5627,6 +6228,49 @@ function resultPanelMetrics(
         label: "Sharpe",
         value: sharpe !== undefined ? sharpe.toFixed(2) : "n/a",
         note: `Utility ${result.objective_value.toFixed(4)}`,
+        accent: true,
+      },
+    ];
+  }
+
+  if (result.domain === "collateral" || result.domain === "financing") {
+    const labelPrefix = result.domain === "collateral" ? "Collateral" : "Funding";
+    return [
+      {
+        label: "Optimized cost",
+        value: formatCurrency(result.objective_value),
+        note: `${labelPrefix} objective`,
+      },
+      {
+        label: "Baseline cost",
+        value: formatCurrency(result.baseline_value),
+        note: "Naive allocation",
+      },
+      {
+        label: "Cost reduction",
+        value: formatCurrency(result.improvement),
+        note: `${result.improvement_pct.toFixed(2)}%`,
+        accent: true,
+      },
+    ];
+  }
+
+  if (result.domain && result.domain !== "money_market") {
+    return [
+      {
+        label: "Optimized objective",
+        value: formatObjective(result.objective_value),
+        note: titleCase(result.domain.replaceAll("_", " ")),
+      },
+      {
+        label: "Baseline objective",
+        value: formatObjective(result.baseline_value),
+        note: "Reference case",
+      },
+      {
+        label: "Improvement",
+        value: formatObjective(result.improvement),
+        note: `${result.improvement_pct.toFixed(2)}%`,
         accent: true,
       },
     ];

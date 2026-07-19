@@ -17,6 +17,7 @@ PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID = "portfolio_rebalance_mvo"
 _PRODUCTION_ADAPTER_BY_DOMAIN = {
     "asset_allocation": "production.asset_allocation.mvo",
     "collateral": "production.collateral.allocation",
+    "money_market": "production.money_market.allocation",
 }
 
 _DOMAIN_BY_PRODUCTION_ADAPTER = {

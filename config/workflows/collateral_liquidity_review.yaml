@@ -25,10 +25,34 @@ inputs:
     label: Obligation scale
     type: fraction
     default: 1.65
+  - key: collateral.concentration_limit
+    label: Collateral concentration cap
+    type: fraction
+    default: 0.55
   - key: money_market.total_cash
     label: Money-market cash
     type: currency
     default: 450000000
+  - key: money_market.daily_liquidity_req
+    label: Daily liquidity floor
+    type: fraction
+    default: 0.35
+  - key: money_market.weekly_liquidity_req
+    label: Weekly liquidity floor
+    type: fraction
+    default: 0.65
+  - key: money_market.max_prime_fraction
+    label: Prime concentration cap
+    type: fraction
+    default: 0.40
+  - key: money_market.max_wam_days
+    label: Max WAM days
+    type: integer
+    default: 55
+  - key: money_market.max_single_fund
+    label: Single fund cap
+    type: fraction
+    default: 0.45
   - key: execution_mode
     label: Execution mode
     type: select

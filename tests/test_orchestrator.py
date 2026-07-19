@@ -140,8 +140,31 @@ def test_collateral_production_runtime(orchestrator):
     assert result.validation.passed
 
 
+def test_money_market_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "money_market",
+            optimizer_runtime="production",
+            total_cash=500_000_000,
+            daily_liquidity_req=0.30,
+            weekly_liquidity_req=0.60,
+            max_prime_fraction=0.40,
+            max_wam_days=60,
+            data_snapshot_id="SNAP_MM_ORCH",
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == (
+        "production.money_market.allocation"
+    )
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == "SNAP_MM_ORCH"
+    assert result.validation.passed
+
+
 def test_production_runtime_unknown_domain_returns_error(orchestrator):
-    result = orchestrator.run(_req("money_market", optimizer_runtime="production"))
+    result = orchestrator.run(_req("financing", optimizer_runtime="production"))
 
     assert result.status == SolveStatus.ERROR
     assert not result.validation.passed

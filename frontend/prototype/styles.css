@@ -1273,6 +1273,198 @@ h2 {
   font-weight: 800;
 }
 
+.collateral-scenario-panel,
+.document-traceability-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.collateral-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.collateral-scenario-card {
+  min-height: 128px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collateral-scenario-card.active {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+
+.collateral-scenario-card span,
+.collateral-scenario-card strong,
+.collateral-scenario-card em {
+  display: block;
+}
+
+.collateral-scenario-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.collateral-scenario-card strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.collateral-scenario-card em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.scenario-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 12px;
+}
+
+.scenario-constraint-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.scenario-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.scenario-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.scenario-bar-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.scenario-bar-row strong,
+.scenario-bar-row span {
+  display: block;
+  font-size: 11px;
+}
+
+.scenario-bar-row strong {
+  color: var(--text);
+}
+
+.scenario-bar-row span {
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.scenario-bar-row span.improved {
+  color: var(--green);
+}
+
+.scenario-bar-row span.review {
+  color: var(--amber);
+}
+
+.scenario-bar-track {
+  height: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.scenario-bar-track i {
+  display: block;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.scenario-bar-track .before {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.scenario-bar-track .after {
+  background: rgba(21, 128, 61, 0.55);
+  border-right: 2px solid var(--green);
+}
+
+.traceability-table {
+  overflow-x: auto;
+}
+
+.traceability-table table {
+  min-width: 920px;
+  width: 100%;
+}
+
+.traceability-table th,
+.traceability-table td {
+  vertical-align: top;
+}
+
+.traceability-table td {
+  border-bottom: 1px solid var(--line);
+}
+
+.traceability-table td strong,
+.traceability-table td span,
+.traceability-table td code,
+.traceability-table td small {
+  display: block;
+}
+
+.traceability-table td strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.traceability-table td span,
+.traceability-table td small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.traceability-table td code {
+  color: var(--blue-deep);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.trace-chip {
+  width: fit-content;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 3px 8px;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  font-weight: 800;
+}
+
 .production-adapter-panel {
   display: grid;
   gap: 10px;
@@ -3269,6 +3461,9 @@ h2 {
 .before-after-card,
 .hqla-tier-card,
 .allocation-stats-card,
+.collateral-scenario-card,
+.scenario-constraint-card,
+.trace-chip,
 .production-model-card,
 .production-evidence-card,
 .production-contract-card,
@@ -3651,6 +3846,11 @@ h2 {
 .production-evidence-card strong,
 .production-contract-card strong,
 .production-coverage-list strong,
+.collateral-scenario-card strong,
+.scenario-constraint-card strong,
+.scenario-bar-row strong,
+.traceability-table td strong,
+.trace-chip,
 .evidence-field-list strong,
 .evidence-check-list strong,
 .evidence-trace-list strong,
@@ -3734,6 +3934,11 @@ tbody tr:hover {
 .production-evidence-card span,
 .production-contract-card span,
 .production-coverage-list span,
+.collateral-scenario-card span,
+.collateral-scenario-card em,
+.scenario-bar-row span,
+.traceability-table td span,
+.traceability-table td small,
 .evidence-section p,
 .evidence-field-list span,
 .evidence-field-list em,
@@ -3745,6 +3950,10 @@ tbody tr:hover {
 }
 
 .production-evidence-card code {
+  color: var(--accent);
+}
+
+.traceability-table td code {
   color: var(--accent);
 }
 
@@ -3834,6 +4043,8 @@ tbody tr:hover {
   .ollama-panel,
   .dashboard-grid,
   .collateral-hqla-panel,
+  .collateral-scenario-panel,
+  .document-traceability-panel,
   .evidence-room-panel,
   .workflow-comparison-panel,
   .presenter-script-panel,
@@ -3887,6 +4098,8 @@ tbody tr:hover {
 
   .video-story-panel,
   .collateral-hqla-grid,
+  .collateral-scenario-grid,
+  .scenario-detail-grid,
   .evidence-summary-grid,
   .evidence-room-grid,
   .script-layout,
@@ -3904,6 +4117,8 @@ tbody tr:hover {
 
   .schedule-stat-strip,
   .allocation-stat-list,
+  .scenario-stat-strip,
+  .scenario-bar-row,
   .before-after-grid {
     grid-template-columns: 1fr;
   }

@@ -20,11 +20,11 @@ from decision_intelligence.contracts.results import SolveStatus, ValidationResul
 from decision_intelligence.explanation import build_explanation_report
 from decision_intelligence.governance.approvals import ApprovalDecision, GovernanceController
 from decision_intelligence.governance.audit import AuditLog
-from decision_intelligence.production_optimizers import (
-    NormalizedOptimizerResult,
+from decision_intelligence.production_optimizers.contracts import NormalizedOptimizerResult
+from decision_intelligence.production_optimizers.registry import (
     ProductionOptimizerRegistry,
+    build_default_production_registry,
 )
-from decision_intelligence.production_optimizers.registry import build_default_production_registry
 from decision_intelligence.validation import apply_validation_report
 
 from .registry import OptimizerRegistry
@@ -242,6 +242,7 @@ class OptimizationOrchestrator:
 _DOMAIN_DEFAULT_PRODUCTION_ADAPTERS = {
     "asset_allocation": "production.asset_allocation.mvo",
     "collateral": "production.collateral.allocation",
+    "money_market": "production.money_market.allocation",
 }
 
 

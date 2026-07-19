@@ -6,5 +6,7 @@ Margin call scale is 165%. Total cash balance is $420 million. Daily liquidity m
 
 Prime fund exposure must not exceed 30%. Weighted average maturity must stay under 50 days. Single-fund limit may not exceed 45%.
 
+Collateral schedule: US Treasury haircut 2%, Agency MBS haircut 6%, IG Corporate Bonds haircut 12%, Equity ETF haircut 22%, Cash haircut 0%. No single collateral asset class may exceed 48% of posted value.
+
 Governance: Materiality notional is $420 million. Any policy override must be
 reviewed by treasury governance before execution.
