@@ -12,7 +12,7 @@ The combined video includes two examples:
 
 ## AI Platform And Tooling Used
 
-The prototype was developed with **OpenAI ChatGPT/Codex** as the AI-assisted engineering environment for code generation, documentation, test iteration, video-generation scripting, and product design refinement.
+The prototype was developed with **RAI Gateway/Anthrophic Models & Ollama** as the AI-assisted engineering environment for code generation, documentation, test iteration, video-generation scripting, and product design refinement.
 
 The demo application also supports **local Ollama models**, including `llama3.1:8b`, for offline LLM-assisted explanation and document interpretation. The LLM layer is intentionally separated from the deterministic optimization layer: the model can help interpret documents, guide users, and explain outputs, while mathematical recommendations remain produced by governed optimizer code.
 
