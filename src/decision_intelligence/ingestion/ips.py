@@ -91,7 +91,7 @@ class _FieldRule(BaseModel):
     model_config = {"frozen": True}
 
 
-_MONEY = r"\$?\s*([\d,.]+)\s*(billion|bn|million|mm|m)?"
+_MONEY = r"\$?\s*(\d[\d,]*(?:\.\d+)?)\s*(billion|bn|million|mm|m)?"
 _PCT = r"([\d.]+)\s*%"
 _MAX = r"(?:no more than|not exceed|exceed|max(?:imum)?|below|under|at most|cap(?:ped at)?)"
 _MIN = r"(?:at least|min(?:imum)?|>=?)"
@@ -398,6 +398,111 @@ def _build_rules() -> dict[str, list[_FieldRule]]:
             ),
             *_governance_rules(),
         ],
+        "treasury_cash_movement": [
+            portfolio_id,
+            _FieldRule(
+                key="treasury_operations.cutoff_hour",
+                label="Treasury cutoff hour",
+                value_type="integer",
+                patterns=[
+                    r"(?:payment cutoff|treasury cutoff|same[- ]day cutoff|cutoff hour)"
+                    r"[^.\n]*?(\d{1,2})(?::\d{2})?",
+                    r"(?:before|by)\s*(\d{1,2})(?::\d{2})?[^.\n]*?"
+                    r"(?:payment cutoff|same[- ]day funding|wire cutoff)",
+                ],
+            ),
+            _FieldRule(
+                key="treasury_operations.total_required_cash",
+                label="Total required cash",
+                value_type="currency",
+                patterns=[
+                    rf"(?:funding requirements?|required cash|settlement needs?)"
+                    rf"[^.\n]*?{_MONEY}",
+                    rf"{_MONEY}[^.\n]*?(?:funding requirements?|required cash|settlement needs?)",
+                ],
+            ),
+            _FieldRule(
+                key="treasury_operations.source_minimum_buffer",
+                label="Source minimum buffer",
+                value_type="currency",
+                patterns=[
+                    rf"(?:source account|operating|liquidity|cash)[^.\n]*?"
+                    rf"(?:buffer|minimum buffer)[^.\n]*?{_MONEY}",
+                    rf"(?:retain|maintain)[^.\n]*?{_MONEY}[^.\n]*?"
+                    r"(?:buffer|minimum balance)",
+                ],
+            ),
+            _FieldRule(
+                key="treasury_operations.payment_rail_max_transfer",
+                label="Payment rail max transfer",
+                value_type="currency",
+                patterns=[
+                    rf"(?:payment rail|wire|fedwire|chips)[^.\n]*?"
+                    rf"(?:limit|max(?:imum)? transfer|transfer cap)[^.\n]*?{_MONEY}",
+                    rf"(?:single transfer|rail capacity)[^.\n]*?{_MONEY}",
+                ],
+            ),
+            _FieldRule(
+                key="treasury_operations.stress_multiplier",
+                label="Funding stress multiplier",
+                value_type="fraction",
+                patterns=[
+                    rf"(?:stress multiplier|stress funding|funding stress)[^.\n]*?{_PCT}",
+                    r"(?:stress multiplier|funding stress)[^.\n]*?([\d.]+)\s*x",
+                ],
+                confidence=0.82,
+            ),
+            *_governance_rules(),
+        ],
+        "margin_call_workflow": [
+            portfolio_id,
+            _FieldRule(
+                key="margin_operations.team_capacity_minutes",
+                label="Team capacity minutes",
+                value_type="integer",
+                patterns=[
+                    r"(?:team capacity|operations capacity|ops capacity)"
+                    r"[^.\n]*?(\d+)\s*(?:minutes|mins)",
+                    r"(\d+)\s*(?:minutes|mins)[^.\n]*?"
+                    r"(?:team capacity|operations capacity|ops capacity)",
+                ],
+            ),
+            _FieldRule(
+                key="margin_operations.materiality_threshold",
+                label="Materiality threshold",
+                value_type="currency",
+                patterns=[
+                    rf"(?:materiality threshold|material margin call|supervisor review)"
+                    rf"[^.\n]*?{_MONEY}",
+                    rf"{_MONEY}[^.\n]*?"
+                    r"(?:materiality threshold|supervisor review|material call)",
+                ],
+            ),
+            _FieldRule(
+                key="margin_operations.dispute_stress_multiplier",
+                label="Dispute stress multiplier",
+                value_type="fraction",
+                patterns=[
+                    rf"(?:dispute stress|dispute probability stress|dispute multiplier)"
+                    rf"[^.\n]*?{_PCT}",
+                    r"(?:dispute stress|dispute multiplier)[^.\n]*?([\d.]+)\s*x",
+                ],
+                confidence=0.82,
+            ),
+            _FieldRule(
+                key="margin_operations.sla_escalation_hours",
+                label="SLA escalation window",
+                value_type="integer",
+                patterns=[
+                    r"(?:sla escalation|same[- ]day escalation|escalate calls)"
+                    r"[^.\n]*?(\d+)\s*(?:hours|hrs)",
+                    r"(?:due within|within)\s*(\d+)\s*(?:hours|hrs)"
+                    r"[^.\n]*?(?:escalate|sla)",
+                ],
+                confidence=0.80,
+            ),
+            *_governance_rules(),
+        ],
     }
 
 
@@ -654,8 +759,13 @@ def _value_issue(value: str | int | float | bool, value_type: str) -> str | None
 
 
 def _first_match(text: str, patterns: Iterable[str]) -> re.Match[str] | None:
+    normalized_text = " ".join(text.split())
     for pattern in patterns:
         if match := re.search(pattern, text, re.IGNORECASE):
+            return match
+        if normalized_text != text and (
+            match := re.search(pattern, normalized_text, re.IGNORECASE)
+        ):
             return match
     return None
 
@@ -712,6 +822,16 @@ def _required_missing(workflow_id: str, input_values: dict[str, str]) -> list[st
             "portfolio_id",
             "asset_allocation.portfolio_notional",
             "asset_allocation.target_return",
+        ],
+        "treasury_cash_movement": [
+            "portfolio_id",
+            "treasury_operations.cutoff_hour",
+            "treasury_operations.total_required_cash",
+        ],
+        "margin_call_workflow": [
+            "portfolio_id",
+            "margin_operations.team_capacity_minutes",
+            "margin_operations.materiality_threshold",
         ],
     }
     return [key for key in required[workflow_id] if key not in input_values]

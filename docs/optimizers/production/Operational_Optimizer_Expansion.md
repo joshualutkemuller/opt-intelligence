@@ -160,8 +160,8 @@ They also make the platform more credible for enterprise production use:
 1. ✅ Add workflow templates and demo presets for both operational adapters.
 2. ✅ Surface the adapters in the front-end workflow selector.
 3. ✅ Extend evidence export with operational queue tables and action logs.
-4. Add document ingestion examples for payment policies, SLA rules, and margin
-   call procedures.
+4. ✅ Add document ingestion examples for payment policies, SLA rules, and
+   margin call procedures.
 5. Replace scaffold solve logic with firm production engines when available.
 
 ## Implementation Update: Workflow And Evidence Demo Layer
@@ -192,10 +192,56 @@ recommendation. For margin-call workflow, the action rows describe assigned and
 deferred calls, priority score, capacity minutes, recommended action, and
 deferral/escalation reason.
 
+## Implementation Update: Operational Policy Ingestion
+
+Operational policy ingestion is now supported through the same deterministic
+policy-ingestion layer used by portfolio, collateral, and money-market demos.
+
+New bundled policy examples:
+
+- `examples/policies/sample_treasury_payment_policy.md`
+- `examples/policies/sample_margin_call_sla_procedure.md`
+
+The treasury payment policy example extracts:
+
+- portfolio ID;
+- treasury cutoff hour;
+- same-day required cash;
+- source-account minimum buffer;
+- payment-rail transfer cap;
+- funding stress multiplier;
+- governance materiality notional.
+
+The margin-call SLA procedure example extracts:
+
+- portfolio ID;
+- team capacity minutes;
+- materiality threshold for supervisor review;
+- SLA escalation window;
+- dispute stress multiplier;
+- governance production-constraint-change flag.
+
+The extracted `context_patch` can be passed directly into:
+
+- `build_treasury_cash_movement_workflow(...)`
+- `build_margin_call_workflow(...)`
+
+Focused tests now prove that the sample operational documents are ingestable
+and that the resulting context can run the corresponding production workflow.
+
+## POC Completion Status
+
+The operational optimizer expansion is complete for POC/demo purposes:
+
+- operational adapters exist;
+- workflow templates and presets exist;
+- UI selector exposure exists;
+- evidence export includes operational action tables;
+- policy/SLA document ingestion examples exist;
+- tests cover ingestion and workflow execution from extracted context.
+
 Remaining production-hardening work:
 
-- Add document ingestion examples for payment policies, SLA rules, and margin
-  call procedures.
 - Add richer front-end tables for operational actions before export, not only
   inside the evidence package.
 - Replace scaffold solve logic with firm production engines when available.

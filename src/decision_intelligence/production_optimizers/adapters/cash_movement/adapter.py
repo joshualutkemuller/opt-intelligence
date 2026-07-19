@@ -251,74 +251,88 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
 
 
 def _cash_balances(context: dict[str, Any]) -> list[dict[str, Any]]:
-    return list(
-        context.get(
-            "cash_balances",
-            [
-                {
-                    "account_id": "TREASURY_US_1",
-                    "entity": "Broker Dealer",
-                    "currency": "USD",
-                    "available_cash": 180_000_000,
-                    "minimum_buffer": 25_000_000,
-                },
-                {
-                    "account_id": "TREASURY_US_2",
-                    "entity": "Bank Entity",
-                    "currency": "USD",
-                    "available_cash": 95_000_000,
-                    "minimum_buffer": 20_000_000,
-                },
-            ],
-        )
-    )
+    if "cash_balances" in context:
+        return list(context["cash_balances"])
+    source_minimum_buffer = context.get("source_minimum_buffer")
+    balances = [
+        {
+            "account_id": "TREASURY_US_1",
+            "entity": "Broker Dealer",
+            "currency": "USD",
+            "available_cash": 180_000_000,
+            "minimum_buffer": 25_000_000,
+        },
+        {
+            "account_id": "TREASURY_US_2",
+            "entity": "Bank Entity",
+            "currency": "USD",
+            "available_cash": 95_000_000,
+            "minimum_buffer": 20_000_000,
+        },
+    ]
+    if source_minimum_buffer is not None:
+        for row in balances:
+            row["minimum_buffer"] = max(
+                float(row["minimum_buffer"]),
+                float(source_minimum_buffer),
+            )
+    return balances
 
 
 def _funding_requirements(context: dict[str, Any]) -> list[dict[str, Any]]:
-    return list(
-        context.get(
-            "funding_requirements",
-            [
-                {
-                    "requirement_id": "PAY_001",
-                    "target_account_id": "CLEARING_US",
-                    "currency": "USD",
-                    "required_cash": 120_000_000,
-                    "cutoff_hour": 15,
-                },
-                {
-                    "requirement_id": "PAY_002",
-                    "target_account_id": "SETTLEMENT_US",
-                    "currency": "USD",
-                    "required_cash": 70_000_000,
-                    "cutoff_hour": 16,
-                },
-            ],
-        )
-    )
+    if "funding_requirements" in context:
+        return list(context["funding_requirements"])
+    requirements = [
+        {
+            "requirement_id": "PAY_001",
+            "target_account_id": "CLEARING_US",
+            "currency": "USD",
+            "required_cash": 120_000_000,
+            "cutoff_hour": 15,
+        },
+        {
+            "requirement_id": "PAY_002",
+            "target_account_id": "SETTLEMENT_US",
+            "currency": "USD",
+            "required_cash": 70_000_000,
+            "cutoff_hour": 16,
+        },
+    ]
+    total_required_cash = context.get("total_required_cash")
+    if total_required_cash is not None:
+        current_total = sum(float(row["required_cash"]) for row in requirements)
+        scale = float(total_required_cash) / current_total if current_total else 1.0
+        for row in requirements:
+            row["required_cash"] = float(row["required_cash"]) * scale
+    return requirements
 
 
 def _payment_rails(context: dict[str, Any]) -> list[dict[str, Any]]:
-    return list(
-        context.get(
-            "payment_rails",
-            [
-                {
-                    "rail_id": "FEDWIRE",
-                    "currency": "USD",
-                    "fee_bps": 0.15,
-                    "fixed_fee": 35,
-                    "cutoff_hour": 17,
-                    "max_transfer": 250_000_000,
-                },
-                {
-                    "rail_id": "CHIPS",
-                    "currency": "USD",
-                    "fee_bps": 0.08,
-                    "fixed_fee": 20,
-                    "cutoff_hour": 16,
-                    "max_transfer": 125_000_000,
-                },
-            ],
-        )
-    )
+    if "payment_rails" in context:
+        return list(context["payment_rails"])
+    payment_rail_max_transfer = context.get("payment_rail_max_transfer")
+    rails = [
+        {
+            "rail_id": "FEDWIRE",
+            "currency": "USD",
+            "fee_bps": 0.15,
+            "fixed_fee": 35,
+            "cutoff_hour": 17,
+            "max_transfer": 250_000_000,
+        },
+        {
+            "rail_id": "CHIPS",
+            "currency": "USD",
+            "fee_bps": 0.08,
+            "fixed_fee": 20,
+            "cutoff_hour": 16,
+            "max_transfer": 125_000_000,
+        },
+    ]
+    if payment_rail_max_transfer is not None:
+        for row in rails:
+            row["max_transfer"] = min(
+                float(row["max_transfer"]),
+                float(payment_rail_max_transfer),
+            )
+    return rails

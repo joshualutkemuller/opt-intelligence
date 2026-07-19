@@ -5,6 +5,18 @@ from pathlib import Path
 import pytest
 
 from decision_intelligence.ingestion import IngestionError, ingest_policy_document
+from decision_intelligence.optimization import OptimizationOrchestrator, OptimizerRegistry
+from decision_intelligence.optimizers import (
+    AssetAllocationMVOOptimizer,
+    CollateralOptimizer,
+    FinancingOptimizer,
+    MoneyMarketOptimizer,
+)
+from decision_intelligence.workflows import (
+    SequentialWorkflowRunner,
+    build_margin_call_workflow,
+    build_treasury_cash_movement_workflow,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,6 +89,94 @@ def test_policy_ingestion_reports_missing_required_fields():
     assert result.review_summary["ready"] is False
     assert "portfolio_id" in result.review_summary["missing_required"]
     assert "financing.total_funding_need" in result.review_summary["missing_required"]
+
+
+def test_policy_ingestion_extracts_treasury_cash_movement_inputs():
+    result = ingest_policy_document(
+        workflow_id="treasury_cash_movement",
+        text=(
+            "Portfolio PORT_TREASURY_OPS_440 has same-day funding requirements "
+            "of $210 million. Treasury cutoff hour is 15:00. Source accounts "
+            "must retain a minimum buffer of $30 million. Payment rail transfer "
+            "limit must not exceed $150 million. Funding stress multiplier is 115%."
+        ),
+    )
+
+    assert result.review_summary["ready"] is True
+    assert result.input_values["portfolio_id"] == "PORT_TREASURY_OPS_440"
+    assert result.context_patch["treasury_operations"]["cutoff_hour"] == 15
+    assert result.context_patch["treasury_operations"]["total_required_cash"] == 210_000_000
+    assert result.context_patch["treasury_operations"]["source_minimum_buffer"] == 30_000_000
+    assert result.context_patch["treasury_operations"]["payment_rail_max_transfer"] == 150_000_000
+    assert result.context_patch["treasury_operations"]["stress_multiplier"] == 1.15
+
+
+def test_policy_ingestion_extracts_margin_call_workflow_inputs():
+    result = ingest_policy_document(
+        workflow_id="margin_call_workflow",
+        text=(
+            "Portfolio PORT_MARGIN_OPS_550 has operations capacity of 165 minutes. "
+            "Supervisor review is required for margin calls of $25 million or more. "
+            "Calls due within 2 hours require SLA escalation. Dispute stress is 125%. "
+            "This is a production constraint change."
+        ),
+    )
+
+    assert result.review_summary["ready"] is True
+    assert result.input_values["portfolio_id"] == "PORT_MARGIN_OPS_550"
+    assert result.context_patch["margin_operations"]["team_capacity_minutes"] == 165
+    assert result.context_patch["margin_operations"]["materiality_threshold"] == 25_000_000
+    assert result.context_patch["margin_operations"]["sla_escalation_hours"] == 2
+    assert result.context_patch["margin_operations"]["dispute_stress_multiplier"] == 1.25
+    assert result.context_patch["governance"]["production_constraint_change"] is True
+
+
+def test_operational_policy_context_runs_treasury_workflow():
+    path = REPO_ROOT / "examples/policies/sample_treasury_payment_policy.md"
+    ingestion = ingest_policy_document(
+        workflow_id="treasury_cash_movement",
+        text=path.read_text(encoding="utf-8"),
+        filename=path.name,
+    )
+    runner = SequentialWorkflowRunner(_orchestrator())
+
+    result = runner.run(
+        build_treasury_cash_movement_workflow(
+            portfolio_id=ingestion.context_patch["portfolio_id"],
+            context=ingestion.context_patch,
+        )
+    )
+
+    step = result.step_results[0]
+    assert result.status == "complete"
+    assert step.result.solver_metadata["optimizer_runtime"] == "production"
+    assert step.request.context["cutoff_hour"] == 15
+    assert step.request.context["total_required_cash"] == 210_000_000
+    assert step.request.context["policy_ingestion"]["filename"] == path.name
+
+
+def test_operational_policy_context_runs_margin_workflow():
+    path = REPO_ROOT / "examples/policies/sample_margin_call_sla_procedure.md"
+    ingestion = ingest_policy_document(
+        workflow_id="margin_call_workflow",
+        text=path.read_text(encoding="utf-8"),
+        filename=path.name,
+    )
+    runner = SequentialWorkflowRunner(_orchestrator())
+
+    result = runner.run(
+        build_margin_call_workflow(
+            portfolio_id=ingestion.context_patch["portfolio_id"],
+            context=ingestion.context_patch,
+        )
+    )
+
+    step = result.step_results[0]
+    assert result.status == "complete"
+    assert step.result.solver_metadata["optimizer_runtime"] == "production"
+    assert step.request.context["team_capacity_minutes"] == 165
+    assert step.request.context["materiality_threshold"] == 25_000_000
+    assert step.request.context["policy_ingestion"]["filename"] == path.name
 
 
 def test_policy_ingestion_rejects_unknown_workflow():
@@ -245,6 +345,30 @@ def test_bundled_policy_demo_samples_are_ingestable():
                 "money_market.max_wam_days": "50",
             },
         ),
+        (
+            "treasury_cash_movement",
+            "examples/policies/sample_treasury_payment_policy.md",
+            {
+                "portfolio_id": "PORT_TREASURY_OPS_440",
+                "treasury_operations.cutoff_hour": "15",
+                "treasury_operations.total_required_cash": "210000000",
+                "treasury_operations.source_minimum_buffer": "30000000",
+                "treasury_operations.payment_rail_max_transfer": "150000000",
+                "treasury_operations.stress_multiplier": "1.15",
+            },
+        ),
+        (
+            "margin_call_workflow",
+            "examples/policies/sample_margin_call_sla_procedure.md",
+            {
+                "portfolio_id": "PORT_MARGIN_OPS_550",
+                "margin_operations.team_capacity_minutes": "165",
+                "margin_operations.materiality_threshold": "25000000",
+                "margin_operations.sla_escalation_hours": "2",
+                "margin_operations.dispute_stress_multiplier": "1.25",
+                "governance.production_constraint_change": "true",
+            },
+        ),
     ]
 
     for workflow_id, relative_path, expected_values in samples:
@@ -259,3 +383,12 @@ def test_bundled_policy_demo_samples_are_ingestable():
         assert result.context_patch["policy_ingestion"]["filename"] == path.name
         for key, expected in expected_values.items():
             assert result.input_values[key] == expected
+
+
+def _orchestrator() -> OptimizationOrchestrator:
+    registry = OptimizerRegistry()
+    registry.register(AssetAllocationMVOOptimizer())
+    registry.register(CollateralOptimizer())
+    registry.register(MoneyMarketOptimizer())
+    registry.register(FinancingOptimizer())
+    return OptimizationOrchestrator(registry)

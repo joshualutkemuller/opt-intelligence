@@ -87,6 +87,7 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
             "materiality_threshold": float(
                 request.context.get("materiality_threshold", 25_000_000)
             ),
+            "sla_escalation_hours": float(request.context.get("sla_escalation_hours", 2)),
             "dispute_stress_multiplier": float(
                 request.context.get("dispute_stress_multiplier", 1.0)
             ),
@@ -98,6 +99,7 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
         scored_calls = [
             {
                 **call,
+                "sla_escalation_hours": float(problem["sla_escalation_hours"]),
                 "priority_score": _priority_score(
                     call,
                     float(problem["materiality_threshold"]),
@@ -250,7 +252,7 @@ def _recommended_action(call: dict[str, Any], materiality_threshold: float) -> s
         return "supervisor_review"
     if float(call.get("dispute_probability", 0.0)) >= 0.45:
         return "dispute_review"
-    if float(call.get("due_in_hours", 24.0)) <= 2:
+    if float(call.get("due_in_hours", 24.0)) <= float(call.get("sla_escalation_hours", 2)):
         return "same_day_escalation"
     return "process"
 
