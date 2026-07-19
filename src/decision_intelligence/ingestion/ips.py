@@ -278,6 +278,24 @@ def _build_rules() -> dict[str, list[_FieldRule]]:
             *_money_market_rules(),
             *_governance_rules(),
         ],
+        "money_market_policy_optimization": [
+            portfolio_id,
+            _FieldRule(
+                key="money_market.total_cash",
+                label="Money-market cash",
+                value_type="currency",
+                patterns=[
+                    rf"(?:money[- ]market cash|cash balance|total cash|investable cash)"
+                    rf"[^.\n]*?{_MONEY}",
+                    (
+                        rf"{_MONEY}[^.\n]*?"
+                        r"(?:money[- ]market cash|cash balance|total cash|investable cash)"
+                    ),
+                ],
+            ),
+            *_money_market_rules(),
+            *_governance_rules(),
+        ],
         "funding_capacity_shock": [
             portfolio_id,
             _FieldRule(
@@ -687,6 +705,7 @@ def _set_nested(target: dict[str, Any], path: str, value: Any) -> None:
 def _required_missing(workflow_id: str, input_values: dict[str, str]) -> list[str]:
     required = {
         "liquidity_stress_funding_workflow": ["portfolio_id", "money_market.total_cash"],
+        "money_market_policy_optimization": ["portfolio_id", "money_market.total_cash"],
         "funding_capacity_shock": ["portfolio_id", "financing.total_funding_need"],
         "collateral_liquidity_review": ["portfolio_id", "money_market.total_cash"],
         "portfolio_rebalance_mvo": [

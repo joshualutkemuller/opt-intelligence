@@ -20,10 +20,12 @@ from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
     LIQUIDITY_STRESS_WORKFLOW_ID,
+    MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
     PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     build_collateral_liquidity_review_workflow,
     build_funding_capacity_shock_workflow,
     build_liquidity_stress_funding_workflow,
+    build_money_market_policy_optimization_workflow,
     build_portfolio_rebalance_mvo_workflow,
 )
 from .registry import (
@@ -49,6 +51,7 @@ __all__ = [
     "LIQUIDITY_STRESS_WORKFLOW_ID",
     "COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID",
     "PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID",
+    "MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID",
     "DEFAULT_DEMO_PRESET_DIR",
     "DEFAULT_WORKFLOW_REGISTRY",
     "DemoPresetConfig",
@@ -76,6 +79,7 @@ __all__ = [
     "build_default_workflow_registry",
     "build_funding_capacity_shock_workflow",
     "build_liquidity_stress_funding_workflow",
+    "build_money_market_policy_optimization_workflow",
     "build_portfolio_rebalance_mvo_workflow",
     "build_workflow_scenario_comparison",
 ]

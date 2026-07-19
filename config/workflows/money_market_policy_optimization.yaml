@@ -1,0 +1,88 @@
+workflow_id: money_market_policy_optimization
+version: 1
+name: Money Market Policy Optimization
+description: >
+  Runs a one-step money-market allocation optimizer from an ingested cash
+  portfolio review, IPS, mandate, or liquidity policy document.
+domains:
+  - money_market
+tags:
+  - money-market
+  - liquidity
+  - policy
+  - pdf
+  - demo
+default_context:
+  scenario: money_market_policy
+  solver_backend: scipy
+  problem_type: lp
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_MMF_901
+  - key: seed
+    label: Simulation seed
+    type: integer
+    default: 53
+  - key: money_market.total_cash
+    label: Total cash
+    type: currency
+    default: 625000000
+  - key: money_market.daily_liquidity_req
+    label: Daily liquidity floor
+    type: fraction
+    default: 0.32
+  - key: money_market.weekly_liquidity_req
+    label: Weekly liquidity floor
+    type: fraction
+    default: 0.68
+  - key: money_market.max_prime_fraction
+    label: Prime fund cap
+    type: fraction
+    default: 0.35
+  - key: money_market.max_wam_days
+    label: Max WAM days
+    type: integer
+    default: 50
+  - key: money_market.max_single_fund
+    label: Single fund cap
+    type: fraction
+    default: 0.40
+  - key: execution_mode
+    label: Execution mode
+    type: select
+    default: recommendation
+    options:
+      - recommendation
+      - stage
+      - execute
+      - change_constraints
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 625000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
+steps:
+  - step_id: money_market_001
+    domain: money_market
+    name: Policy-constrained liquidity allocation
+    objective_metric: yield
+    objective_direction: maximize
+    context:
+      n_funds: 8
+      total_cash: 625000000
+      daily_liquidity_req: 0.32
+      weekly_liquidity_req: 0.68
+      max_prime_fraction: 0.35
+      max_wam_days: 50
+      max_single_fund: 0.40
+      max_funds: 4
+      min_allocation_fraction: 0.05

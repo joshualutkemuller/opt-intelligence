@@ -1094,7 +1094,8 @@ h2 {
   gap: 14px;
 }
 
-.collateral-hqla-panel {
+.collateral-hqla-panel,
+.money-market-policy-panel {
   display: grid;
   gap: 14px;
 }
@@ -1271,6 +1272,13 @@ h2 {
   color: #ffffff;
   font-size: 11px;
   font-weight: 800;
+}
+
+.analytics-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .collateral-scenario-panel,

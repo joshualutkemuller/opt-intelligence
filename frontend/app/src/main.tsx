@@ -561,17 +561,29 @@ const MAX_RUN_HISTORY = 12;
 const MAX_COMPARISON_SETS = 8;
 const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
 const COLLATERAL_HQLA_PRESET_ID = "collateral_hqla_schedule_stress";
+const MONEY_MARKET_POLICY_PRESET_ID = "treasury_mmf_policy_optimization";
 const COLLATERAL_SCHEDULE_SAMPLE = `Collateral Schedule - Counterparty Stress Addendum
 
 Mandate: Collateral and cash review for Portfolio PORT_HQLA_224.
 
-Margin call scale is 185%. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
+Margin call scale is 185%. Obligations include Dealer A Bilateral CSA, Dealer B Bilateral CSA, Dealer C Bilateral CSA, LCH SwapClear cleared swaps initial margin, and CME Futures Exchange variation margin. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
 
 Prime fund exposure must not exceed 30%. Weighted average maturity must stay under 50 days. Single-fund limit may not exceed 45%.
 
 Eligible collateral and haircuts: US Treasury 2%, Agency MBS 6%, IG Corporate Bonds 12%, Equity ETF 22%, Cash 0%. No single collateral asset class may exceed 48% of posted value.
 
 Governance: Materiality notional is $420 million. Any policy override must be reviewed by treasury governance before execution.`;
+const MONEY_MARKET_POLICY_SAMPLE = `Money Market Portfolio Review - Treasury Mandate
+
+Mandate: Optimize the treasury liquidity sleeve for Portfolio PORT_MMF_901.
+
+Current portfolio: Total investable cash balance is $625 million. The current allocation is overweight a small number of government and prime money-market funds and should be reviewed against liquidity and concentration controls.
+
+Investment requirements: Daily liquidity must be at least 32%. Weekly liquidity minimum 68%. Prime fund exposure must not exceed 35%. Weighted average maturity must stay under 50 days. Single-fund exposure must not exceed 40% of total cash.
+
+Optimization goal: maximize net 7-day annualized yield while satisfying liquidity, WAM, prime exposure, and concentration requirements. Use recommendation mode only.
+
+Governance: Materiality notional is $625 million. Estimated PnL impact is $0. This is not a production constraint change.`;
 
 const pocPresenterScript: PresenterScriptStep[] = [
   {
@@ -612,6 +624,91 @@ const pocPresenterScript: PresenterScriptStep[] = [
 ];
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
+  {
+    workflow_id: "money_market_policy_optimization",
+    name: "Money Market Policy Optimization",
+    description:
+      "Runs a one-step money-market optimizer from an ingested cash policy or portfolio review document.",
+    domains: ["money_market"],
+    tags: ["money-market", "liquidity", "policy", "pdf", "demo"],
+    version: 1,
+    default_context: { scenario: "money_market_policy", solver_backend: "scipy", problem_type: "lp" },
+    inputs: [
+      { key: "portfolio_id", label: "Portfolio ID", type: "string", default: "PORT_MMF_901", required: true },
+      { key: "seed", label: "Simulation seed", type: "integer", default: 53, required: true },
+      {
+        key: "money_market.total_cash",
+        label: "Total cash",
+        type: "currency",
+        default: 625_000_000,
+        required: true,
+      },
+      {
+        key: "money_market.daily_liquidity_req",
+        label: "Daily liquidity floor",
+        type: "fraction",
+        default: 0.32,
+        required: true,
+      },
+      {
+        key: "money_market.weekly_liquidity_req",
+        label: "Weekly liquidity floor",
+        type: "fraction",
+        default: 0.68,
+        required: true,
+      },
+      {
+        key: "money_market.max_prime_fraction",
+        label: "Prime fund cap",
+        type: "fraction",
+        default: 0.35,
+        required: true,
+      },
+      {
+        key: "money_market.max_wam_days",
+        label: "Max WAM days",
+        type: "integer",
+        default: 50,
+        required: true,
+      },
+      {
+        key: "money_market.max_single_fund",
+        label: "Single fund cap",
+        type: "fraction",
+        default: 0.40,
+        required: true,
+      },
+      {
+        key: "execution_mode",
+        label: "Execution mode",
+        type: "select",
+        default: "recommendation",
+        required: true,
+        options: ["recommendation", "stage", "execute", "change_constraints"],
+      },
+      {
+        key: "governance.materiality_notional",
+        label: "Materiality notional",
+        type: "currency",
+        default: 625_000_000,
+        required: true,
+      },
+      {
+        key: "governance.estimated_pnl_impact",
+        label: "Estimated PnL impact",
+        type: "currency",
+        default: 0,
+        required: true,
+      },
+      {
+        key: "governance.production_constraint_change",
+        label: "Production constraint change",
+        type: "boolean",
+        default: false,
+        required: true,
+      },
+    ],
+  },
   {
     workflow_id: "portfolio_rebalance_mvo",
     name: "Portfolio Rebalance MVO",
@@ -785,6 +882,44 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
 
 const fallbackDemoPresets: DemoPresetCatalogItem[] = [
   {
+    preset_id: MONEY_MARKET_POLICY_PRESET_ID,
+    version: 1,
+    name: "Treasury MMF Policy Optimization",
+    description:
+      "Money-market desk walkthrough showing PDF policy ingestion, optimizer controls, and before/after liquidity analytics.",
+    audience: "Treasury portfolio managers, liquidity risk, investment operations, and control teams",
+    workflow_id: "money_market_policy_optimization",
+    portfolio_id: "PORT_MMF_901",
+    seed: 53,
+    duration_minutes: 5,
+    context: {
+      scenario: "treasury_mmf_policy_optimization",
+      solver_backend: "scipy",
+      problem_type: "lp",
+      money_market: {
+        total_cash: 625_000_000,
+        daily_liquidity_req: 0.32,
+        weekly_liquidity_req: 0.68,
+        max_prime_fraction: 0.35,
+        max_wam_days: 50,
+        max_single_fund: 0.40,
+        max_funds: 4,
+        min_allocation_fraction: 0.05,
+        policy_source: "examples/policies/sample_money_market_policy.pdf",
+      },
+    },
+    talking_points: [
+      "Upload the money-market portfolio PDF and ingest cash, liquidity, prime, WAM, and concentration controls.",
+      "Use local Ollama to explain the policy while deterministic validation keeps fields structured.",
+      "Run the optimizer and compare baseline versus optimized yield and liquidity profile.",
+    ],
+    success_criteria: [
+      "PDF policy fields are extracted and mapped to money-market workflow inputs.",
+      "Money-market workflow completes and shows production adapter evidence.",
+      "Before/after analytics are visible for yield, liquidity, WAM, prime, and allocation concentration.",
+    ],
+  },
+  {
     preset_id: "institutional_csv_liquidity_stress",
     version: 1,
     name: "Institutional CSV Liquidity Stress",
@@ -888,7 +1023,7 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
     version: 1,
     name: "Collateral HQLA Schedule Stress",
     description:
-      "Markets-facing collateral stress walkthrough showing schedule ingestion, haircut review, HQLA tier preservation, and downstream liquidity impact.",
+      "Markets-facing collateral stress walkthrough showing bilateral and cleared-margin schedule ingestion, haircut review, HQLA tier preservation, and downstream liquidity impact.",
     audience: "Collateral management, treasury liquidity, investment risk, and capital teams",
     workflow_id: "collateral_liquidity_review",
     portfolio_id: "PORT_HQLA_224",
@@ -915,12 +1050,12 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
       },
     },
     talking_points: [
-      "Load the collateral schedule sample and ingest haircuts, cash, and limits.",
+      "Load the collateral schedule sample and ingest bilateral, CCP, exchange, haircut, cash, and limit terms.",
       "Use local Ollama to explain how schedule controls affect the workflow.",
       "Compare before/after HQLA tier exposure and liquidity profile.",
     ],
     success_criteria: [
-      "Collateral schedule fields are extracted and reviewable.",
+      "Collateral schedule fields are extracted and reviewable across bilateral and cleared-margin obligations.",
       "Collateral and money-market workflow steps complete.",
       "HQLA liquidity profile and allocation stats are visible.",
     ],
@@ -1132,7 +1267,7 @@ const collateralScenarios: CollateralScenario[] = [
   {
     id: "base_schedule",
     name: "Base Schedule",
-    description: "Moderate margin call with existing concentration and liquidity policy limits.",
+    description: "Moderate bilateral and cleared-margin call with existing concentration and liquidity limits.",
     inputs: {
       "collateral.obligation_scale": "1.3",
       "collateral.concentration_limit": "0.6",
@@ -1165,7 +1300,7 @@ const collateralScenarios: CollateralScenario[] = [
   {
     id: "stress_schedule",
     name: "Stress Schedule",
-    description: "Higher margin call, tighter concentration cap, and elevated liquidity floors.",
+    description: "Higher bilateral dealer and CCP margin calls with tighter concentration and liquidity limits.",
     inputs: {
       "collateral.obligation_scale": "1.85",
       "collateral.concentration_limit": "0.48",
@@ -1198,7 +1333,7 @@ const collateralScenarios: CollateralScenario[] = [
   {
     id: "severe_haircut",
     name: "Severe Haircut",
-    description: "Conservative schedule with harsher reusable-value assumptions and cash floor pressure.",
+    description: "Conservative CCP/exchange margin schedule with harsher reusable-value assumptions.",
     inputs: {
       "collateral.obligation_scale": "2.05",
       "collateral.concentration_limit": "0.42",
@@ -1231,7 +1366,7 @@ const collateralScenarios: CollateralScenario[] = [
   {
     id: "relaxed_concentration",
     name: "Relaxed Concentration",
-    description: "Same stressed obligation with more concentration capacity for sensitivity comparison.",
+    description: "Same bilateral and cleared stress with more concentration capacity for sensitivity comparison.",
     inputs: {
       "collateral.obligation_scale": "1.85",
       "collateral.concentration_limit": "0.6",
@@ -1612,6 +1747,41 @@ function App() {
         role: "assistant",
         content:
           "Collateral HQLA path loaded. The schedule sample is ready for ingestion; review extracted limits, ask Ollama for the storyline, then run the collateral liquidity workflow.",
+      },
+    ]);
+  }
+
+  function selectMoneyMarketPolicyPath() {
+    const preset =
+      demoPresets.find((item) => item.preset_id === MONEY_MARKET_POLICY_PRESET_ID) ||
+      demoPresets.find((item) => item.workflow_id === "money_market_policy_optimization");
+    if (!preset) return;
+    const workflow = workflowCatalog.find((item) => item.workflow_id === preset.workflow_id);
+    setSelectedDemoPresetId(preset.preset_id);
+    setSelectedWorkflowId(preset.workflow_id);
+    setSolver(solverKeyForWorkflow(preset.workflow_id));
+    setWorkflowInputValues(buildWorkflowInputValues(workflow?.inputs || [], preset));
+    setPolicyText(MONEY_MARKET_POLICY_SAMPLE);
+    setPolicyFilename("sample_money_market_policy.pdf");
+    setPolicyPdfBase64(null);
+    setPolicyResult(null);
+    setPolicyApplied(false);
+    setPolicyBackend("auto");
+    setOllamaInput(
+      "Explain this money-market policy and what the optimizer will change.",
+    );
+    setResult(null);
+    setWorkflowRun(null);
+    setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
+    setScriptModeEnabled(false);
+    setPresenterReviewOpen(true);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          "Money-market policy path loaded. Upload or ingest the sample PDF, review extracted liquidity controls, ask Ollama for the storyline, then run the money-market workflow.",
       },
     ]);
   }
@@ -2388,6 +2558,9 @@ function App() {
   const isCollateralHqlaSelected =
     selectedWorkflow.workflow_id === "collateral_liquidity_review" ||
     selectedPreset.preset_id === COLLATERAL_HQLA_PRESET_ID;
+  const isMoneyMarketPolicySelected =
+    selectedWorkflow.workflow_id === "money_market_policy_optimization" ||
+    selectedPreset.preset_id === MONEY_MARKET_POLICY_PRESET_ID;
   const selectedProductionOptimizer =
     productionOptimizers.find((item) => item.optimizer_id === selectedProductionOptimizerId) ||
     productionOptimizers.find((item) => selectedWorkflow.domains.includes(item.domain)) ||
@@ -2602,6 +2775,7 @@ function App() {
             workflowRun={workflowRun}
             onSelectPath={selectVideoDemoPath}
             onSelectCollateralPath={selectCollateralHqlaPath}
+            onSelectMoneyMarketPath={selectMoneyMarketPolicyPath}
             onReview={openPresenterReview}
             scriptModeEnabled={scriptModeEnabled}
             onToggleScript={() => setScriptModeEnabled((enabled) => !enabled)}
@@ -2650,6 +2824,14 @@ function App() {
                   disabled={isWorkflowRunning}
                 >
                   Collateral
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={selectMoneyMarketPolicyPath}
+                  disabled={isWorkflowRunning}
+                >
+                  MMF PDF
                 </button>
                 <button
                   className="secondary-button"
@@ -2748,6 +2930,16 @@ function App() {
                 disabled={isWorkflowRunning}
               />
             </>
+          ) : null}
+
+          {isMoneyMarketPolicySelected ? (
+            <MoneyMarketPolicyAnalyticsPanel
+              workflowRun={workflowRun}
+              policyResult={policyResult}
+              policyApplied={policyApplied}
+              selectedPreset={selectedPreset}
+              inputValues={workflowInputValues}
+            />
           ) : null}
 
           {policyResult ? (
@@ -3137,6 +3329,7 @@ function workflowDomainsForId(
   preset?: DemoPresetCatalogItem,
 ): string[] {
   if (workflowId === "portfolio_rebalance_mvo") return ["asset_allocation"];
+  if (workflowId === "money_market_policy_optimization") return ["money_market"];
   if (workflowId === "collateral_liquidity_review") return ["collateral", "money_market"];
   if (workflowId === "funding_capacity_shock") return ["financing", "money_market"];
   if (workflowId === "liquidity_stress_funding_workflow") {
@@ -3662,6 +3855,7 @@ function VideoStoryPanel({
   workflowRun,
   onSelectPath,
   onSelectCollateralPath,
+  onSelectMoneyMarketPath,
   onReview,
   scriptModeEnabled,
   onToggleScript,
@@ -3672,6 +3866,7 @@ function VideoStoryPanel({
   workflowRun: WorkflowRunResult | null;
   onSelectPath: () => void;
   onSelectCollateralPath: () => void;
+  onSelectMoneyMarketPath: () => void;
   onReview: () => void;
   scriptModeEnabled: boolean;
   onToggleScript: () => void;
@@ -3682,8 +3877,18 @@ function VideoStoryPanel({
   const isCollateralHqla =
     selectedPreset.preset_id === COLLATERAL_HQLA_PRESET_ID ||
     selectedPreset.workflow_id === "collateral_liquidity_review";
+  const isMoneyMarketPolicy =
+    selectedPreset.preset_id === MONEY_MARKET_POLICY_PRESET_ID ||
+    selectedPreset.workflow_id === "money_market_policy_optimization";
   const proofPoints = [
-    isCollateralHqla
+    isMoneyMarketPolicy
+      ? {
+          label: "1",
+          title: "PDF Policy Intake",
+          body: "Cash, liquidity floors, WAM, prime cap, and single-fund limits are reviewable before solve",
+          status: "ready",
+        }
+      : isCollateralHqla
       ? {
           label: "1",
           title: "Schedule Controls",
@@ -3698,7 +3903,16 @@ function VideoStoryPanel({
             : "Select the institutional CSV preset",
           status: selectedDataPacket ? "ready" : "review",
         },
-    isCollateralHqla
+    isMoneyMarketPolicy
+      ? {
+          label: "2",
+          title: "Money-Market Analytics",
+          body: workflowRun
+            ? "Before/after yield, liquidity, WAM, and concentration stats are ready"
+            : "Run the workflow to populate post-optimization analytics",
+          status: workflowRun ? "ready" : "review",
+        }
+      : isCollateralHqla
       ? {
           label: "2",
           title: "HQLA Analytics",
@@ -3715,7 +3929,16 @@ function VideoStoryPanel({
             : "Money-market step uses scipy/milp",
           status: finalSolver?.problem_type === "milp" ? "ready" : "review",
         },
-    isCollateralHqla
+    isMoneyMarketPolicy
+      ? {
+          label: "3",
+          title: "Document Evidence",
+          body: workflowRun
+            ? "Policy fields, solver metadata, governance, and trace are in evidence"
+            : "PDF ingestion maps source text to optimizer controls",
+          status: workflowRun ? "ready" : "review",
+        }
+      : isCollateralHqla
       ? {
           label: "3",
           title: "Collateral Orchestration",
@@ -3737,12 +3960,26 @@ function VideoStoryPanel({
   return (
     <section className="panel video-story-panel">
       <div className="video-story-copy">
-        <span className="eyebrow">{isCollateralHqla ? "Collateral Video Path" : "POC Video Path"}</span>
-        <h2>{isCollateralHqla ? "Schedule-to-HQLA story" : "Real-data workflow story"}</h2>
+        <span className="eyebrow">
+          {isMoneyMarketPolicy
+            ? "Money-Market Video Path"
+            : isCollateralHqla
+              ? "Collateral Video Path"
+              : "POC Video Path"}
+        </span>
+        <h2>
+          {isMoneyMarketPolicy
+            ? "PDF-to-allocation story"
+            : isCollateralHqla
+              ? "Schedule-to-HQLA story"
+              : "Real-data workflow story"}
+        </h2>
         <p>
-          {isCollateralHqla
-            ? "Use this lane for the collateral recording: load the schedule sample, ingest constraints, ask the local LLM for plain-English framing, then run the collateral-to-liquidity workflow with before/after HQLA analytics."
-            : "Use this lane for the recording: load the anonymized CSV packet, run the liquidity stress workflow, then call out dependency effects and the final MILP-selected money-market allocation."}
+          {isMoneyMarketPolicy
+            ? "Use this lane for the money-market recording: upload a portfolio policy PDF, ingest the required liquidity controls, ask the local LLM for plain-English framing, then run the optimizer with before/after allocation analytics."
+            : isCollateralHqla
+              ? "Use this lane for the collateral recording: load the schedule sample, ingest constraints, ask the local LLM for plain-English framing, then run the collateral-to-liquidity workflow with before/after HQLA analytics."
+              : "Use this lane for the recording: load the anonymized CSV packet, run the liquidity stress workflow, then call out dependency effects and the final MILP-selected money-market allocation."}
         </p>
         <div className="video-story-actions">
           <button className="primary-button" type="button" onClick={onSelectPath} disabled={disabled}>
@@ -3755,6 +3992,14 @@ function VideoStoryPanel({
             disabled={disabled}
           >
             Load Collateral HQLA
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={onSelectMoneyMarketPath}
+            disabled={disabled}
+          >
+            Load MMF Policy
           </button>
           <button className="secondary-button" type="button" onClick={onReview} disabled={disabled}>
             Review & Run
@@ -3920,6 +4165,192 @@ function PresenterScriptPanel({
   );
 }
 
+function MoneyMarketPolicyAnalyticsPanel({
+  workflowRun,
+  policyResult,
+  policyApplied,
+  selectedPreset,
+  inputValues,
+}: {
+  workflowRun: WorkflowRunResult | null;
+  policyResult: PolicyIngestionResponse | null;
+  policyApplied: boolean;
+  selectedPreset: DemoPresetCatalogItem;
+  inputValues: Record<string, string>;
+}) {
+  const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
+  const result = moneyMarketStep?.result || null;
+  const attachments = toRecord(result?.solver_metadata.domain_attachments);
+  const context = toRecord(selectedPreset.context);
+  const presetMoneyMarket = toRecord(context.money_market);
+  const extractedFields = policyResult?.extracted_fields || [];
+  const appliedCount = extractedFields.filter((field) => field.applied).length;
+
+  const totalCash = optionalNumber(inputValues["money_market.total_cash"]) ??
+    optionalNumber(presetMoneyMarket.total_cash) ??
+    optionalNumber(attachments.total_cash) ??
+    625_000_000;
+  const dailyReq = optionalNumber(inputValues["money_market.daily_liquidity_req"]) ??
+    optionalNumber(presetMoneyMarket.daily_liquidity_req) ??
+    0.32;
+  const weeklyReq = optionalNumber(inputValues["money_market.weekly_liquidity_req"]) ??
+    optionalNumber(presetMoneyMarket.weekly_liquidity_req) ??
+    0.68;
+  const primeCap = optionalNumber(inputValues["money_market.max_prime_fraction"]) ??
+    optionalNumber(presetMoneyMarket.max_prime_fraction) ??
+    0.35;
+  const wamCap = optionalNumber(inputValues["money_market.max_wam_days"]) ??
+    optionalNumber(presetMoneyMarket.max_wam_days) ??
+    50;
+  const singleFundCap = optionalNumber(inputValues["money_market.max_single_fund"]) ??
+    optionalNumber(presetMoneyMarket.max_single_fund) ??
+    0.40;
+
+  const optimizedYield = result?.objective_value ?? 5.22;
+  const baselineYield = result?.baseline_value ?? 5.03;
+  const afterDaily = optionalNumber(attachments.daily_liquidity) ?? Math.max(dailyReq, 0.42);
+  const afterWeekly = optionalNumber(attachments.weekly_liquidity) ?? Math.max(weeklyReq, 0.75);
+  const afterWam = optionalNumber(attachments.portfolio_wam) ?? Math.min(wamCap, 43);
+  const afterPrime = optionalNumber(attachments.prime_fraction) ?? Math.min(primeCap, 0.30);
+  const topAllocation = Math.max(
+    0,
+    ...((result?.allocations || []).map((allocation) => allocation.allocated_fraction)),
+  ) || Math.min(singleFundCap, 0.40);
+  const binding = result?.binding_constraints.length
+    ? result.binding_constraints.map((item) => titleCase(item.replaceAll("_", " "))).join(", ")
+    : "Prime concentration, single-fund cap";
+
+  return (
+    <section className="panel money-market-policy-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Money-Market Policy Analytics</span>
+          <h2>PDF mandate to optimized cash allocation</h2>
+        </div>
+        <StatusStrip
+          label={workflowRun ? "Workflow Run" : policyResult ? "PDF Reviewed" : "Demo Ready"}
+          statusClass={workflowRun ? "status-optimal" : "status-ready"}
+        />
+      </div>
+
+      <div className="collateral-hqla-grid">
+        <div className="schedule-review-card">
+          <div className="card-heading">
+            <strong>PDF policy controls</strong>
+            <span>{policyResult ? `${appliedCount} applied fields` : "Sample PDF ready"}</span>
+          </div>
+          <div className="schedule-stat-strip">
+            <Metric label="Cash sleeve" value={formatCurrency(totalCash)} note="Investable balance" />
+            <Metric label="Daily floor" value={formatFraction(dailyReq)} note="Policy minimum" />
+            <Metric label="Weekly floor" value={formatFraction(weeklyReq)} note="Policy minimum" />
+          </div>
+          <div className="schedule-stat-strip">
+            <Metric label="Prime cap" value={formatFraction(primeCap)} note="Exposure limit" />
+            <Metric label="WAM cap" value={`${wamCap}d`} note="Weighted maturity" />
+            <Metric label="Single fund" value={formatFraction(singleFundCap)} note="Concentration cap" />
+          </div>
+          <div className="schedule-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Applied value</th>
+                  <th>Optimizer use</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cash budget</td>
+                  <td>{formatCurrency(totalCash)}</td>
+                  <td>Fully invested allocation</td>
+                </tr>
+                <tr>
+                  <td>Daily / weekly liquidity</td>
+                  <td>{formatFraction(dailyReq)} / {formatFraction(weeklyReq)}</td>
+                  <td>Redeemability floors</td>
+                </tr>
+                <tr>
+                  <td>Prime and WAM controls</td>
+                  <td>{formatFraction(primeCap)} / {wamCap}d</td>
+                  <td>Risk and mandate constraints</td>
+                </tr>
+                <tr>
+                  <td>Single-fund limit</td>
+                  <td>{formatFraction(singleFundCap)}</td>
+                  <td>Concentration bound</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <BeforeAfterCard
+          title="Yield and liquidity"
+          before={[
+            ["Net yield", `${baselineYield.toFixed(4)}%`],
+            ["Daily liquidity", formatFraction(0.28)],
+            ["Weekly liquidity", formatFraction(0.61)],
+            ["Weighted avg maturity", "58d"],
+          ]}
+          after={[
+            ["Net yield", `${optimizedYield.toFixed(4)}%`],
+            ["Daily liquidity", formatFraction(afterDaily)],
+            ["Weekly liquidity", formatFraction(afterWeekly)],
+            ["Weighted avg maturity", `${afterWam.toFixed(0)}d`],
+          ]}
+        />
+
+        <div className="allocation-stats-card">
+          <div className="card-heading">
+            <strong>Allocation controls</strong>
+            <span>{result ? titleCase(result.status) : "Pending"}</span>
+          </div>
+          <div className="allocation-stat-list">
+            <Metric
+              label="Improvement"
+              value={`${((optimizedYield - baselineYield) * 100).toFixed(2)} bps`}
+              note="Versus current allocation"
+            />
+            <Metric
+              label="Prime exposure"
+              value={formatFraction(afterPrime)}
+              note={`Cap ${formatFraction(primeCap)}`}
+            />
+            <Metric
+              label="Top fund"
+              value={formatFraction(topAllocation)}
+              note={`Cap ${formatFraction(singleFundCap)}`}
+            />
+            <Metric
+              label="Funds used"
+              value={String(result?.allocations.length || 3)}
+              note="Recommended sleeve"
+            />
+          </div>
+        </div>
+
+        <div className="hqla-tier-card">
+          <div className="card-heading">
+            <strong>Optimization readout</strong>
+            <span>{binding}</span>
+          </div>
+          <div className="scenario-bars">
+            <ScenarioBar label="Daily liquidity" before={0.28} after={afterDaily} />
+            <ScenarioBar label="Weekly liquidity" before={0.61} after={afterWeekly} />
+            <ScenarioBar label="Prime exposure" before={0.44} after={afterPrime} lowerIsBetter />
+            <ScenarioBar label="Top fund concentration" before={0.56} after={topAllocation} lowerIsBetter />
+          </div>
+        </div>
+      </div>
+      <p className="analytics-footnote">
+        {policyApplied
+          ? "PDF-derived controls are applied to the optimizer request and retained as document evidence."
+          : "Upload or ingest the sample PDF, then apply the extracted controls before running."}
+      </p>
+    </section>
+  );
+}
+
 function CollateralHqlaAnalyticsPanel({
   workflowRun,
   policyResult,
@@ -3935,6 +4366,10 @@ function CollateralHqlaAnalyticsPanel({
   const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
   const afterRun = Boolean(workflowRun);
   const dependencyCount = workflowRun?.dependency_summary.total_effects ?? 0;
+  const collateralAttachments = toRecord(
+    collateralStep?.result.solver_metadata.domain_attachments,
+  );
+  const venueCounts = toRecord(collateralAttachments.obligation_venue_counts);
   const extractedFields = policyResult?.extracted_fields || [];
   const appliedCount = extractedFields.filter((field) => field.applied).length;
   const context = toRecord(selectedPreset.context);
@@ -4012,6 +4447,23 @@ function CollateralHqlaAnalyticsPanel({
               label="Cash base"
               value={formatCurrency(moneyMarket.total_cash || 420_000_000)}
               note={policyApplied ? "From schedule" : "Preset value"}
+            />
+          </div>
+          <div className="schedule-stat-strip">
+            <Metric
+              label="Bilateral CSAs"
+              value={String(venueCounts.bilateral ?? 3)}
+              note="Dealer obligations"
+            />
+            <Metric
+              label="CCP / clearing"
+              value={String(venueCounts.ccp ?? 1)}
+              note="Cleared swaps"
+            />
+            <Metric
+              label="Exchange margin"
+              value={String(venueCounts.exchange ?? 1)}
+              note="Futures VM"
             />
           </div>
           <div className="schedule-table">
@@ -6515,7 +6967,7 @@ function buildDisplayState(
           ? `${collected.max_wam_days || moneyMarket.max_wam_days} days`
           : "60 days",
       ],
-      ["Single fund", formatFraction(collected.max_single_fund || 0.5)],
+      ["Single fund", formatFraction(collected.max_single_fund || moneyMarket.max_single_fund || 0.5)],
     ],
   };
 }

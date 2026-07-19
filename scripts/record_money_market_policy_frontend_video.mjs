@@ -11,22 +11,22 @@ const { chromium } = require("playwright");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontendDir = path.join(repoRoot, "frontend", "app");
-const outDir = path.join(repoRoot, "video_examples", "collateral");
-const tmpDir = path.join(repoRoot, "tmp", "video", "frontend-collateral-hqla");
+const outDir = path.join(repoRoot, "video_examples", "money_market");
+const tmpDir = path.join(repoRoot, "tmp", "video", "frontend-money-market-policy");
 const apiUrl = "http://127.0.0.1:8000";
 const uiUrl = "http://127.0.0.1:5173";
-const outputPath = path.join(outDir, "collateral-hqla-frontend-orchestration-demo.mp4");
-const targetSeconds = 102;
+const samplePdf = path.join(repoRoot, "examples", "policies", "sample_money_market_policy.pdf");
+const outputPath = path.join(outDir, "money-market-pdf-policy-optimization-demo.mp4");
+const targetSeconds = 104;
 
 const sleeps = {
-  opening: 4000,
-  short: 1800,
+  opening: 3500,
   medium: 3500,
   long: 6000,
   run: 8000,
 };
 
-const totalStages = 11;
+const totalStages = 10;
 
 function stage(number, title, body, action) {
   return { number, total: totalStages, title, body, action };
@@ -39,6 +39,7 @@ async function main() {
 
   const processes = [];
   try {
+    await fs.access(samplePdf);
     if (!(await urlOk(`${apiUrl}/api/health`))) {
       processes.push(startApi());
       await waitForUrl(`${apiUrl}/api/health`, 30000);
@@ -74,46 +75,58 @@ async function main() {
       stage(
         1,
         "Start In The Live Front-End",
-        "This is a real browser recording of the demo UI, not a rendered storyboard.",
-        "Open the collateral HQLA workflow lane",
+        "This is a real browser capture of the money-market optimizer demo path.",
+        "Open the money-market policy workflow lane",
       ),
     );
     await page.waitForTimeout(sleeps.opening);
 
-    await clickByRoleMatch(page, "button", /Load Collateral HQLA/);
-    await ensureCollateralPathLoaded(page);
+    await clickByRoleMatch(page, "button", /Load MMF Policy/);
+    await ensureMoneyMarketPathLoaded(page);
     await caption(
       page,
       stage(
         2,
-        "Load Collateral HQLA Path",
-        "The preset represents a stressed collateral book with bilateral CSAs, CCP margin, and exchange margin.",
-        "Populate the schedule text and workflow inputs",
+        "Load The Money-Market Policy Path",
+        "The workflow is scoped to one optimizer: allocate the cash sleeve under policy-derived liquidity and concentration controls.",
+        "Select Treasury MMF Policy Optimization",
       ),
     );
     await page.waitForTimeout(sleeps.medium);
 
-    await panelFocus(page, "Schedule Intake");
-    await clickByRole(page, "button", "Ingest Schedule");
+    await panelFocus(page, "IPS Ingestion");
+    await page.getByLabel("Upload IPS document").setInputFiles(samplePdf);
     await caption(
       page,
       stage(
         3,
-        "Ingest The Collateral Schedule",
-        "Auto mode can use local Ollama when available; deterministic extraction and validation produce structured workflow fields.",
-        "Extract cash, liquidity floors, WAM, prime cap, obligation scale, and concentration limit",
+        "Upload The Portfolio Policy PDF",
+        "The source document describes current cash, required daily and weekly liquidity, prime exposure, WAM, and single-fund limits.",
+        "Attach sample_money_market_policy.pdf",
       ),
     );
-    await page.waitForTimeout(sleeps.long);
+    await page.waitForTimeout(sleeps.medium);
 
-    await clickByRole(page, "button", "Apply Schedule");
+    await clickByRole(page, "button", "Ingest IPS");
     await caption(
       page,
       stage(
         4,
-        "Convert Text Into Optimizer Controls",
-        "Haircuts and eligibility are visible in the schedule review; the concentration cap and liquidity limits feed the optimizer request.",
-        "Apply extracted fields to the workflow",
+        "Ingest The PDF Into Structured Fields",
+        "Auto mode can use local Ollama when available; deterministic validation keeps the extracted controls stable and reviewable.",
+        "Extract cash, liquidity floors, WAM, prime cap, single-fund cap, and governance",
+      ),
+    );
+    await page.waitForTimeout(sleeps.long);
+
+    await clickByRole(page, "button", "Apply Fields");
+    await caption(
+      page,
+      stage(
+        5,
+        "Apply Policy Controls To The Optimizer",
+        "The extracted PDF fields become money-market workflow inputs before anything is solved.",
+        "Update optimizer controls from document evidence",
       ),
     );
     await page.waitForTimeout(sleeps.medium);
@@ -126,35 +139,10 @@ async function main() {
     await caption(
       page,
       stage(
-        5,
-        "Use Production Adapter Contracts",
-        "The workflow will run the collateral production adapter first and the money-market production adapter second.",
+        6,
+        "Use The Production Adapter Contract",
+        "The run captures model config, data snapshot, solver method, and reproducibility fingerprint for the money-market adapter.",
         "Switch runtime from phase 1 to production",
-      ),
-    );
-    await page.waitForTimeout(sleeps.medium);
-
-    await panelFocus(page, "Collateral Scenario Comparison");
-    await clickByRoleMatch(page, "button", /Severe Haircut/);
-    await caption(
-      page,
-      stage(
-        6,
-        "Compare Schedule Stress Paths",
-        "The severe haircut case shows how tighter reusable-value and concentration assumptions change liquidity and HQLA outcomes.",
-        "Apply the severe haircut scenario",
-      ),
-    );
-    await page.waitForTimeout(sleeps.long);
-
-    await clickByRoleMatch(page, "button", /Stress Schedule/);
-    await caption(
-      page,
-      stage(
-        6,
-        "Select The Presentation Stress Case",
-        "The stress schedule keeps the story realistic: higher margin calls, a 48% asset-class cap, and elevated cash liquidity floors.",
-        "Return to the stress schedule",
       ),
     );
     await page.waitForTimeout(sleeps.medium);
@@ -163,7 +151,7 @@ async function main() {
     await fillTextbox(
       page,
       "Ollama chat input",
-      "Explain how the collateral schedule changes the HQLA and liquidity workflow.",
+      "Explain this money-market PDF policy and what the optimizer will change.",
     );
     if (await ollamaAvailable()) {
       await clickByRole(page, "button", "Ask Ollama");
@@ -171,9 +159,9 @@ async function main() {
         page,
         stage(
           7,
-          "Explain With The Local LLM",
-          "The chat can translate the schedule and workflow result into plain English for a nontechnical reviewer.",
-          "Ask Ollama for the collateral-liquidity storyline",
+          "Discuss The Mandate With The Local LLM",
+          "The LLM chat gives a plain-English storyline while the optimizer remains deterministic and auditable.",
+          "Ask Ollama to summarize the PDF-derived constraints",
         ),
       );
       await page.waitForTimeout(12000);
@@ -183,8 +171,8 @@ async function main() {
         stage(
           7,
           "Local LLM Panel Is Ready",
-          "When Ollama is running, this panel explains how schedule terms become optimizer inputs and reviewer evidence.",
-          "Continue with deterministic workflow execution",
+          "When Ollama is running, this chat explains the policy and output for nontechnical stakeholders.",
+          "Continue with deterministic optimizer execution",
         ),
       );
       await page.waitForTimeout(sleeps.medium);
@@ -196,33 +184,21 @@ async function main() {
       page,
       stage(
         8,
-        "Run The Orchestrated Workflow",
-        "Step 1 posts efficient collateral across bilateral, CCP, and exchange obligations. Step 2 reallocates cash under the resulting liquidity constraints.",
-        "Execute collateral optimizer, then money-market optimizer",
+        "Run The Money-Market Optimizer",
+        "The optimizer maximizes net yield subject to cash budget, liquidity floors, prime cap, WAM limit, and single-fund concentration.",
+        "Execute the policy-constrained liquidity allocation",
       ),
     );
     await page.waitForTimeout(sleeps.run);
 
-    await panelFocus(page, "Sequential Workflow");
+    await panelFocus(page, "Money-Market Policy Analytics");
     await caption(
       page,
       stage(
         9,
-        "Review Sequential Execution",
-        "The timeline shows the two optimizers, dependency effects, validation checks, and trace events in execution order.",
-        "Confirm collateral ran before money-market allocation",
-      ),
-    );
-    await page.waitForTimeout(sleeps.long);
-
-    await panelFocus(page, "Collateral HQLA Analytics");
-    await caption(
-      page,
-      stage(
-        10,
         "Compare Before And After Analytics",
-        "The HQLA panel shows the effect of schedule-driven allocation on liquidity profile, tier mix, concentration usage, and reusable collateral.",
-        "Inspect post-optimization liquidity and HQLA exposure",
+        "The analytics panel shows baseline versus optimized yield, daily and weekly liquidity, WAM, prime exposure, top-fund concentration, and funds used.",
+        "Inspect clean post-optimization output",
       ),
     );
     await page.waitForTimeout(sleeps.long);
@@ -231,10 +207,10 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
-        "Trace Document Text To Constraints",
-        "Each applied schedule field is mapped to a validated input, constraint family, and optimizer step for audit review.",
-        "Connect evidence snippets to optimizer controls",
+        10,
+        "Trace The PDF To Optimizer Controls",
+        "Every applied PDF field maps to a validated input, constraint family, and money-market optimizer step.",
+        "Review source evidence and control mapping",
       ),
     );
     await page.waitForTimeout(sleeps.long);
@@ -243,25 +219,13 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
+        10,
         "Close With Evidence",
-        "The evidence room brings together document extraction, model versions, solver metadata, validation, governance, and workflow trace.",
+        "The final proof includes document evidence, model and solver metadata, validation checks, governance state, and trace events.",
         "Prepare the run for stakeholder review",
       ),
     );
     await page.waitForTimeout(sleeps.long);
-
-    await panelFocus(page, "Governance Review");
-    await caption(
-      page,
-      stage(
-        11,
-        "Governance Stays In The Loop",
-        "The demo remains a recommendation unless approval tiers, materiality thresholds, and policy-change controls allow further action.",
-        "Review approval tier and materiality settings",
-      ),
-    );
-    await page.waitForTimeout(sleeps.medium);
 
     const elapsed = Date.now() - startedAt;
     const remainingMs = Math.max(0, targetSeconds * 1000 - elapsed);
@@ -269,10 +233,10 @@ async function main() {
       await caption(
         page,
         stage(
-          11,
+          10,
           "Presentation-Ready Proof",
-          "The clip shows schedule ingestion, LLM-assisted explanation, deterministic optimization, HQLA analytics, and governance evidence in one flow.",
-          "End of collateral HQLA orchestration demo",
+          "The clip shows PDF upload, LLM-assisted discussion, deterministic ingestion, optimization, analytics, and evidence in one money-market workflow.",
+          "End of money-market optimizer demo",
         ),
       );
       await page.waitForTimeout(remainingMs);
@@ -422,7 +386,7 @@ async function caption(page, data) {
     const stageLabel = document.createElement("span");
     stageLabel.textContent = `Stage ${value.number} of ${value.total}`;
     const workflowLabel = document.createElement("span");
-    workflowLabel.textContent = "Collateral HQLA Orchestration";
+    workflowLabel.textContent = "Money-Market Policy Optimization";
     kicker.append(stageLabel, workflowLabel);
 
     const title = document.createElement("div");
@@ -466,15 +430,15 @@ async function panelFocus(page, headingText) {
   }, headingText);
 }
 
-async function ensureCollateralPathLoaded(page) {
+async function ensureMoneyMarketPathLoaded(page) {
   try {
-    await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 6000 });
+    await page.getByText("Money-Market Policy Analytics", { exact: true }).first().waitFor({ timeout: 6000 });
     return;
   } catch {
-    // The video path button can be off-screen or covered in some browser captures.
+    // The video path button can be off-screen or covered in some captures.
   }
-  await clickByRoleMatch(page, "button", /^Collateral$/);
-  await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 12000 });
+  await clickByRoleMatch(page, "button", /MMF PDF|Load MMF Policy/);
+  await page.getByText("Money-Market Policy Analytics", { exact: true }).first().waitFor({ timeout: 12000 });
 }
 
 async function clickByRole(page, role, name) {
@@ -561,32 +525,23 @@ async function convertToMp4(webmPath, mp4Path, durationSeconds) {
 
 async function findFfmpeg() {
   const candidates = [
-    path.join(
-      frontendDir,
-      "node_modules",
-      "@ffmpeg-installer",
-      "darwin-arm64",
-      "ffmpeg",
-    ),
-    path.join(
-      frontendDir,
-      "node_modules",
-      "@ffmpeg-installer",
-      "darwin-x64",
-      "ffmpeg",
-    ),
+    path.join(frontendDir, "node_modules", "@ffmpeg-installer", "darwin-arm64", "ffmpeg"),
+    path.join(frontendDir, "node_modules", "@ffmpeg-installer", "darwin-x64", "ffmpeg"),
     "ffmpeg",
   ];
   for (const candidate of candidates) {
-    if (candidate === "ffmpeg") return candidate;
     try {
-      await fs.access(candidate);
-      return candidate;
+      const child = spawn(candidate, ["-version"], { stdio: "ignore" });
+      const ok = await new Promise((resolve) => {
+        child.on("error", () => resolve(false));
+        child.on("exit", (code) => resolve(code === 0));
+      });
+      if (ok) return candidate;
     } catch {
-      // Keep looking for the bundled binary.
+      // Try the next candidate.
     }
   }
-  return "ffmpeg";
+  throw new Error("Unable to find ffmpeg. Run npm install in frontend/app first.");
 }
 
 main().catch((error) => {

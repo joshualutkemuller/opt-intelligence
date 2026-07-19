@@ -35,6 +35,8 @@ class CollateralObligation:
     counterparty: str
     required_value: float     # USD, post-haircut
     eligible_asset_classes: list[str] = field(default_factory=list)
+    venue_type: str = "bilateral"      # bilateral, ccp, exchange
+    agreement_type: str = "CSA"        # CSA, cleared swap, futures margin, exchange margin
 
 
 def simulate_inventory(
@@ -86,26 +88,49 @@ def simulate_inventory(
             )
         )
 
-    # Three counterparty obligations
+    # Multiple realistic collateral demands: bilateral CSAs plus cleared
+    # derivatives and exchange margin. Required values are post-haircut.
     obligation_scale = overrides.get("obligation_scale", 1.0)
     obligations = [
         CollateralObligation(
             obligation_id="OBL_001",
-            counterparty="Counterparty A",
-            required_value=50e6 * obligation_scale,
+            counterparty="Dealer A Bilateral CSA",
+            required_value=30e6 * obligation_scale,
             eligible_asset_classes=["govt_bond", "corp_bond", "cash"],
+            venue_type="bilateral",
+            agreement_type="ISDA CSA",
         ),
         CollateralObligation(
             obligation_id="OBL_002",
-            counterparty="Counterparty B",
-            required_value=30e6 * obligation_scale,
+            counterparty="Dealer B Bilateral CSA",
+            required_value=20e6 * obligation_scale,
             eligible_asset_classes=["govt_bond", "cash"],
+            venue_type="bilateral",
+            agreement_type="ISDA CSA",
         ),
         CollateralObligation(
             obligation_id="OBL_003",
-            counterparty="Counterparty C",
-            required_value=20e6 * obligation_scale,
+            counterparty="Dealer C Bilateral CSA",
+            required_value=15e6 * obligation_scale,
             eligible_asset_classes=["govt_bond", "corp_bond", "equity", "cash"],
+            venue_type="bilateral",
+            agreement_type="ISDA CSA",
+        ),
+        CollateralObligation(
+            obligation_id="OBL_004",
+            counterparty="LCH SwapClear",
+            required_value=25e6 * obligation_scale,
+            eligible_asset_classes=["govt_bond", "corp_bond", "cash"],
+            venue_type="ccp",
+            agreement_type="cleared swaps initial margin",
+        ),
+        CollateralObligation(
+            obligation_id="OBL_005",
+            counterparty="CME Futures Exchange",
+            required_value=10e6 * obligation_scale,
+            eligible_asset_classes=["govt_bond", "corp_bond", "cash"],
+            venue_type="exchange",
+            agreement_type="futures variation margin",
         ),
     ]
     return assets, obligations

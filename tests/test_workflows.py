@@ -14,6 +14,7 @@ from decision_intelligence.workflows import (
     DEFAULT_WORKFLOW_REGISTRY,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
     LIQUIDITY_STRESS_WORKFLOW_ID,
+    MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
     PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     SequentialWorkflowRunner,
     WorkflowRegistry,
@@ -66,6 +67,7 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     ]
     liquidity = next(
@@ -101,6 +103,7 @@ def test_default_workflow_registry_builds_all_templates():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID: ["collateral", "money_market"],
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID: ["financing", "money_market"],
         LIQUIDITY_STRESS_WORKFLOW_ID: ["financing", "collateral", "money_market"],
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID: ["money_market"],
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID: ["asset_allocation"],
     }
 
@@ -117,6 +120,7 @@ def test_loads_workflow_template_configs():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     ]
     liquidity = next(
@@ -167,6 +171,7 @@ def test_loads_demo_presets_for_registered_workflows():
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
+        "treasury_mmf_policy_optimization",
     ]
     executive = next(
         preset for preset in presets if preset.preset_id == "executive_liquidity_stress"
@@ -284,6 +289,28 @@ def test_workflow_builder_applies_execution_mode_to_steps():
         step.request.context["governance"]["production_constraint_change"] is True
         for step in plan.steps
     )
+
+
+def test_money_market_policy_workflow_builds_single_step_plan():
+    plan = DEFAULT_WORKFLOW_REGISTRY.build(
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
+        portfolio_id="PORT_MMF_901",
+        seed=53,
+        context={
+            "money_market": {
+                "total_cash": 625_000_000,
+                "daily_liquidity_req": 0.32,
+                "weekly_liquidity_req": 0.68,
+            }
+        },
+    )
+
+    assert plan.workflow_id == MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID
+    assert [step.domain for step in plan.steps] == ["money_market"]
+    step = plan.steps[0]
+    assert step.step_id == "money_market_001"
+    assert step.request.context["total_cash"] == 625_000_000
+    assert step.request.context["daily_liquidity_req"] == 0.32
 
 
 def test_load_workflow_config_rejects_invalid_dependency(tmp_path):

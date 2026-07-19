@@ -2,7 +2,7 @@ Sample Investment Policy Statement - Collateral Liquidity Review
 
 Mandate: Collateral and cash review for Portfolio PORT_COLL_210.
 
-Margin call scale is 165%. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
+Margin call scale is 165%. Obligations include Dealer A Bilateral CSA, Dealer B Bilateral CSA, Dealer C Bilateral CSA, LCH SwapClear cleared swaps initial margin, and CME Futures Exchange variation margin. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
 
 Prime fund exposure must not exceed 30%. Weighted average maturity must stay under 50 days. Single-fund limit may not exceed 45%.
 

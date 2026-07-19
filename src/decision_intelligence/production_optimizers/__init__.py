@@ -6,11 +6,6 @@ defines the production-grade contracts those optimizers can migrate toward.
 """
 
 from .adapter import ProductionOptimizerAdapter
-from .adapters import (
-    AssetAllocationMVOProductionAdapter,
-    CollateralProductionAdapter,
-    MoneyMarketProductionAdapter,
-)
 from .contracts import (
     ConstraintFamilySpec,
     DataContractSpec,
@@ -47,3 +42,19 @@ __all__ = [
     "SolverBackendSpec",
     "build_default_production_registry",
 ]
+
+
+def __getattr__(name: str):
+    if name == "AssetAllocationMVOProductionAdapter":
+        from .adapters import AssetAllocationMVOProductionAdapter
+
+        return AssetAllocationMVOProductionAdapter
+    if name == "CollateralProductionAdapter":
+        from .adapters import CollateralProductionAdapter
+
+        return CollateralProductionAdapter
+    if name == "MoneyMarketProductionAdapter":
+        from .adapters import MoneyMarketProductionAdapter
+
+        return MoneyMarketProductionAdapter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

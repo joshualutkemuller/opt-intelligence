@@ -13,6 +13,7 @@ LIQUIDITY_STRESS_WORKFLOW_ID = "liquidity_stress_funding_workflow"
 FUNDING_CAPACITY_SHOCK_WORKFLOW_ID = "funding_capacity_shock"
 COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID = "collateral_liquidity_review"
 PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID = "portfolio_rebalance_mvo"
+MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID = "money_market_policy_optimization"
 
 _PRODUCTION_ADAPTER_BY_DOMAIN = {
     "asset_allocation": "production.asset_allocation.mvo",
@@ -392,6 +393,65 @@ def build_portfolio_rebalance_mvo_workflow(
                     direction=ObjectiveDirection.MAXIMIZE,
                     metric="utility",
                     context=asset_context,
+                ),
+            ),
+        ],
+    )
+
+
+def build_money_market_policy_optimization_workflow(
+    *,
+    portfolio_id: str = "PORT_001",
+    seed: int = 42,
+    context: dict[str, Any] | None = None,
+) -> WorkflowPlan:
+    """Build a one-step money-market allocation workflow from a policy document."""
+
+    overrides = dict(context or {})
+    workflow_context = _workflow_context(portfolio_id, seed, overrides, "money_market_policy")
+    workflow_context["problem_type"] = overrides.get("problem_type", "lp")
+    money_market_context = _domain_context(
+        overrides,
+        "money_market",
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
+        {
+            "n_funds": 8,
+            "total_cash": 500_000_000,
+            "daily_liquidity_req": 0.30,
+            "weekly_liquidity_req": 0.60,
+            "max_prime_fraction": 0.40,
+            "max_wam_days": 55,
+            "max_single_fund": 0.45,
+            "max_funds": 4,
+            "min_allocation_fraction": 0.05,
+        },
+        workflow_context,
+    )
+
+    return WorkflowPlan(
+        workflow_id=MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
+        name="Money Market Policy Optimization",
+        description=(
+            "Runs a one-step money-market allocation optimizer from a parsed "
+            "cash policy, mandate, or portfolio review document."
+        ),
+        context=workflow_context,
+        steps=[
+            WorkflowStep(
+                step_id="money_market_001",
+                domain="money_market",
+                name="Policy-constrained liquidity allocation",
+                description=(
+                    "Allocate cash across eligible money-market funds while "
+                    "respecting liquidity floors, prime exposure, WAM, and "
+                    "single-fund limits from the ingested document."
+                ),
+                request=_request(
+                    domain="money_market",
+                    portfolio_id=portfolio_id,
+                    direction=ObjectiveDirection.MAXIMIZE,
+                    metric="yield",
+                    context=money_market_context,
                 ),
             ),
         ],

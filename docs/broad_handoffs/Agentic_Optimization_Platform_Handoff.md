@@ -768,10 +768,11 @@ counts, dependency effects, and governance evidence.
 
 **Collateral Scenario UI Update:** ✅ The HQLA lane now includes explicit
 scenario comparison cards for base schedule, stress schedule, severe haircut,
-and relaxed-concentration cases. Selecting a scenario updates the actual
-workflow inputs for collateral concentration, obligation scale, money-market
-cash, liquidity floors, WAM, prime exposure, and single-fund cap before review
-and execution.
+and relaxed-concentration cases. The stress story now covers multiple
+bilateral CSA counterparties plus cleared derivatives/exchange margin
+obligations. Selecting a scenario updates the actual workflow inputs for
+collateral concentration, obligation scale, money-market cash, liquidity
+floors, WAM, prime exposure, and single-fund cap before review and execution.
 
 **Production Adapter UI Update:** ✅ The browser demo now exposes the production
 optimizer catalog and runtime switch in a **Production Adapter** panel. The MVO
@@ -793,6 +794,18 @@ JSON/PDF/CSV/XLSX evidence package.
 document-to-constraint traceability table that maps each applied IPS/schedule
 field from source evidence into the validated workflow input, optimizer
 constraint family, and target workflow step.
+
+**Video Caption Update:** ✅ The real front-end collateral HQLA recorder now
+burns in dynamic stage captions with a stage number, title, plain-English
+explanation, current action, and progress bar so the MP4 can stand alone in a
+nontechnical presentation.
+
+**Money-Market PDF Demo Update:** ✅ A dedicated
+`money_market_policy_optimization` workflow and **Treasury MMF Policy
+Optimization** preset now support a real front-end MP4 showing PDF upload,
+policy ingestion, optional local Ollama discussion, production adapter runtime,
+before/after money-market analytics, document-to-constraint traceability,
+governance, and evidence-room review.
 
 **Next:** persist audit narratives by workflow/session ID and include the
 narrative markdown in the same evidence export bundle.

@@ -105,9 +105,25 @@ class CollateralProductionAdapter(ProductionOptimizerAdapter):
         }
         allocations = allocation_dicts(native_solution.get("allocations", []))
         binding_constraints = list(native_solution.get("binding_constraints", []))
+        obligations = problem.get("obligations", [])
+        venue_counts: dict[str, int] = {}
+        for obligation in obligations:
+            venue = str(getattr(obligation, "venue_type", "bilateral"))
+            venue_counts[venue] = venue_counts.get(venue, 0) + 1
         domain_attachments: dict[str, Any] = {
             "asset_count": len(problem.get("assets", [])),
-            "obligation_count": len(problem.get("obligations", [])),
+            "obligation_count": len(obligations),
+            "obligation_venue_counts": venue_counts,
+            "obligation_counterparties": [
+                {
+                    "obligation_id": getattr(obligation, "obligation_id", ""),
+                    "counterparty": getattr(obligation, "counterparty", ""),
+                    "venue_type": getattr(obligation, "venue_type", "bilateral"),
+                    "agreement_type": getattr(obligation, "agreement_type", "CSA"),
+                    "required_value": getattr(obligation, "required_value", 0.0),
+                }
+                for obligation in obligations
+            ],
             "concentration_limit": problem.get("conc_limit"),
         }
 
@@ -162,6 +178,12 @@ class CollateralProductionAdapter(ProductionOptimizerAdapter):
                 "problem_summary": {
                     "asset_count": len(problem.get("assets", [])),
                     "obligation_count": len(problem.get("obligations", [])),
+                    "obligation_venue_counts": to_jsonable(
+                        normalized_result.domain_attachments.get(
+                            "obligation_venue_counts",
+                            {},
+                        )
+                    ),
                     "concentration_limit": problem.get("conc_limit"),
                     "solver_spec": to_jsonable(problem.get("solver_spec")),
                 },

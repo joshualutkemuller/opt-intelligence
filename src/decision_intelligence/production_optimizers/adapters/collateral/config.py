@@ -143,6 +143,8 @@ def collateral_optimizer_config() -> ModelConfigSpec:
                     "counterparty",
                     "required_value",
                     "eligible_asset_classes",
+                    "venue_type",
+                    "agreement_type",
                 ],
             },
             quality_checks=[

@@ -8,10 +8,11 @@ platform.
 | File | Purpose |
 |---|---|
 | `audit/policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
-| `collateral/collateral-hqla-frontend-orchestration-demo.mp4` | 102 second real front-end browser capture showing collateral schedule ingestion, production runtime, scenario comparison, workflow execution, traceability, analytics, governance, and evidence room review. |
+| `collateral/collateral-hqla-frontend-orchestration-demo.mp4` | 102 second real front-end browser capture with burned-in dynamic captions showing collateral schedule ingestion, bilateral/CCP/exchange obligations, production runtime, scenario comparison, workflow execution, traceability, analytics, governance, and evidence room review. |
 | `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
 | `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
+| `money_market/money-market-pdf-policy-optimization-demo.mp4` | 104 second real front-end browser capture with burned-in dynamic captions showing money-market PDF upload, ingestion, Ollama-assisted discussion, optimization, before/after analytics, traceability, governance, and evidence review. |
 | `mvo/governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
 | `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
@@ -60,7 +61,47 @@ collateral HQLA schedule path, and converts the captured browser video to:
 - `video_examples/collateral/collateral-hqla-frontend-orchestration-demo.mp4`
 
 The clip is intentionally paced for a 1:30 to 2:00 presentation slot and shows
-the live UI rather than a rendered storyboard.
+the live UI rather than a rendered storyboard. It burns in dynamic captions with
+stage number, stage title, plain-English explanation, current action, and
+progress bar.
+
+The workflow shown is `collateral_liquidity_review`:
+
+1. `collateral_001` runs the collateral optimizer against bilateral CSA,
+   clearing-house, and exchange margin obligations.
+2. `money_market_001` then runs the money-market optimizer using the downstream
+   liquidity context from the collateral step.
+
+The schedule ingestion path is configured for auto mode: local Ollama-assisted
+extraction can be used when available, and deterministic extraction/validation
+keeps the converted fields structured before they become optimizer inputs.
+
+## Record Real Front-End Money-Market PDF Demo
+
+```bash
+.venv/bin/python scripts/generate_sample_money_market_policy_pdf.py
+node scripts/record_money_market_policy_frontend_video.mjs
+```
+
+This recorder starts the local FastAPI backend and Vite React app when needed,
+loads the **Treasury MMF Policy Optimization** path, uploads
+`examples/policies/sample_money_market_policy.pdf`, ingests the document,
+optionally asks local Ollama for a plain-English policy explanation, runs the
+money-market optimizer, and records:
+
+- `video_examples/money_market/money-market-pdf-policy-optimization-demo.mp4`
+
+The workflow shown is `money_market_policy_optimization`:
+
+1. `money_market_001` runs the money-market optimizer against PDF-derived cash,
+   liquidity, WAM, prime exposure, and single-fund concentration controls.
+2. The UI shows before/after yield, daily and weekly liquidity, WAM, prime
+   exposure, top-fund concentration, recommended fund count, document-to-
+   constraint traceability, governance, and evidence-room metadata.
+
+The ingestion path uses auto mode: local Ollama-assisted extraction can be used
+when available, while deterministic validation keeps the converted fields
+structured and repeatable before solve.
 
 ## Regenerate IPS Analytics MP4
 

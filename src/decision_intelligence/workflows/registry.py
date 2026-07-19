@@ -16,10 +16,12 @@ from .library import (
     COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
     LIQUIDITY_STRESS_WORKFLOW_ID,
+    MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
     PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
     build_collateral_liquidity_review_workflow,
     build_funding_capacity_shock_workflow,
     build_liquidity_stress_funding_workflow,
+    build_money_market_policy_optimization_workflow,
     build_portfolio_rebalance_mvo_workflow,
 )
 from .types import WorkflowPlan
@@ -127,6 +129,9 @@ def _default_builder_map() -> dict[str, WorkflowBuilder]:
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID: build_collateral_liquidity_review_workflow,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID: build_funding_capacity_shock_workflow,
         LIQUIDITY_STRESS_WORKFLOW_ID: build_liquidity_stress_funding_workflow,
+        MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID: (
+            build_money_market_policy_optimization_workflow
+        ),
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID: build_portfolio_rebalance_mvo_workflow,
     }
 

@@ -1,0 +1,34 @@
+preset_id: treasury_mmf_policy_optimization
+version: 1
+name: Treasury MMF Policy Optimization
+description: >
+  Money-market desk walkthrough showing a PDF policy upload, extraction of cash,
+  liquidity, WAM, prime, and concentration controls, then an optimized fund
+  allocation with before/after analytics.
+audience: Treasury portfolio managers, liquidity risk, investment operations, and control teams
+workflow_id: money_market_policy_optimization
+portfolio_id: PORT_MMF_901
+seed: 53
+duration_minutes: 5
+context:
+  scenario: treasury_mmf_policy_optimization
+  solver_backend: scipy
+  problem_type: lp
+  money_market:
+    total_cash: 625000000
+    daily_liquidity_req: 0.32
+    weekly_liquidity_req: 0.68
+    max_prime_fraction: 0.35
+    max_wam_days: 50
+    max_single_fund: 0.40
+    max_funds: 4
+    min_allocation_fraction: 0.05
+    policy_source: examples/policies/sample_money_market_policy.pdf
+talking_points:
+  - Upload the money-market portfolio PDF and ingest cash, liquidity, prime, WAM, and single-fund constraints.
+  - Use local Ollama to explain the policy in plain English while deterministic validation keeps fields structured.
+  - Run the money-market optimizer and compare baseline versus optimized yield, liquidity profile, WAM, and fund concentration.
+success_criteria:
+  - PDF policy fields are extracted and mapped to money-market workflow inputs.
+  - Money-market workflow completes with the production adapter available.
+  - Before/after analytics show clean yield, liquidity, WAM, prime, and allocation outputs.

@@ -311,6 +311,7 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
         "collateral_liquidity_review",
         "funding_capacity_shock",
         "liquidity_stress_funding_workflow",
+        "money_market_policy_optimization",
         "portfolio_rebalance_mvo",
     ]
     assert body["workflows"][0]["version"] == 1
@@ -459,6 +460,7 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
         "production_constraint_change_review",
+        "treasury_mmf_policy_optimization",
     ]
     mvo = body["presets"][0]
     assert mvo["workflow_id"] == "portfolio_rebalance_mvo"
