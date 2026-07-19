@@ -8,6 +8,7 @@ platform.
 | File | Purpose |
 |---|---|
 | `audit/policy-to-audit-evidence-example.mp4` | 68 second silent presentation clip showing policy ingestion through audit evidence packaging. |
+| `combined/collateral-and-money-market-frontend-demo.mp4` | 210 second combined front-end presentation reel with two-second dynamic title cards for Example #1: Collateral Management and Example #2: Money Market Optimization. |
 | `collateral/collateral-hqla-frontend-orchestration-demo.mp4` | 102 second real front-end browser capture with burned-in dynamic captions showing collateral schedule ingestion, bilateral/CCP/exchange obligations, production runtime, scenario comparison, workflow execution, traceability, analytics, governance, and evidence room review. |
 | `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
@@ -75,6 +76,20 @@ The workflow shown is `collateral_liquidity_review`:
 The schedule ingestion path is configured for auto mode: local Ollama-assisted
 extraction can be used when available, and deterministic extraction/validation
 keeps the converted fields structured before they become optimizer inputs.
+
+## Generate Combined Front-End Demo Reel
+
+```bash
+.venv/bin/python scripts/generate_combined_frontend_demo_video.py
+```
+
+This combines the latest real front-end collateral and money-market MP4s into:
+
+- `video_examples/combined/collateral-and-money-market-frontend-demo.mp4`
+
+The output inserts a two-second animated title card before each example so the
+presentation clearly separates **Example #1: Collateral Management** from
+**Example #2: Money Market Optimization**.
 
 ## Record Real Front-End Money-Market PDF Demo
 
