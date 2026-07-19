@@ -12,7 +12,7 @@ platform.
 | `collateral/collateral-liquidity-hqla-orchestration-example.mp4` | 88 second silent collateral stress clip showing schedule upload, local LLM chat, orchestration, before/after liquidity analytics, HQLA tier exposure, allocation stats, and governance review. |
 | `collateral/collateral-schedule-ingestion-stress-example.mp4` | 82 second silent collateral clip showing schedule ingestion, haircut and concentration-limit extraction, preflight, optimization, and before/after HQLA analytics. |
 | `collateral/liquidity-stress-orchestration-example.mp4` | 72 second silent presentation clip showing a cross-workflow liquidity stress story. |
-| `money_market/money-market-pdf-policy-optimization-demo.mp4` | 104 second MP4 with burned-in dynamic captions showing money-market PDF upload, ingestion, Ollama-assisted discussion, optimization, before/after analytics, traceability, governance, and evidence review. |
+| `money_market/money-market-pdf-policy-optimization-demo.mp4` | 104 second MP4 with burned-in dynamic captions showing a visible first-page PDF preview, money-market PDF upload, ingestion, Ollama-assisted discussion, optimization, before/after analytics, traceability, governance, and evidence review. |
 | `mvo/governed-mvo-presentation-example.mp4` | Short alternate presentation clip for the governed MVO asset-allocation workflow. |
 | `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
@@ -112,7 +112,9 @@ directly:
 
 This writes the same checked-in MP4 path under `video_examples/money_market/`
 using real local money-market optimizer output and presentation-safe rendered
-captions.
+captions. The opening stage renders the first page of
+`examples/policies/sample_money_market_policy.pdf` into the frame so audiences
+can see that a real PDF document is being ingested.
 
 ## Regenerate IPS Analytics MP4
 

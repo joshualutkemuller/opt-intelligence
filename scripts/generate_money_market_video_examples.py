@@ -26,6 +26,7 @@ from decision_intelligence.optimizers import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = REPO_ROOT / "video_examples" / "money_market"
 TMP_DIR = REPO_ROOT / "tmp" / "video" / "money_market_policy"
+SAMPLE_PDF = REPO_ROOT / "examples" / "policies" / "sample_money_market_policy.pdf"
 WIDTH = 1280
 HEIGHT = 720
 FPS = 10
@@ -61,12 +62,14 @@ class Scene:
     right_rows: list[str]
     chat: list[tuple[str, str]] | None = None
     bars: list[tuple[str, float, str]] | None = None
+    show_pdf_preview: bool = False
 
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     result = _run_money_market_optimizer()
+    pdf_preview = _render_pdf_preview()
     frames_dir = TMP_DIR / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +78,7 @@ def main() -> None:
     for frame_idx in range(total_frames):
         second = frame_idx / FPS
         scene = _scene_at(scenes, second)
-        image = _draw_frame(scene, result, second / SECONDS)
+        image = _draw_frame(scene, result, second / SECONDS, pdf_preview)
         image.save(frames_dir / f"frame_{frame_idx:05d}.png")
 
     _encode_mp4(
@@ -150,6 +153,7 @@ def _build_scenes(result) -> list[Scene]:
                 "Controls: liquidity, WAM, prime, concentration",
                 "Mode: recommendation",
             ],
+            show_pdf_preview=True,
         ),
         Scene(
             16,
@@ -285,7 +289,12 @@ def _build_scenes(result) -> list[Scene]:
     ]
 
 
-def _draw_frame(scene: Scene, result, progress: float) -> Image.Image:
+def _draw_frame(
+    scene: Scene,
+    result,
+    progress: float,
+    pdf_preview: Image.Image | None,
+) -> Image.Image:
     image = Image.new("RGB", (WIDTH, HEIGHT), COLORS["bg"])
     draw = ImageDraw.Draw(image)
     fonts = _fonts()
@@ -293,8 +302,11 @@ def _draw_frame(scene: Scene, result, progress: float) -> Image.Image:
     _header(draw, fonts)
     _caption(draw, fonts, scene, progress)
     _panel(draw, 36, 116, 584, 384, scene.left_title, scene.left_rows, fonts)
-    right_rows = scene.right_rows[:3] if scene.bars else scene.right_rows
-    _panel(draw, 660, 116, 584, 384, scene.right_title, right_rows, fonts)
+    if scene.show_pdf_preview and pdf_preview is not None:
+        _pdf_preview_panel(image, draw, 660, 116, 584, 384, pdf_preview, fonts)
+    else:
+        right_rows = scene.right_rows[:3] if scene.bars else scene.right_rows
+        _panel(draw, 660, 116, 584, 384, scene.right_title, right_rows, fonts)
     _metrics(draw, fonts, result)
     if scene.chat:
         _chat(draw, fonts, scene.chat)
@@ -380,6 +392,42 @@ def _panel(
         draw.rounded_rectangle((x + 18, yy, x + w - 18, yy + 34), radius=5, fill=COLORS["panel2"])
         _wrapped(draw, row, x + 32, yy + 8, w - 72, fonts["small"], COLORS["ink"], 1)
         yy += 42
+
+
+def _pdf_preview_panel(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    preview: Image.Image,
+    fonts: dict[str, ImageFont.ImageFont],
+) -> None:
+    draw.rounded_rectangle(
+        (x, y, x + w, y + h), radius=8, fill=COLORS["panel"], outline=COLORS["line"]
+    )
+    draw.text((x + 18, y + 16), "Actual PDF Preview", fill=COLORS["ink"], font=fonts["subhead"])
+    draw.text(
+        (x + 350, y + 19),
+        "sample_money_market_policy.pdf",
+        fill=COLORS["cyan"],
+        font=fonts["small_bold"],
+    )
+
+    max_w, max_h = w - 56, h - 78
+    ratio = min(max_w / preview.width, max_h / preview.height)
+    size = (int(preview.width * ratio), int(preview.height * ratio))
+    thumb = preview.resize(size, Image.Resampling.LANCZOS)
+    px = x + (w - size[0]) // 2
+    py = y + 58
+    draw.rounded_rectangle(
+        (px - 8, py - 8, px + size[0] + 8, py + size[1] + 8),
+        radius=6,
+        fill="#E5EDF0",
+        outline=COLORS["cyan"],
+    )
+    image.paste(thumb, (px, py))
 
 
 def _metrics(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont], result) -> None:
@@ -546,6 +594,61 @@ def _ffmpeg() -> str:
     if found:
         return found
     raise RuntimeError("ffmpeg not found. Run npm install in frontend/app.")
+
+
+def _render_pdf_preview() -> Image.Image | None:
+    if not SAMPLE_PDF.exists():
+        return None
+
+    prefix = TMP_DIR / "sample_money_market_policy_preview"
+    renderer = shutil.which("pdftoppm")
+    if renderer:
+        subprocess.run(
+            [
+                renderer,
+                "-png",
+                "-singlefile",
+                "-r",
+                "90",
+                str(SAMPLE_PDF),
+                str(prefix),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        rendered = prefix.with_suffix(".png")
+        if rendered.exists():
+            return Image.open(rendered).convert("RGB")
+
+    return _fallback_pdf_preview()
+
+
+def _fallback_pdf_preview() -> Image.Image:
+    preview = Image.new("RGB", (612, 792), "#F8FAFC")
+    draw = ImageDraw.Draw(preview)
+    fonts = _fonts()
+    draw.text(
+        (48, 56),
+        "Money Market Portfolio Review - Treasury Mandate",
+        fill="#0F172A",
+        font=fonts["title"],
+    )
+    draw.text((48, 112), "Portfolio Scope", fill="#0F766E", font=fonts["subhead"])
+    rows = [
+        "Portfolio PORT_MMF_901",
+        "Total investable cash balance is $625 million.",
+        "Daily liquidity must be at least 32%.",
+        "Weekly liquidity minimum 68%.",
+        "Prime fund exposure must not exceed 35%.",
+        "Weighted average maturity must stay under 50 days.",
+        "Single-fund exposure must not exceed 40%.",
+    ]
+    y = 154
+    for row in rows:
+        draw.text((60, y), row, fill="#334155", font=fonts["body"])
+        y += 42
+    return preview
 
 
 def _money(value: float) -> str:
