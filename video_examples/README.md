@@ -18,7 +18,9 @@ platform.
 | `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
 | `mvo/mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
+| `operations/margin-call-sla-triage-policy-demo.mp4` | 72 second silent storyboard clip showing margin-call SLA procedure ingestion, deterministic constraint extraction, stressed queue triage, assigned/deferred calls, and evidence-ready operational controls. |
 | `operations/treasury-margin-operations-storyboard-demo.mp4` | 64 second silent storyboard clip rendered at 1.5x pacing, combining the new treasury cash-movement and margin-call workflow production adapters with high-level captions, real local adapter outputs, normalized evidence, and production integration framing. |
+| `operations/treasury-policy-ingestion-cash-movement-demo.mp4` | 72 second silent storyboard clip showing treasury payment policy ingestion, cutoff/buffer/rail-limit extraction, same-day cash movement optimization, recommended transfers, and evidence-ready output. |
 
 ## Regenerate Compelling WebM Examples
 
@@ -153,6 +155,20 @@ The video uses real local adapter outputs for cash moved, transfer count,
 assigned margin amount, capacity usage, binding checks, and evidence metadata.
 It renders the original 96 second storyboard timeline at 1.5x pacing, producing
 a 64 second presentation clip.
+
+The same generator also writes two focused operational policy-ingestion clips:
+
+- `video_examples/operations/treasury-policy-ingestion-cash-movement-demo.mp4`
+- `video_examples/operations/margin-call-sla-triage-policy-demo.mp4`
+
+Those clips use the bundled sample policy documents:
+
+- `examples/policies/sample_treasury_payment_policy.md`
+- `examples/policies/sample_margin_call_sla_procedure.md`
+
+Each focused clip shows source-policy ingestion, deterministic field extraction,
+production adapter execution, before/after operational framing, and
+evidence-ready output.
 
 ## Regenerate IPS Analytics MP4
 
