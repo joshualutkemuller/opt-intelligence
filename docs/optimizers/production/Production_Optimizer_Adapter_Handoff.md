@@ -30,7 +30,9 @@ Initial scaffold:
   workflow prioritization.
 - `contracts.py`: typed model config, data contract, result, preflight, and
   evidence schemas.
-- `execution.py`: execution-isolation boundary.
+- `execution.py`: execution-isolation boundary with in-process, subprocess, and
+  REST examples.
+- `evidence.py`: local persistent evidence store for production optimizer runs.
 - `registry.py`: adapter registry.
 - `README.md`: developer orientation.
 
@@ -197,6 +199,10 @@ Implemented:
 - Production optimizer catalog endpoint for UI discovery.
 - Front-end production-runtime controls, adapter selection, catalog fallback,
   and evidence-oriented summary panels.
+- Execution isolation examples for in-process Python, subprocess JSON over
+  stdio, and REST-style JSON POST services.
+- Opt-in persistent evidence storage under a configurable local artifact root,
+  including JSON, CSV, XLSX, and manifest files.
 - Production workflow templates and demo presets for asset allocation,
   collateral, money market, treasury cash movement, and margin-call workflow.
 - Focused tests for successful runs, blocked preflight, evidence attachment,
@@ -227,6 +233,10 @@ For tonight's closeout, the adapter handoff should be considered complete when:
   evidence, and result attachments for every current adapter.
 - ✅ Tests cover adapter lifecycle, registry discovery, orchestrator production
   runtime, and API catalog exposure.
+- ✅ Execution isolation has working in-process, subprocess, and REST examples
+  with unit tests.
+- ✅ Production evidence can be persisted to local JSON, CSV, XLSX, and manifest
+  artifacts through an opt-in runtime context flag.
 - ✅ Documentation identifies the remaining firm-integration work separately
   from the POC-ready platform contract.
 
@@ -239,9 +249,10 @@ the next credible path from demo to firm integration:
   available.
 - Add real data adapters for holdings, risk models, curves, collateral
   schedules, funding facilities, counterparty limits, and policy repositories.
-- Add execution-isolation examples for subprocess, REST/gRPC, batch, and
+- Extend execution isolation from examples to firm-managed gRPC, batch, and
   containerized optimizer runtimes.
-- Persist evidence artifacts to controlled storage with immutable run IDs.
+- Move local evidence artifacts into controlled storage with immutable run IDs,
+  retention policy, and access controls.
 - Add model-risk approval metadata, config promotion workflow, and versioned
   data-snapshot lineage.
 - Expand duals, shadow prices, infeasibility diagnostics, and scenario grids

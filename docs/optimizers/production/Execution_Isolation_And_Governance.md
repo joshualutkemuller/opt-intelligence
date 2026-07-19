@@ -35,6 +35,14 @@ Controls:
 - stdout/stderr capture;
 - structured JSON input/output.
 
+Implementation status:
+
+- `SubprocessExecutionBackend` sends a JSON payload containing the isolation
+  spec and problem to stdin.
+- The subprocess must return one JSON object on stdout.
+- Nonzero return codes, missing stdout, and invalid JSON are normalized as
+  execution errors.
+
 ### REST
 
 Best for:
@@ -50,6 +58,13 @@ Controls:
 - retry policy;
 - response schema validation;
 - service version capture.
+
+Implementation status:
+
+- `RestExecutionBackend` posts the same spec/problem JSON shape to the
+  configured endpoint.
+- Timeout and retry count come from `ExecutionIsolationSpec`.
+- HTTP errors and invalid JSON are normalized as execution errors.
 
 ### gRPC
 
@@ -177,3 +192,37 @@ For Excel/CSV export, the platform should write evidence into tabular sections:
 - `scenario_grid`;
 - `approvals`;
 - `artifacts`.
+
+## Local Evidence Persistence
+
+Production runtime now supports opt-in local evidence persistence:
+
+```json
+{
+  "optimizer_runtime": "production",
+  "persist_production_evidence": true,
+  "evidence_artifact_root": "artifacts/evidence"
+}
+```
+
+When enabled, `LocalProductionEvidenceStore` writes a deterministic run
+directory using the request ID, optimizer ID, and reproducibility fingerprint.
+Each run directory contains:
+
+- `manifest.json`;
+- `evidence.json`;
+- `normalized_result.json`;
+- `summary.csv`;
+- `allocations.csv`;
+- `summary.xlsx`.
+
+The orchestrator attaches the storage manifest under:
+
+```text
+result.solver_metadata.production_evidence.artifacts.persistent_evidence
+```
+
+This is intentionally a local-first implementation. The production version
+should replace the local path with firm-controlled object storage, immutable run
+IDs, retention policy, access control, and lineage links to model and data
+catalogs.

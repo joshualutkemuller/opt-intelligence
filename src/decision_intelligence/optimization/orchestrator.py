@@ -21,6 +21,7 @@ from decision_intelligence.explanation import build_explanation_report
 from decision_intelligence.governance.approvals import ApprovalDecision, GovernanceController
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.production_optimizers.contracts import NormalizedOptimizerResult
+from decision_intelligence.production_optimizers.evidence import LocalProductionEvidenceStore
 from decision_intelligence.production_optimizers.registry import (
     ProductionOptimizerRegistry,
     build_default_production_registry,
@@ -171,6 +172,7 @@ class OptimizationOrchestrator:
         adapter = self.production_registry.get(adapter_id)
         t0 = time.perf_counter()
         normalized = adapter.run(request)
+        normalized = _persist_production_evidence_if_requested(request, normalized)
         elapsed = time.perf_counter() - t0
         result = _normalized_to_optimization_result(request, normalized)
 
@@ -334,3 +336,28 @@ def _calculate_improvement(
 def _is_allocation_item_payload(allocation: dict[str, Any]) -> bool:
     required = {"asset_id", "label", "allocated_value", "allocated_fraction"}
     return required.issubset(allocation)
+
+
+def _persist_production_evidence_if_requested(
+    request: OptimizationRequest,
+    normalized: NormalizedOptimizerResult,
+) -> NormalizedOptimizerResult:
+    if not request.context.get("persist_production_evidence"):
+        return normalized
+    if normalized.evidence is None:
+        return normalized
+
+    root = request.context.get("evidence_artifact_root", "artifacts/evidence")
+    manifest = LocalProductionEvidenceStore(root).persist(
+        request=request,
+        normalized_result=normalized,
+    )
+    evidence = normalized.evidence.model_copy(
+        update={
+            "artifacts": {
+                **normalized.evidence.artifacts,
+                "persistent_evidence": manifest.as_dict(),
+            }
+        }
+    )
+    return normalized.model_copy(update={"evidence": evidence})

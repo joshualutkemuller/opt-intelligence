@@ -23,9 +23,28 @@ Current scaffold:
 - `contracts.py` defines richer model configuration, data contracts, execution
   isolation, preflight, normalized result, and evidence contracts.
 - `execution.py` defines the execution-isolation boundary for in-process,
-  subprocess, REST/gRPC, batch, and containerized optimizers.
+  subprocess, REST/gRPC, batch, and containerized optimizers. In-process,
+  subprocess, and REST-style JSON POST examples are implemented.
+- `evidence.py` defines an opt-in local evidence store that persists production
+  run JSON, CSV, XLSX, and manifest artifacts.
 - `registry.py` defines a registry for production adapters.
 
 This scaffold does not replace the current POC optimizers. It gives production
 models a stable integration target that can later be bridged into the existing
 `OptimizationOrchestrator`, workflow registry, governance, and evidence exports.
+
+To persist production evidence locally during a run, include:
+
+```json
+{
+  "optimizer_runtime": "production",
+  "persist_production_evidence": true,
+  "evidence_artifact_root": "artifacts/evidence"
+}
+```
+
+The manifest is attached under:
+
+```text
+result.solver_metadata.production_evidence.artifacts.persistent_evidence
+```

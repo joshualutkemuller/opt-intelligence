@@ -20,6 +20,15 @@ from .contracts import (
     ScenarioKnobSpec,
     SolverBackendSpec,
 )
+from .evidence import EvidenceManifest, LocalProductionEvidenceStore
+from .execution import (
+    InProcessExecutionBackend,
+    OptimizerExecutionBackend,
+    RestExecutionBackend,
+    SubprocessExecutionBackend,
+    backend_for_spec,
+    execute_isolated,
+)
 from .registry import ProductionOptimizerRegistry, build_default_production_registry
 
 __all__ = [
@@ -28,22 +37,30 @@ __all__ = [
     "CollateralProductionAdapter",
     "ConstraintFamilySpec",
     "DataContractSpec",
+    "EvidenceManifest",
     "ExecutionIsolationSpec",
+    "InProcessExecutionBackend",
     "FinancingProductionAdapter",
     "LimitSourceSpec",
+    "LocalProductionEvidenceStore",
     "ModelConfigSpec",
     "ModelLineageSpec",
     "MarginCallWorkflowProductionAdapter",
     "MoneyMarketProductionAdapter",
     "NormalizedOptimizerResult",
     "ObjectiveTermSpec",
+    "OptimizerExecutionBackend",
     "PreflightReport",
     "ProductionOptimizerAdapter",
     "ProductionOptimizerEvidence",
     "ProductionOptimizerRegistry",
+    "RestExecutionBackend",
     "ScenarioKnobSpec",
     "SolverBackendSpec",
+    "SubprocessExecutionBackend",
+    "backend_for_spec",
     "build_default_production_registry",
+    "execute_isolated",
 ]
 
 

@@ -187,6 +187,33 @@ def test_financing_production_runtime(orchestrator):
     assert result.validation.passed
 
 
+def test_production_runtime_can_persist_evidence(orchestrator, tmp_path):
+    result = orchestrator.run(
+        _req(
+            "financing",
+            optimizer_runtime="production",
+            persist_production_evidence=True,
+            evidence_artifact_root=str(tmp_path),
+            data_snapshot_id="SNAP_FIN_PERSISTED",
+            total_funding_need=300_000_000,
+        )
+    )
+
+    manifest = result.solver_metadata["production_evidence"]["artifacts"][
+        "persistent_evidence"
+    ]
+    root = tmp_path / manifest["run_id"]
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert manifest["root"] == str(root)
+    assert (root / "manifest.json").exists()
+    assert (root / manifest["files"]["evidence_json"]).exists()
+    assert (root / manifest["files"]["normalized_result_json"]).exists()
+    assert (root / manifest["files"]["summary_csv"]).exists()
+    assert (root / manifest["files"]["allocations_csv"]).exists()
+    assert (root / manifest["files"]["summary_xlsx"]).exists()
+
+
 def test_cash_movement_production_runtime(orchestrator):
     result = orchestrator.run(
         _req(
