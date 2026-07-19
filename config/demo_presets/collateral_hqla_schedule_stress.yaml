@@ -1,0 +1,37 @@
+preset_id: collateral_hqla_schedule_stress
+version: 1
+name: Collateral HQLA Schedule Stress
+description: >
+  Markets-facing collateral stress walkthrough showing schedule ingestion,
+  haircut and concentration review, HQLA tier preservation, and downstream
+  money-market liquidity impact.
+audience: Collateral management, treasury liquidity, investment risk, and capital teams
+workflow_id: collateral_liquidity_review
+portfolio_id: PORT_HQLA_224
+seed: 31
+duration_minutes: 6
+context:
+  scenario: collateral_hqla_schedule_stress
+  solver_backend: scipy
+  problem_type: lp
+  collateral:
+    obligation_scale: 1.85
+    concentration_limit: 0.48
+    schedule_source: examples/policies/sample_collateral_policy.txt
+    schedule_type: counterparty_collateral_schedule
+    hqla_reporting: true
+  money_market:
+    total_cash: 420000000
+    daily_liquidity_req: 0.35
+    weekly_liquidity_req: 0.65
+    max_prime_fraction: 0.30
+    max_wam_days: 50
+    max_single_fund: 0.45
+talking_points:
+  - Start by loading the collateral schedule sample and ingesting haircuts, cash, and concentration limits.
+  - Ask local Ollama to explain how the schedule changes the optimization workflow.
+  - Run the collateral-to-liquidity workflow and compare before/after HQLA tier exposure.
+success_criteria:
+  - Collateral schedule fields are extracted and reviewable before execution.
+  - Collateral and money-market workflow steps complete.
+  - HQLA liquidity profile and allocation stats are visible alongside governance evidence.

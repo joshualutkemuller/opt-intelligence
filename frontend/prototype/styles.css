@@ -503,7 +503,7 @@ h2 {
 
 .policy-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 8px;
 }
 
@@ -1092,6 +1092,387 @@ h2 {
 .presenter-script-panel {
   display: grid;
   gap: 14px;
+}
+
+.collateral-hqla-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.collateral-hqla-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.2fr) minmax(280px, 0.8fr);
+  gap: 12px;
+}
+
+.schedule-review-card,
+.before-after-card,
+.hqla-tier-card,
+.allocation-stats-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.schedule-review-card {
+  grid-column: span 2;
+}
+
+.card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-heading strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.card-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.schedule-stat-strip,
+.allocation-stat-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.allocation-stat-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule-table table {
+  min-width: 100%;
+}
+
+.before-after-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.comparison-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.comparison-row {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.comparison-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.comparison-row strong {
+  color: var(--text);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.comparison-row.improved strong {
+  color: var(--green);
+}
+
+.hqla-tier-card {
+  gap: 14px;
+}
+
+.hqla-tier-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 8px;
+}
+
+.hqla-tier-row > span,
+.hqla-tier-row > strong {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.hqla-tier-row > strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.hqla-tier-track {
+  height: 18px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.hqla-tier-track i {
+  display: block;
+  min-width: 3px;
+}
+
+.hqla-tier-track .level1,
+.hqla-legend .level1 {
+  background: var(--green);
+}
+
+.hqla-tier-track .level2a,
+.hqla-legend .level2a {
+  background: var(--blue);
+}
+
+.hqla-tier-track .level2b,
+.hqla-legend .level2b {
+  background: var(--amber);
+}
+
+.hqla-tier-track .non-hqla,
+.hqla-legend .non-hqla {
+  background: #b91c1c;
+}
+
+.hqla-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hqla-legend span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.production-adapter-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.production-runtime-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.production-model-card,
+.production-evidence-card,
+.production-contract-card {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-strong);
+}
+
+.production-model-card strong,
+.production-evidence-card strong,
+.production-contract-card strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.production-model-card span,
+.production-evidence-card span,
+.production-contract-card span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.production-evidence-card code {
+  color: var(--blue-deep);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.production-version-list {
+  margin-top: 0;
+}
+
+.production-coverage-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.production-coverage-list li {
+  display: grid;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 3px solid var(--line-strong);
+}
+
+.production-coverage-list li.ready {
+  border-left-color: var(--green);
+}
+
+.production-coverage-list li.missing {
+  border-left-color: var(--amber);
+}
+
+.production-coverage-list strong,
+.production-coverage-list span {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.production-coverage-list strong {
+  color: var(--text);
+}
+
+.production-coverage-list span {
+  color: var(--muted);
+}
+
+.evidence-room-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.evidence-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.evidence-room-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.evidence-section {
+  min-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.evidence-section p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.evidence-field-list,
+.evidence-check-list,
+.evidence-trace-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-trace-list {
+  padding-left: 18px;
+  list-style: decimal;
+}
+
+.evidence-field-list li,
+.evidence-check-list li,
+.evidence-trace-list li {
+  display: grid;
+  gap: 3px;
+  padding-left: 9px;
+  border-left: 3px solid var(--blue);
+}
+
+.evidence-check-list li.warning {
+  border-left-color: var(--amber);
+}
+
+.evidence-check-list li.fail {
+  border-left-color: #b91c1c;
+}
+
+.evidence-check-list li.pass {
+  border-left-color: var(--green);
+}
+
+.evidence-field-list strong,
+.evidence-check-list strong,
+.evidence-trace-list strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.evidence-field-list span,
+.evidence-field-list em,
+.evidence-check-list span,
+.evidence-trace-list span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.evidence-field-list em {
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.evidence-kv-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.evidence-kv-list div {
+  display: grid;
+  gap: 2px;
+}
+
+.evidence-kv-list dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.evidence-kv-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .script-controls {
@@ -2852,7 +3233,10 @@ h2 {
 .workflow-input-field input,
 .workflow-input-field select,
 .model-control input,
-.approval-decision-fields input {
+.approval-decision-fields input,
+.policy-mode-grid input,
+.policy-mode-grid select,
+.policy-ingestion-panel textarea {
   min-height: 32px;
   border-radius: 2px;
   border: 1px solid var(--rim-strong);
@@ -2881,6 +3265,14 @@ h2 {
 .history-card,
 .presenter-review-grid > div,
 .pdf-card,
+.schedule-review-card,
+.before-after-card,
+.hqla-tier-card,
+.allocation-stats-card,
+.production-model-card,
+.production-evidence-card,
+.production-contract-card,
+.evidence-section,
 .metric,
 .constraint-item,
 .validation-check,
@@ -3253,7 +3645,18 @@ h2 {
 }
 
 .workflow-impact-label strong,
-.workflow-impact-value strong {
+.workflow-impact-value strong,
+.card-heading strong,
+.production-model-card strong,
+.production-evidence-card strong,
+.production-contract-card strong,
+.production-coverage-list strong,
+.evidence-field-list strong,
+.evidence-check-list strong,
+.evidence-trace-list strong,
+.evidence-kv-list dd,
+.comparison-row strong,
+.hqla-tier-row > strong {
   color: var(--ink);
   font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
   font-size: 12px;
@@ -3302,6 +3705,19 @@ tbody tr:hover {
   background-size: 25% 100%, 100% 25%, auto;
 }
 
+.hqla-tier-track {
+  border-color: var(--rim-strong);
+  background: #08111d;
+}
+
+.comparison-row {
+  border-bottom-color: var(--rim);
+}
+
+.comparison-row.improved strong {
+  color: var(--positive);
+}
+
 .risk-return-dot {
   color: var(--void);
   background: var(--accent);
@@ -3311,8 +3727,25 @@ tbody tr:hover {
 
 .workflow-trace-grid ol,
 .workflow-trace-grid ul,
-.trace-panel ol {
+.trace-panel ol,
+.comparison-row span,
+.card-heading span,
+.production-model-card span,
+.production-evidence-card span,
+.production-contract-card span,
+.production-coverage-list span,
+.evidence-section p,
+.evidence-field-list span,
+.evidence-field-list em,
+.evidence-check-list span,
+.evidence-trace-list span,
+.evidence-kv-list dt,
+.hqla-tier-row > span {
   color: var(--body);
+}
+
+.production-evidence-card code {
+  color: var(--accent);
 }
 
 .workflow-trace-grid strong,
@@ -3400,6 +3833,8 @@ tbody tr:hover {
   .governance-review-panel,
   .ollama-panel,
   .dashboard-grid,
+  .collateral-hqla-panel,
+  .evidence-room-panel,
   .workflow-comparison-panel,
   .presenter-script-panel,
   .presenter-review-panel,
@@ -3451,12 +3886,25 @@ tbody tr:hover {
   }
 
   .video-story-panel,
+  .collateral-hqla-grid,
+  .evidence-summary-grid,
+  .evidence-room-grid,
   .script-layout,
   .script-proof-strip {
     grid-template-columns: 1fr;
   }
 
   .video-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-review-card {
+    grid-column: auto;
+  }
+
+  .schedule-stat-strip,
+  .allocation-stat-list,
+  .before-after-grid {
     grid-template-columns: 1fr;
   }
 

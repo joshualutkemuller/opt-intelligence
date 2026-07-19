@@ -758,6 +758,31 @@ endpoint, local Ollama-assisted extraction is available through the same
 response contract, and reviewed extraction evidence is persisted into workflow
 run payloads and evidence exports.
 
+**Collateral UI Update:** ✅ The React demo now includes a
+**Collateral HQLA Schedule Stress** browser lane that mirrors the collateral MP4
+storyboards: one-click schedule sample loading, collateral schedule
+ingestion/review/apply controls, local Ollama prompt priming, a
+collateral-to-money-market workflow run path, and before/after HQLA analytics
+for liquidity profile, Fed HQLA tier exposure, concentration usage, allocation
+counts, dependency effects, and governance evidence.
+
+**Production Adapter UI Update:** ✅ The browser demo now exposes the production
+optimizer catalog and runtime switch in a **Production Adapter** panel. The MVO
+workflow can be run through `production.asset_allocation.mvo`, and the UI shows
+model version, config version, solver version, data snapshot ID, data contract,
+execution isolation mode, adapter coverage by workflow domain, and the
+reproducibility fingerprint after a production-backed run. The collateral
+liquidity workflow now supports hybrid production runtime as well:
+`collateral_001` runs through `production.collateral.allocation`, while the
+money-market downstream step remains phase 1 until a production money-market
+adapter is registered.
+
+**Evidence Room UI Update:** ✅ The React demo now includes a live
+**Evidence Room** / audit viewer that combines document extraction snippets,
+model/runtime evidence, solver metadata, validation checks, governance state,
+workflow trace events, and run identifiers before the user exports the formal
+JSON/PDF/CSV/XLSX evidence package.
+
 **Next:** persist audit narratives by workflow/session ID and include the
 narrative markdown in the same evidence export bundle.
 

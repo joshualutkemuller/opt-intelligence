@@ -367,6 +367,7 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
     body = response.json()
     assert [item["preset_id"] for item in body["presets"]] == [
         "balanced_mvo_rebalance",
+        "collateral_hqla_schedule_stress",
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",
@@ -504,6 +505,51 @@ def test_workflow_endpoint_supports_production_runtime_for_mvo():
         "SNAP_MVO_WORKFLOW_API"
     )
     assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
+
+
+def test_workflow_endpoint_supports_hybrid_production_runtime_for_collateral():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "collateral_liquidity_review",
+            "portfolio_id": "PORT_COLLATERAL_PROD_WORKFLOW",
+            "seed": 42,
+            "optimizer_runtime": "production",
+            "production_optimizer_id": "production.collateral.allocation",
+            "context": {
+                "collateral": {
+                    "obligation_scale": 1.65,
+                    "data_snapshot_id": "SNAP_COLLATERAL_WORKFLOW_API",
+                },
+                "money_market": {
+                    "total_cash": 450_000_000,
+                    "daily_liquidity_req": 0.35,
+                    "weekly_liquidity_req": 0.65,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    collateral_step = body["result"]["step_results"][0]
+    money_market_step = body["result"]["step_results"][1]
+    collateral_metadata = collateral_step["result"]["solver_metadata"]
+    money_market_metadata = money_market_step["result"]["solver_metadata"]
+    assert body["result"]["status"] == "complete"
+    assert collateral_step["domain"] == "collateral"
+    assert collateral_metadata["optimizer_runtime"] == "production"
+    assert collateral_metadata["production_optimizer_id"] == (
+        "production.collateral.allocation"
+    )
+    assert collateral_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_COLLATERAL_WORKFLOW_API"
+    )
+    assert money_market_step["domain"] == "money_market"
+    assert money_market_step["request"]["context"]["optimizer_runtime"] == "phase1"
+    assert money_market_metadata.get("optimizer_runtime") != "production"
+    assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
+    assert body["plan"]["steps"][1]["request"]["context"]["optimizer_runtime"] == "phase1"
 
 
 def test_workflow_compare_endpoint_returns_scenario_deltas():

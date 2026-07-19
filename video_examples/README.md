@@ -40,6 +40,12 @@ outputs are:
 - `video_examples/collateral/collateral-schedule-ingestion-stress-example.mp4`
 - `video_examples/collateral/collateral-liquidity-hqla-orchestration-example.mp4`
 
+The React demo workspace now has a matching **Load Collateral HQLA** path. Start
+the UI with `make demo-ui`, click **Load Collateral HQLA**, ingest the sample
+collateral schedule, use **Ollama Chat** for the live explanation, then run the
+collateral liquidity workflow and show **Collateral HQLA Analytics** for
+before/after liquidity, HQLA tier exposure, and allocation stats.
+
 ## Regenerate IPS Analytics MP4
 
 ```bash

@@ -14,6 +14,15 @@ FUNDING_CAPACITY_SHOCK_WORKFLOW_ID = "funding_capacity_shock"
 COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID = "collateral_liquidity_review"
 PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID = "portfolio_rebalance_mvo"
 
+_PRODUCTION_ADAPTER_BY_DOMAIN = {
+    "asset_allocation": "production.asset_allocation.mvo",
+    "collateral": "production.collateral.allocation",
+}
+
+_DOMAIN_BY_PRODUCTION_ADAPTER = {
+    adapter_id: domain for domain, adapter_id in _PRODUCTION_ADAPTER_BY_DOMAIN.items()
+}
+
 
 def build_liquidity_stress_funding_workflow(
     *,
@@ -428,13 +437,48 @@ def _domain_context(
     if not isinstance(domain_overrides, dict):
         raise TypeError(f"context['{domain}'] must be a dict when provided.")
 
-    return {
+    context = {
         **workflow_context,
         **defaults,
         **shared,
         **domain_overrides,
         "workflow_id": workflow_id,
         "workflow_domain": domain,
+    }
+    return _runtime_context_for_domain(context, domain)
+
+
+def _runtime_context_for_domain(
+    context: dict[str, Any],
+    domain: str,
+) -> dict[str, Any]:
+    """Apply production runtime only to workflow domains with adapters."""
+
+    if context.get("optimizer_runtime") != "production":
+        context.pop("production_optimizer_id", None)
+        return {**context, "optimizer_runtime": "phase1"}
+
+    configured_adapter = context.get("production_optimizer_id")
+    configured_domain = (
+        _DOMAIN_BY_PRODUCTION_ADAPTER.get(str(configured_adapter))
+        if configured_adapter
+        else None
+    )
+    default_adapter = _PRODUCTION_ADAPTER_BY_DOMAIN.get(domain)
+
+    if configured_domain and configured_domain != domain:
+        context.pop("production_optimizer_id", None)
+        return {**context, "optimizer_runtime": "phase1"}
+
+    adapter_id = str(configured_adapter or default_adapter or "")
+    if not adapter_id:
+        context.pop("production_optimizer_id", None)
+        return {**context, "optimizer_runtime": "phase1"}
+
+    return {
+        **context,
+        "optimizer_runtime": "production",
+        "production_optimizer_id": adapter_id,
     }
 
 

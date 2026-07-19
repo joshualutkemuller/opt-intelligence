@@ -34,6 +34,16 @@ After the workflow completes, use **Export Evidence** to download:
 - `*-evidence.pdf`: compact stakeholder proof packet for review or screen
   share.
 
+Before downloading, point to **Evidence Room** in the browser. It shows the
+same proof chain live: document snippets, model/runtime evidence, solver
+metadata, validation checks, governance state, and workflow trace events. For a
+production-adapter proof point, choose **Balanced MVO Rebalance**, switch
+**Production Adapter** from **Phase 1** to **Production**, run the workflow, and
+show the model/config versions, data snapshot ID, solver version, and
+reproducibility fingerprint. The collateral path can also run as a hybrid
+production workflow: the collateral step uses the production adapter and the
+money-market step remains phase 1.
+
 Then run the terminal proof:
 
 ```bash
@@ -106,6 +116,21 @@ Use these when the presentation needs a markets-facing collateral stress story:
 
 - `video_examples/collateral/collateral-schedule-ingestion-stress-example.mp4`
 - `video_examples/collateral/collateral-liquidity-hqla-orchestration-example.mp4`
+
+The browser UI now has a matching demo lane:
+
+1. Start the demo with `make demo-ui`.
+2. Open `http://127.0.0.1:5173/`.
+3. Click **Load Collateral HQLA** in the video path panel or **Collateral** in
+   the guided chat quick actions.
+4. In **Schedule Intake**, click **Load Sample**, then **Ingest Schedule**.
+5. Optionally switch the intake backend to **Ollama assisted** or **Auto** when
+   local Ollama is running.
+6. Ask **Ollama Chat** to explain how the schedule changes the workflow.
+7. Click **Review & Run**, then run the collateral liquidity workflow.
+8. Use **Collateral HQLA Analytics** to show before/after liquidity profile,
+   Fed HQLA tier exposure, concentration usage, allocation counts, dependency
+   effects, and governance evidence.
 
 Suggested narration:
 

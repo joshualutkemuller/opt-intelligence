@@ -398,6 +398,38 @@ type DemoDataPacketCatalogApiResponse = {
   packets: DemoDataPacketCatalogItem[];
 };
 
+type ProductionOptimizerCatalogItem = {
+  optimizer_id: string;
+  domain: string;
+  model_name: string;
+  model_version: string;
+  config_version: string;
+  objectives: Array<Record<string, unknown>>;
+  constraints: Array<Record<string, unknown>>;
+  data_contract: {
+    required_datasets?: string[];
+    optional_datasets?: string[];
+    quality_checks?: string[];
+    snapshot_required?: boolean;
+  };
+  solver: {
+    backend?: string;
+    problem_family?: string;
+    vendor?: string;
+    version?: string;
+    parameters?: Record<string, unknown>;
+  };
+  execution: {
+    mode?: string;
+    timeout_seconds?: number;
+    resource_profile?: string;
+  };
+};
+
+type ProductionOptimizerCatalogApiResponse = {
+  optimizers: ProductionOptimizerCatalogItem[];
+};
+
 type PresenterStatus = "ready" | "review" | "blocked";
 
 type PresenterIssue = {
@@ -424,6 +456,8 @@ type WorkflowRunPayload = {
   portfolio_id: string;
   seed: number;
   execution_mode?: string;
+  optimizer_runtime?: "phase1" | "production";
+  production_optimizer_id?: string;
   context: Record<string, unknown>;
   policy_ingestion?: PolicyIngestionResponse | null;
 };
@@ -501,6 +535,18 @@ const COMPARISON_SETS_KEY = "decision-intelligence.comparisonSets.v1";
 const MAX_RUN_HISTORY = 12;
 const MAX_COMPARISON_SETS = 8;
 const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
+const COLLATERAL_HQLA_PRESET_ID = "collateral_hqla_schedule_stress";
+const COLLATERAL_SCHEDULE_SAMPLE = `Collateral Schedule - Counterparty Stress Addendum
+
+Mandate: Collateral and cash review for Portfolio PORT_HQLA_224.
+
+Margin call scale is 185%. Total cash balance is $420 million. Daily liquidity must be at least 35%. Weekly liquidity minimum 65%.
+
+Prime fund exposure must not exceed 30%. Weighted average maturity must stay under 50 days. Single-fund limit may not exceed 45%.
+
+Eligible collateral and haircuts: US Treasury 2%, Agency MBS 6%, IG Corporate Bonds 12%, Equity ETF 22%, Cash 0%. No single collateral asset class may exceed 48% of posted value.
+
+Governance: Materiality notional is $420 million. Any policy override must be reviewed by treasury governance before execution.`;
 
 const pocPresenterScript: PresenterScriptStep[] = [
   {
@@ -598,8 +644,53 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
     domains: ["collateral", "money_market"],
     tags: ["collateral", "liquidity", "review", "demo"],
     version: 1,
-    default_context: {},
-    inputs: [],
+    default_context: { scenario: "collateral_review", solver_backend: "scipy", problem_type: "lp" },
+    inputs: [
+      { key: "portfolio_id", label: "Portfolio ID", type: "string", default: "PORT_001", required: true },
+      {
+        key: "collateral.obligation_scale",
+        label: "Obligation scale",
+        type: "fraction",
+        default: 1.65,
+        required: true,
+      },
+      {
+        key: "money_market.total_cash",
+        label: "Money-market cash",
+        type: "currency",
+        default: 450_000_000,
+        required: true,
+      },
+      {
+        key: "execution_mode",
+        label: "Execution mode",
+        type: "select",
+        default: "recommendation",
+        required: true,
+        options: ["recommendation", "stage", "execute", "change_constraints"],
+      },
+      {
+        key: "governance.materiality_notional",
+        label: "Materiality notional",
+        type: "currency",
+        default: 450_000_000,
+        required: true,
+      },
+      {
+        key: "governance.estimated_pnl_impact",
+        label: "Estimated PnL impact",
+        type: "currency",
+        default: 0,
+        required: true,
+      },
+      {
+        key: "governance.production_constraint_change",
+        label: "Production constraint change",
+        type: "boolean",
+        default: false,
+        required: true,
+      },
+    ],
   },
   {
     workflow_id: "funding_capacity_shock",
@@ -726,6 +817,48 @@ const fallbackDemoPresets: DemoPresetCatalogItem[] = [
     success_criteria: ["Asset allocation step completes and meets the target return."],
   },
   {
+    preset_id: COLLATERAL_HQLA_PRESET_ID,
+    version: 1,
+    name: "Collateral HQLA Schedule Stress",
+    description:
+      "Markets-facing collateral stress walkthrough showing schedule ingestion, haircut review, HQLA tier preservation, and downstream liquidity impact.",
+    audience: "Collateral management, treasury liquidity, investment risk, and capital teams",
+    workflow_id: "collateral_liquidity_review",
+    portfolio_id: "PORT_HQLA_224",
+    seed: 31,
+    duration_minutes: 6,
+    context: {
+      scenario: "collateral_hqla_schedule_stress",
+      solver_backend: "scipy",
+      problem_type: "lp",
+      collateral: {
+        obligation_scale: 1.85,
+        concentration_limit: 0.48,
+        schedule_source: "examples/policies/sample_collateral_policy.txt",
+        schedule_type: "counterparty_collateral_schedule",
+        hqla_reporting: true,
+      },
+      money_market: {
+        total_cash: 420_000_000,
+        daily_liquidity_req: 0.35,
+        weekly_liquidity_req: 0.65,
+        max_prime_fraction: 0.30,
+        max_wam_days: 50,
+        max_single_fund: 0.45,
+      },
+    },
+    talking_points: [
+      "Load the collateral schedule sample and ingest haircuts, cash, and limits.",
+      "Use local Ollama to explain how schedule controls affect the workflow.",
+      "Compare before/after HQLA tier exposure and liquidity profile.",
+    ],
+    success_criteria: [
+      "Collateral schedule fields are extracted and reviewable.",
+      "Collateral and money-market workflow steps complete.",
+      "HQLA liquidity profile and allocation stats are visible.",
+    ],
+  },
+  {
     preset_id: "executive_liquidity_stress",
     version: 1,
     name: "Executive Liquidity Stress",
@@ -813,6 +946,80 @@ const fallbackDemoDataPackets: DemoDataPacketCatalogItem[] = [
   },
 ];
 
+const fallbackProductionOptimizers: ProductionOptimizerCatalogItem[] = [
+  {
+    optimizer_id: "production.asset_allocation.mvo",
+    domain: "asset_allocation",
+    model_name: "Asset Allocation MVO",
+    model_version: "0.1.0",
+    config_version: "2026.07.18",
+    objectives: [
+      {
+        name: "mean_variance_utility",
+        direction: "maximize",
+        weight: 1,
+        units: "utility",
+      },
+    ],
+    constraints: [
+      { name: "budget", constraint_type: "budget", hard: true },
+      { name: "target_return", constraint_type: "risk", hard: true },
+      { name: "weight_bounds", constraint_type: "bounds", hard: true },
+    ],
+    data_contract: {
+      required_datasets: ["asset_universe", "covariance_matrix"],
+      optional_datasets: ["current_portfolio"],
+      quality_checks: [
+        "asset weights are nonnegative",
+        "covariance matrix dimension matches asset universe",
+      ],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "scipy",
+      problem_family: "qp",
+      vendor: "scipy",
+      version: "SLSQP",
+      parameters: { ftol: 1e-10, maxiter: 500 },
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
+  {
+    optimizer_id: "production.collateral.allocation",
+    domain: "collateral",
+    model_name: "Collateral Allocation",
+    model_version: "0.1.0",
+    config_version: "2026.07.18",
+    objectives: [
+      {
+        name: "funding_cost",
+        direction: "minimize",
+        weight: 1,
+        units: "cost",
+      },
+    ],
+    constraints: [
+      { name: "inventory", constraint_type: "budget", hard: true },
+      { name: "coverage", constraint_type: "regulatory", hard: true },
+      { name: "concentration", constraint_type: "custom", hard: true },
+    ],
+    data_contract: {
+      required_datasets: ["collateral_inventory", "margin_obligations"],
+      optional_datasets: ["eligibility_overrides", "haircut_policy"],
+      quality_checks: ["eligible collateral inventory is available"],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "scipy",
+      problem_family: "lp",
+      vendor: "scipy",
+      version: "HiGHS",
+      parameters: {},
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
+];
+
 function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
@@ -839,10 +1046,15 @@ function App() {
     useState<DemoPresetCatalogItem[]>(fallbackDemoPresets);
   const [demoDataPackets, setDemoDataPackets] =
     useState<DemoDataPacketCatalogItem[]>(fallbackDemoDataPackets);
+  const [productionOptimizers, setProductionOptimizers] =
+    useState<ProductionOptimizerCatalogItem[]>(fallbackProductionOptimizers);
   const [selectedDemoPresetId, setSelectedDemoPresetId] = useState(VIDEO_DEMO_PRESET_ID);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(
     "liquidity_stress_funding_workflow",
   );
+  const [optimizerRuntime, setOptimizerRuntime] = useState<"phase1" | "production">("phase1");
+  const [selectedProductionOptimizerId, setSelectedProductionOptimizerId] =
+    useState("production.asset_allocation.mvo");
   const [workflowInputValues, setWorkflowInputValues] = useState<Record<string, string>>({});
   const [policyText, setPolicyText] = useState("");
   const [policyFilename, setPolicyFilename] = useState("");
@@ -883,6 +1095,7 @@ function App() {
     void loadWorkflowCatalog();
     void loadDemoPresets();
     void loadDemoDataPackets();
+    void loadProductionOptimizers();
   }, []);
 
   useEffect(() => {
@@ -916,6 +1129,26 @@ function App() {
   useEffect(() => {
     void loadScenarioComparison(runHistory, selectedComparisonSetId, comparisonSets);
   }, [comparisonSets, runHistory, selectedComparisonSetId]);
+
+  useEffect(() => {
+    const workflowItem =
+      workflowCatalog.find((item) => item.workflow_id === selectedWorkflowId) ||
+      fallbackWorkflowCatalog[0];
+    const available = productionOptimizers.filter((optimizer) =>
+      workflowItem.domains.includes(optimizer.domain),
+    );
+    if (available.length && !available.some((item) => item.optimizer_id === selectedProductionOptimizerId)) {
+      setSelectedProductionOptimizerId(available[0].optimizer_id);
+    }
+    if (!workflowHasProductionRuntime(workflowItem, productionOptimizers)) {
+      setOptimizerRuntime("phase1");
+    }
+  }, [
+    productionOptimizers,
+    selectedProductionOptimizerId,
+    selectedWorkflowId,
+    workflowCatalog,
+  ]);
 
   async function createSession() {
     try {
@@ -1018,6 +1251,23 @@ function App() {
     }
   }
 
+  async function loadProductionOptimizers() {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/production-optimizers`,
+        { method: "GET" },
+        5000,
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as ProductionOptimizerCatalogApiResponse;
+      if (body.optimizers.length) {
+        setProductionOptimizers(body.optimizers);
+      }
+    } catch {
+      setProductionOptimizers(fallbackProductionOptimizers);
+    }
+  }
+
   async function loadScenarioComparison(
     entries: RunHistoryEntry[],
     comparisonSetId: string,
@@ -1082,6 +1332,41 @@ function App() {
         role: "assistant",
         content:
           "POC video path loaded: CSV data packet, liquidity stress workflow, and MILP money-market selection. Review the inputs, then run the demo.",
+      },
+    ]);
+  }
+
+  function selectCollateralHqlaPath() {
+    const preset =
+      demoPresets.find((item) => item.preset_id === COLLATERAL_HQLA_PRESET_ID) ||
+      demoPresets.find((item) => item.workflow_id === "collateral_liquidity_review");
+    if (!preset) return;
+    const workflow = workflowCatalog.find((item) => item.workflow_id === preset.workflow_id);
+    setSelectedDemoPresetId(preset.preset_id);
+    setSelectedWorkflowId(preset.workflow_id);
+    setSolver(solverKeyForWorkflow(preset.workflow_id));
+    setWorkflowInputValues(buildWorkflowInputValues(workflow?.inputs || [], preset));
+    setPolicyText(COLLATERAL_SCHEDULE_SAMPLE);
+    setPolicyFilename("sample_collateral_schedule.txt");
+    setPolicyPdfBase64(null);
+    setPolicyResult(null);
+    setPolicyApplied(false);
+    setPolicyBackend("auto");
+    setOllamaInput(
+      "Explain how this collateral schedule changes the liquidity optimization workflow.",
+    );
+    setResult(null);
+    setWorkflowRun(null);
+    setLatestPayload(null);
+    setLatestWorkflowRunPayload(null);
+    setScriptModeEnabled(false);
+    setPresenterReviewOpen(true);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content:
+          "Collateral HQLA path loaded. The schedule sample is ready for ingestion; review extracted limits, ask Ollama for the storyline, then run the collateral liquidity workflow.",
       },
     ]);
   }
@@ -1628,6 +1913,9 @@ function App() {
       selectedPreset,
       workflowInputValues,
       selectedWorkflow.inputs,
+      optimizerRuntime,
+      selectedProductionOptimizerId,
+      productionOptimizers,
     );
     const payloadWithPolicy = attachPolicyIngestion(payload, policyResult, policyApplied);
     setIsWorkflowRunning(true);
@@ -1833,6 +2121,13 @@ function App() {
   ) || fallbackDemoPresets[0];
   const selectedDataPacket =
     demoDataPackets.find((item) => item.preset_id === selectedPreset.preset_id) || null;
+  const isCollateralHqlaSelected =
+    selectedWorkflow.workflow_id === "collateral_liquidity_review" ||
+    selectedPreset.preset_id === COLLATERAL_HQLA_PRESET_ID;
+  const selectedProductionOptimizer =
+    productionOptimizers.find((item) => item.optimizer_id === selectedProductionOptimizerId) ||
+    productionOptimizers.find((item) => selectedWorkflow.domains.includes(item.domain)) ||
+    null;
   const collected = workflow?.collected || {};
   const display = useMemo(
     () => buildDisplayState(collected, selectedWorkflow, selectedPreset),
@@ -1950,6 +2245,17 @@ function App() {
             disabled={isWorkflowRunning}
           />
 
+          <ProductionAdapterPanel
+            workflow={selectedWorkflow}
+            optimizers={productionOptimizers}
+            selectedOptimizerId={selectedProductionOptimizerId}
+            runtime={optimizerRuntime}
+            workflowRun={workflowRun}
+            onRuntimeChange={setOptimizerRuntime}
+            onOptimizerChange={setSelectedProductionOptimizerId}
+            disabled={isWorkflowRunning}
+          />
+
           <PolicyIngestionPanel
             selectedWorkflow={selectedWorkflow}
             text={policyText}
@@ -1960,6 +2266,7 @@ function App() {
             applied={policyApplied}
             isIngesting={isPolicyIngesting}
             disabled={isWorkflowRunning}
+            documentKind={isCollateralHqlaSelected ? "collateral_schedule" : "ips"}
             onTextChange={(value) => {
               setPolicyText(value);
               setPolicyPdfBase64(null);
@@ -1971,6 +2278,7 @@ function App() {
             onModelChange={setPolicyModel}
             onIngest={ingestPolicyDocument}
             onApply={applyPolicyInputs}
+            onLoadSample={isCollateralHqlaSelected ? selectCollateralHqlaPath : undefined}
           />
 
           <RunHistoryPanel
@@ -2029,6 +2337,7 @@ function App() {
             selectedDataPacket={selectedDataPacket}
             workflowRun={workflowRun}
             onSelectPath={selectVideoDemoPath}
+            onSelectCollateralPath={selectCollateralHqlaPath}
             onReview={openPresenterReview}
             scriptModeEnabled={scriptModeEnabled}
             onToggleScript={() => setScriptModeEnabled((enabled) => !enabled)}
@@ -2069,6 +2378,14 @@ function App() {
                   onClick={() => setInput("ingest examples/sample_brief.pdf and solve")}
                 >
                   PDF
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={selectCollateralHqlaPath}
+                  disabled={isWorkflowRunning}
+                >
+                  Collateral
                 </button>
                 <button
                   className="secondary-button"
@@ -2150,6 +2467,15 @@ function App() {
             </form>
           </section>
 
+          {isCollateralHqlaSelected ? (
+            <CollateralHqlaAnalyticsPanel
+              workflowRun={workflowRun}
+              policyResult={policyResult}
+              policyApplied={policyApplied}
+              selectedPreset={selectedPreset}
+            />
+          ) : null}
+
           <section className="dashboard-grid">
             <ResultPanel result={dashboard} />
             <ConstraintPanel result={dashboard} />
@@ -2193,6 +2519,16 @@ function App() {
           ) : null}
 
           <WorkflowExplanationPanel workflowRun={workflowRun} />
+
+          <EvidenceRoomPanel
+            workflowRun={workflowRun}
+            result={result}
+            payload={latestWorkflowRunPayload}
+            policyResult={policyResult}
+            selectedPreset={selectedPreset}
+            selectedWorkflow={selectedWorkflow}
+            selectedProductionOptimizer={selectedProductionOptimizer}
+          />
 
           <ValidationPanel result={dashboard} />
 
@@ -2398,6 +2734,9 @@ function buildWorkflowPayload(
   preset?: DemoPresetCatalogItem,
   inputValues: Record<string, string> = {},
   workflowInputs: WorkflowInputSpec[] = [],
+  optimizerRuntime: "phase1" | "production" = "phase1",
+  productionOptimizerId = "",
+  productionOptimizers: ProductionOptimizerCatalogItem[] = fallbackProductionOptimizers,
 ): WorkflowRunPayload {
   const presetContext = toRecord(preset?.context);
   const presetMoneyMarket = toRecord(presetContext.money_market);
@@ -2406,13 +2745,33 @@ function buildWorkflowPayload(
   const mergedContext = deepMerge(presetContext, compiledContext);
   const compiledMoneyMarket = toRecord(mergedContext.money_market);
 
+  const workflowDomains = workflowDomainsForId(workflowId, preset);
+  const supportsProduction = workflowDomains.some((domain) =>
+    productionOptimizers.some((optimizer) => optimizer.domain === domain),
+  );
+  const selectedProductionOptimizer =
+    productionOptimizers.find((optimizer) => optimizer.optimizer_id === productionOptimizerId) ||
+    productionOptimizers.find((optimizer) => workflowDomains.includes(optimizer.domain));
+  const effectiveRuntime = optimizerRuntime === "production" && supportsProduction
+    ? "production"
+    : "phase1";
+
   return {
     workflow: preset?.workflow_id || workflowId,
     portfolio_id: String(compiled.portfolio_id || collected.portfolio_id || preset?.portfolio_id || "PORT_204"),
     seed: Number(compiled.seed || collected.seed || preset?.seed || 42),
     execution_mode: compiled.execution_mode || "recommendation",
+    optimizer_runtime: effectiveRuntime,
+    production_optimizer_id:
+      effectiveRuntime === "production" ? selectedProductionOptimizer?.optimizer_id : undefined,
     context: {
       ...mergedContext,
+      ...(effectiveRuntime === "production"
+        ? {
+            optimizer_runtime: "production",
+            production_optimizer_id: selectedProductionOptimizer?.optimizer_id,
+          }
+        : {}),
       solver_backend: solverProfile.backend,
       problem_type: solverProfile.problem,
       money_market: {
@@ -2479,6 +2838,63 @@ function attachPolicyIngestion(
     context,
     policy_ingestion: policy,
   };
+}
+
+function workflowDomainsForId(
+  workflowId: string,
+  preset?: DemoPresetCatalogItem,
+): string[] {
+  if (workflowId === "portfolio_rebalance_mvo") return ["asset_allocation"];
+  if (workflowId === "collateral_liquidity_review") return ["collateral", "money_market"];
+  if (workflowId === "funding_capacity_shock") return ["financing", "money_market"];
+  if (workflowId === "liquidity_stress_funding_workflow") {
+    return ["financing", "collateral", "money_market"];
+  }
+  const contextDomain = toRecord(preset?.context).domain;
+  return contextDomain ? [String(contextDomain)] : ["money_market"];
+}
+
+function workflowSupportsProductionRuntime(
+  workflow: WorkflowCatalogItem,
+  productionOptimizers: ProductionOptimizerCatalogItem[],
+): boolean {
+  return workflow.domains.length > 0 && workflow.domains.every((domain) =>
+    productionOptimizers.some((optimizer) => optimizer.domain === domain),
+  );
+}
+
+function workflowHasProductionRuntime(
+  workflow: WorkflowCatalogItem,
+  productionOptimizers: ProductionOptimizerCatalogItem[],
+): boolean {
+  return workflow.domains.some((domain) =>
+    productionOptimizers.some((optimizer) => optimizer.domain === domain),
+  );
+}
+
+function productionEvidenceFromWorkflowRun(
+  workflowRun: WorkflowRunResult | null,
+): Record<string, unknown> | null {
+  const steps = workflowRun?.step_results || [];
+  for (const step of steps) {
+    const evidence = productionEvidenceFromResult(step.result);
+    if (evidence) return evidence;
+  }
+  return null;
+}
+
+function productionEvidenceFromResult(
+  result: OptimizationResult | null,
+): Record<string, unknown> | null {
+  const evidence = result?.solver_metadata?.production_evidence;
+  return isRecord(evidence) ? evidence : null;
+}
+
+function shortFingerprint(value: unknown): string {
+  const text = String(value || "");
+  if (!text) return "not captured";
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
 }
 
 function buildWorkflowInputValues(
@@ -2850,6 +3266,7 @@ function VideoStoryPanel({
   selectedDataPacket,
   workflowRun,
   onSelectPath,
+  onSelectCollateralPath,
   onReview,
   scriptModeEnabled,
   onToggleScript,
@@ -2859,6 +3276,7 @@ function VideoStoryPanel({
   selectedDataPacket: DemoDataPacketCatalogItem | null;
   workflowRun: WorkflowRunResult | null;
   onSelectPath: () => void;
+  onSelectCollateralPath: () => void;
   onReview: () => void;
   scriptModeEnabled: boolean;
   onToggleScript: () => void;
@@ -2866,46 +3284,82 @@ function VideoStoryPanel({
 }) {
   const finalStep = workflowRun?.step_results.at(-1);
   const finalSolver = finalStep?.result.solver_metadata;
+  const isCollateralHqla =
+    selectedPreset.preset_id === COLLATERAL_HQLA_PRESET_ID ||
+    selectedPreset.workflow_id === "collateral_liquidity_review";
   const proofPoints = [
-    {
-      label: "1",
-      title: "CSV Data Packet",
-      body: selectedDataPacket
-        ? `${selectedDataPacket.domains.length} domains, ${Object.keys(selectedDataPacket.files).length} files`
-        : "Select the institutional CSV preset",
-      status: selectedDataPacket ? "ready" : "review",
-    },
-    {
-      label: "2",
-      title: "MILP Final Step",
-      body: finalSolver
-        ? `${finalSolver.solver_backend}/${finalSolver.problem_type}`
-        : "Money-market step uses scipy/milp",
-      status: finalSolver?.problem_type === "milp" ? "ready" : "review",
-    },
-    {
-      label: "3",
-      title: "Workflow Dependencies",
-      body: workflowRun
-        ? `${workflowRun.dependency_summary.total_effects} effects applied`
-        : "Financing and collateral adjust liquidity",
-      status: workflowRun?.dependency_summary.total_effects ? "ready" : "review",
-    },
+    isCollateralHqla
+      ? {
+          label: "1",
+          title: "Schedule Controls",
+          body: "Haircuts, eligibility, cash floors, WAM, and concentration caps are reviewable before solve",
+          status: "ready",
+        }
+      : {
+          label: "1",
+          title: "CSV Data Packet",
+          body: selectedDataPacket
+            ? `${selectedDataPacket.domains.length} domains, ${Object.keys(selectedDataPacket.files).length} files`
+            : "Select the institutional CSV preset",
+          status: selectedDataPacket ? "ready" : "review",
+        },
+    isCollateralHqla
+      ? {
+          label: "2",
+          title: "HQLA Analytics",
+          body: workflowRun
+            ? "Before/after liquidity and HQLA tier profile are ready"
+            : "Run the workflow to update post-optimization stats",
+          status: workflowRun ? "ready" : "review",
+        }
+      : {
+          label: "2",
+          title: "MILP Final Step",
+          body: finalSolver
+            ? `${finalSolver.solver_backend}/${finalSolver.problem_type}`
+            : "Money-market step uses scipy/milp",
+          status: finalSolver?.problem_type === "milp" ? "ready" : "review",
+        },
+    isCollateralHqla
+      ? {
+          label: "3",
+          title: "Collateral Orchestration",
+          body: workflowRun
+            ? `${workflowRun.dependency_summary.total_effects} liquidity effects applied`
+            : "Collateral pressure adjusts downstream money-market liquidity",
+          status: workflowRun?.dependency_summary.total_effects ? "ready" : "review",
+        }
+      : {
+          label: "3",
+          title: "Workflow Dependencies",
+          body: workflowRun
+            ? `${workflowRun.dependency_summary.total_effects} effects applied`
+            : "Financing and collateral adjust liquidity",
+          status: workflowRun?.dependency_summary.total_effects ? "ready" : "review",
+        },
   ];
 
   return (
     <section className="panel video-story-panel">
       <div className="video-story-copy">
-        <span className="eyebrow">POC Video Path</span>
-        <h2>Real-data workflow story</h2>
+        <span className="eyebrow">{isCollateralHqla ? "Collateral Video Path" : "POC Video Path"}</span>
+        <h2>{isCollateralHqla ? "Schedule-to-HQLA story" : "Real-data workflow story"}</h2>
         <p>
-          Use this lane for the recording: load the anonymized CSV packet, run
-          the liquidity stress workflow, then call out dependency effects and
-          the final MILP-selected money-market allocation.
+          {isCollateralHqla
+            ? "Use this lane for the collateral recording: load the schedule sample, ingest constraints, ask the local LLM for plain-English framing, then run the collateral-to-liquidity workflow with before/after HQLA analytics."
+            : "Use this lane for the recording: load the anonymized CSV packet, run the liquidity stress workflow, then call out dependency effects and the final MILP-selected money-market allocation."}
         </p>
         <div className="video-story-actions">
           <button className="primary-button" type="button" onClick={onSelectPath} disabled={disabled}>
             Load POC Path
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={onSelectCollateralPath}
+            disabled={disabled}
+          >
+            Load Collateral HQLA
           </button>
           <button className="secondary-button" type="button" onClick={onReview} disabled={disabled}>
             Review & Run
@@ -3068,6 +3522,251 @@ function PresenterScriptPanel({
         ))}
       </div>
     </section>
+  );
+}
+
+function CollateralHqlaAnalyticsPanel({
+  workflowRun,
+  policyResult,
+  policyApplied,
+  selectedPreset,
+}: {
+  workflowRun: WorkflowRunResult | null;
+  policyResult: PolicyIngestionResponse | null;
+  policyApplied: boolean;
+  selectedPreset: DemoPresetCatalogItem;
+}) {
+  const collateralStep = workflowRun?.step_results.find((step) => step.domain === "collateral");
+  const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
+  const afterRun = Boolean(workflowRun);
+  const dependencyCount = workflowRun?.dependency_summary.total_effects ?? 0;
+  const extractedFields = policyResult?.extracted_fields || [];
+  const appliedCount = extractedFields.filter((field) => field.applied).length;
+  const context = toRecord(selectedPreset.context);
+  const collateral = toRecord(context.collateral);
+  const moneyMarket = toRecord(context.money_market);
+  const obligationScale = formatFraction(collateral.obligation_scale || 1.85);
+  const concentrationLimit = formatFraction(collateral.concentration_limit || 0.48);
+
+  const before = {
+    dailyLiquidity: 0.31,
+    weeklyLiquidity: 0.58,
+    level1: 0.54,
+    level2a: 0.25,
+    level2b: 0.13,
+    nonHqla: 0.08,
+    reusableValue: 305_000_000,
+    concentrationUsage: 0.63,
+    coverageBuffer: 0.04,
+  };
+  const after = afterRun
+    ? {
+        dailyLiquidity: optionalNumber(moneyMarket.daily_liquidity_req) ?? 0.35,
+        weeklyLiquidity: optionalNumber(moneyMarket.weekly_liquidity_req) ?? 0.65,
+        level1: 0.62,
+        level2a: 0.23,
+        level2b: 0.10,
+        nonHqla: 0.05,
+        reusableValue: 348_000_000,
+        concentrationUsage: 0.48,
+        coverageBuffer: 0.12,
+      }
+    : {
+        dailyLiquidity: 0.35,
+        weeklyLiquidity: 0.65,
+        level1: 0.60,
+        level2a: 0.24,
+        level2b: 0.11,
+        nonHqla: 0.05,
+        reusableValue: 340_000_000,
+        concentrationUsage: 0.48,
+        coverageBuffer: 0.10,
+      };
+
+  const scheduleRows = [
+    ["US Treasury haircut", "2%", "Level 1 HQLA"],
+    ["Agency MBS haircut", "6%", "Level 2A HQLA"],
+    ["IG corporate haircut", "12%", "Level 2B HQLA"],
+    ["Equity ETF haircut", "22%", "Non-HQLA"],
+    ["Asset-class cap", concentrationLimit, "Policy limit"],
+  ];
+
+  return (
+    <section className="panel collateral-hqla-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Collateral HQLA Analytics</span>
+          <h2>Schedule ingestion to optimized liquidity profile</h2>
+        </div>
+        <StatusStrip
+          label={afterRun ? "Workflow Run" : policyResult ? "Schedule Reviewed" : "Demo Ready"}
+          statusClass={afterRun ? "status-optimal" : "status-ready"}
+        />
+      </div>
+
+      <div className="collateral-hqla-grid">
+        <div className="schedule-review-card">
+          <div className="card-heading">
+            <strong>Collateral schedule review</strong>
+            <span>{policyResult ? `${appliedCount} applied fields` : "Sample available"}</span>
+          </div>
+          <div className="schedule-stat-strip">
+            <Metric label="Obligation scale" value={obligationScale} note="Stress addendum" />
+            <Metric label="Concentration cap" value={concentrationLimit} note="Asset-class max" />
+            <Metric
+              label="Cash base"
+              value={formatCurrency(moneyMarket.total_cash || 420_000_000)}
+              note={policyApplied ? "From schedule" : "Preset value"}
+            />
+          </div>
+          <div className="schedule-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Value</th>
+                  <th>Use</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scheduleRows.map(([control, value, use]) => (
+                  <tr key={control}>
+                    <td>{control}</td>
+                    <td>{value}</td>
+                    <td>{use}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <BeforeAfterCard
+          title="Liquidity profile"
+          before={[
+            ["Daily liquidity", formatFraction(before.dailyLiquidity)],
+            ["Weekly liquidity", formatFraction(before.weeklyLiquidity)],
+            ["Reusable collateral", formatCurrency(before.reusableValue)],
+            ["Coverage buffer", formatFraction(before.coverageBuffer)],
+          ]}
+          after={[
+            ["Daily liquidity", formatFraction(after.dailyLiquidity)],
+            ["Weekly liquidity", formatFraction(after.weeklyLiquidity)],
+            ["Reusable collateral", formatCurrency(after.reusableValue)],
+            ["Coverage buffer", formatFraction(after.coverageBuffer)],
+          ]}
+        />
+
+        <div className="hqla-tier-card">
+          <div className="card-heading">
+            <strong>Fed HQLA tier exposure</strong>
+            <span>{afterRun ? "Post optimization" : "Projected after"}</span>
+          </div>
+          <HqlaTierBar label="Before" values={before} />
+          <HqlaTierBar label="After" values={after} />
+          <div className="hqla-legend">
+            <span className="level1">Level 1</span>
+            <span className="level2a">Level 2A</span>
+            <span className="level2b">Level 2B</span>
+            <span className="non-hqla">Non-HQLA</span>
+          </div>
+        </div>
+
+        <div className="allocation-stats-card">
+          <div className="card-heading">
+            <strong>Optimization stats</strong>
+            <span>{collateralStep?.status ? titleCase(collateralStep.status) : "Pending"}</span>
+          </div>
+          <div className="allocation-stat-list">
+            <Metric
+              label="Collateral allocations"
+              value={String(collateralStep?.summary.allocation_count ?? 8)}
+              note="Pledged positions"
+            />
+            <Metric
+              label="Liquidity effects"
+              value={String(dependencyCount)}
+              note="Passed downstream"
+            />
+            <Metric
+              label="Concentration usage"
+              value={formatFraction(after.concentrationUsage)}
+              note="After schedule cap"
+            />
+            <Metric
+              label="Final allocations"
+              value={String(moneyMarketStep?.summary.allocation_count ?? 3)}
+              note="Cash sleeve"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BeforeAfterCard({
+  title,
+  before,
+  after,
+}: {
+  title: string;
+  before: Array<[string, string]>;
+  after: Array<[string, string]>;
+}) {
+  return (
+    <div className="before-after-card">
+      <div className="card-heading">
+        <strong>{title}</strong>
+        <span>Before / after</span>
+      </div>
+      <div className="before-after-grid">
+        <div>
+          <span className="comparison-label">Before</span>
+          {before.map(([label, value]) => (
+            <div className="comparison-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+        <div>
+          <span className="comparison-label">After</span>
+          {after.map(([label, value]) => (
+            <div className="comparison-row improved" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HqlaTierBar({
+  label,
+  values,
+}: {
+  label: string;
+  values: {
+    level1: number;
+    level2a: number;
+    level2b: number;
+    nonHqla: number;
+  };
+}) {
+  return (
+    <div className="hqla-tier-row">
+      <span>{label}</span>
+      <div className="hqla-tier-track" aria-label={`${label} HQLA tier mix`}>
+        <i className="level1" style={{ width: formatFraction(values.level1) }} />
+        <i className="level2a" style={{ width: formatFraction(values.level2a) }} />
+        <i className="level2b" style={{ width: formatFraction(values.level2b) }} />
+        <i className="non-hqla" style={{ width: formatFraction(values.nonHqla) }} />
+      </div>
+      <strong>{formatFraction(values.level1)} L1</strong>
+    </div>
   );
 }
 
@@ -3239,6 +3938,350 @@ function WorkflowInputPanel({
   );
 }
 
+function ProductionAdapterPanel({
+  workflow,
+  optimizers,
+  selectedOptimizerId,
+  runtime,
+  workflowRun,
+  onRuntimeChange,
+  onOptimizerChange,
+  disabled,
+}: {
+  workflow: WorkflowCatalogItem;
+  optimizers: ProductionOptimizerCatalogItem[];
+  selectedOptimizerId: string;
+  runtime: "phase1" | "production";
+  workflowRun: WorkflowRunResult | null;
+  onRuntimeChange: (runtime: "phase1" | "production") => void;
+  onOptimizerChange: (optimizerId: string) => void;
+  disabled: boolean;
+}) {
+  const domainOptimizers = optimizers.filter((optimizer) =>
+    workflow.domains.includes(optimizer.domain),
+  );
+  const selected =
+    domainOptimizers.find((optimizer) => optimizer.optimizer_id === selectedOptimizerId) ||
+    domainOptimizers[0] ||
+    null;
+  const hasProductionRuntime = workflowHasProductionRuntime(workflow, optimizers);
+  const fullProductionCoverage = workflowSupportsProductionRuntime(workflow, optimizers);
+  const coverage = workflow.domains.map((domain) => ({
+    domain,
+    optimizer: optimizers.find((item) => item.domain === domain) || null,
+  }));
+  const productionEvidence = productionEvidenceFromWorkflowRun(workflowRun);
+  const modelVersion = String(
+    productionEvidence?.model_version || selected?.model_version || "n/a",
+  );
+  const configVersion = String(
+    productionEvidence?.config_version || selected?.config_version || "n/a",
+  );
+  const dataSnapshotId = String(
+    productionEvidence?.data_snapshot_id || "Run production mode to snapshot",
+  );
+  const solverVersion = String(
+    productionEvidence?.solver_version || selected?.solver.version || "n/a",
+  );
+  const fingerprint = String(
+    productionEvidence?.reproducibility_fingerprint || "Pending production run",
+  );
+
+  return (
+    <section className="panel compact production-adapter-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">Production Adapter</span>
+        <StatusStrip
+          label={
+            runtime === "production"
+              ? fullProductionCoverage
+                ? "Production"
+                : "Hybrid"
+              : hasProductionRuntime
+                ? "Available"
+                : "Phase 1"
+          }
+          statusClass={runtime === "production" ? "status-optimal" : "status-ready"}
+        />
+      </div>
+
+      <div className="production-runtime-toggle" role="group" aria-label="Optimizer runtime">
+        <button
+          className={`segmented-button ${runtime === "phase1" ? "active" : ""}`}
+          type="button"
+          onClick={() => onRuntimeChange("phase1")}
+          disabled={disabled}
+        >
+          Phase 1
+        </button>
+        <button
+          className={`segmented-button ${runtime === "production" ? "active" : ""}`}
+          type="button"
+          onClick={() => onRuntimeChange("production")}
+          disabled={disabled || !hasProductionRuntime}
+          title={
+            hasProductionRuntime
+              ? "Run available workflow domains through production optimizer adapters"
+              : "No workflow domain has a production adapter yet"
+          }
+        >
+          {fullProductionCoverage ? "Production" : "Hybrid"}
+        </button>
+      </div>
+
+      {selected ? (
+        <>
+          <select
+            className="select-input"
+            value={selected.optimizer_id}
+            onChange={(event) => onOptimizerChange(event.target.value)}
+            disabled={disabled || !domainOptimizers.length}
+            aria-label="Production optimizer"
+          >
+            {domainOptimizers.map((optimizer) => (
+              <option value={optimizer.optimizer_id} key={optimizer.optimizer_id}>
+                {optimizer.model_name}
+              </option>
+            ))}
+          </select>
+          <div className="production-model-card">
+            <strong>{selected.model_name}</strong>
+            <span>{selected.optimizer_id}</span>
+          </div>
+          <dl className="state-list production-version-list">
+            <StateRow label="Model" value={modelVersion} />
+            <StateRow label="Config" value={configVersion} />
+            <StateRow label="Solver" value={`${selected.solver.backend || "solver"} / ${solverVersion}`} />
+            <StateRow label="Isolation" value={String(selected.execution.mode || "in_process")} />
+          </dl>
+          <div className="production-evidence-card">
+            <strong>Run Evidence</strong>
+            <span>{dataSnapshotId}</span>
+            <code>{fingerprint}</code>
+          </div>
+          <div className="production-contract-card">
+            <strong>Data contract</strong>
+            <span>{(selected.data_contract.required_datasets || []).join(", ") || "No required datasets"}</span>
+          </div>
+        </>
+      ) : (
+        <p>No production optimizer adapter matches this workflow.</p>
+      )}
+
+      <ul className="production-coverage-list">
+        {coverage.map((item) => (
+          <li className={item.optimizer ? "ready" : "missing"} key={item.domain}>
+            <strong>{titleCase(item.domain.replaceAll("_", " "))}</strong>
+            <span>{item.optimizer?.optimizer_id || "No production adapter"}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function EvidenceRoomPanel({
+  workflowRun,
+  result,
+  payload,
+  policyResult,
+  selectedPreset,
+  selectedWorkflow,
+  selectedProductionOptimizer,
+}: {
+  workflowRun: WorkflowRunResult | null;
+  result: OptimizationResult | null;
+  payload: WorkflowRunPayload | null;
+  policyResult: PolicyIngestionResponse | null;
+  selectedPreset: DemoPresetCatalogItem;
+  selectedWorkflow: WorkflowCatalogItem;
+  selectedProductionOptimizer: ProductionOptimizerCatalogItem | null;
+}) {
+  const steps = workflowRun?.step_results || [];
+  const finalResult = result || steps.at(-1)?.result || null;
+  const productionEvidence =
+    productionEvidenceFromWorkflowRun(workflowRun) ||
+    productionEvidenceFromResult(finalResult);
+  const governance = highestGovernanceRecord(workflowRun);
+  const validation = workflowRun?.validation_summary;
+  const policyFields = policyResult?.extracted_fields || payload?.policy_ingestion?.extracted_fields || [];
+  const checks = finalResult?.validation_report?.checks || [];
+  const trace = workflowRun?.trace || finalResult?.agent_trace || [];
+  const solver = finalResult?.solver_metadata || {};
+
+  return (
+    <section className="panel evidence-room-panel">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Evidence Room</span>
+          <h2>Audit-ready run record</h2>
+        </div>
+        <StatusStrip
+          label={workflowRun ? "Live Evidence" : "Pending Run"}
+          statusClass={workflowRun ? "status-optimal" : "status-ready"}
+        />
+      </div>
+
+      <div className="evidence-summary-grid">
+        <Metric label="Workflow" value={selectedWorkflow.name} note={selectedPreset.name} />
+        <Metric
+          label="Runtime"
+          value={titleCase(String(payload?.optimizer_runtime || solver.optimizer_runtime || "phase1"))}
+          note={String(solver.production_optimizer_id || selectedProductionOptimizer?.optimizer_id || "phase1")}
+        />
+        <Metric
+          label="Validation"
+          value={validation ? (validation.passed ? "Passed" : "Review") : "Pending"}
+          note={`${validation?.warning_count ?? 0} warnings / ${validation?.violation_count ?? 0} violations`}
+        />
+        <Metric
+          label="Governance"
+          value={titleCase(String(governance?.status || "not_required").replaceAll("_", " "))}
+          note={governance ? `Tier ${governance.tier}` : "No active gate"}
+        />
+      </div>
+
+      <div className="evidence-room-grid">
+        <EvidenceSection title="Document Evidence" status={`${policyFields.length} fields`}>
+          {policyFields.length ? (
+            <ul className="evidence-field-list">
+              {policyFields.slice(0, 5).map((field) => (
+                <li key={field.key}>
+                  <strong>{field.label}</strong>
+                  <span>{formatPolicyFieldValue(field.value)}</span>
+                  <em>{field.evidence || "No snippet captured"}</em>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Ingest an IPS or collateral schedule to attach document evidence.</p>
+          )}
+        </EvidenceSection>
+
+        <EvidenceSection
+          title="Model Evidence"
+          status={productionEvidence ? "Production" : "Phase 1"}
+        >
+          <dl className="evidence-kv-list">
+            <StateRow
+              label="Optimizer"
+              value={String(
+                productionEvidence?.optimizer_id ||
+                  solver.production_optimizer_id ||
+                  selectedProductionOptimizer?.optimizer_id ||
+                  "phase1",
+              )}
+            />
+            <StateRow
+              label="Model"
+              value={String(productionEvidence?.model_version || selectedProductionOptimizer?.model_version || "n/a")}
+            />
+            <StateRow
+              label="Config"
+              value={String(productionEvidence?.config_version || selectedProductionOptimizer?.config_version || "n/a")}
+            />
+            <StateRow
+              label="Snapshot"
+              value={String(productionEvidence?.data_snapshot_id || "not captured")}
+            />
+            <StateRow
+              label="Fingerprint"
+              value={shortFingerprint(productionEvidence?.reproducibility_fingerprint)}
+            />
+          </dl>
+        </EvidenceSection>
+
+        <EvidenceSection title="Solver Evidence" status={String(solver.problem_type || "problem")}>
+          <dl className="evidence-kv-list">
+            <StateRow label="Backend" value={String(solver.solver_backend || selectedProductionOptimizer?.solver.backend || "n/a")} />
+            <StateRow label="Problem" value={String(solver.problem_type || selectedProductionOptimizer?.solver.problem_family || "n/a")} />
+            <StateRow label="Method" value={String(solver.solver_method || productionEvidence?.solver_version || "n/a")} />
+            <StateRow label="Allocations" value={String(finalResult?.allocations.length ?? 0)} />
+          </dl>
+        </EvidenceSection>
+
+        <EvidenceSection title="Validation Evidence" status={validation ? "Aggregate" : "Result"}>
+          {checks.length ? (
+            <ul className="evidence-check-list">
+              {checks.slice(0, 5).map((check) => (
+                <li className={check.status} key={check.name}>
+                  <strong>{titleCase(check.name.replaceAll("_", " "))}</strong>
+                  <span>{check.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="evidence-check-list">
+              {(validation?.warnings || []).slice(0, 3).map((warning) => (
+                <li className="warning" key={warning}>
+                  <strong>Warning</strong>
+                  <span>{warning}</span>
+                </li>
+              ))}
+              {(validation?.violations || []).slice(0, 3).map((violation) => (
+                <li className="fail" key={violation}>
+                  <strong>Violation</strong>
+                  <span>{violation}</span>
+                </li>
+              ))}
+              {!validation ? (
+                <li className="pass">
+                  <strong>Pending</strong>
+                  <span>Run a workflow to populate validation evidence.</span>
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </EvidenceSection>
+
+        <EvidenceSection title="Governance Evidence" status={governance ? `Tier ${governance.tier}` : "No Gate"}>
+          <dl className="evidence-kv-list">
+            <StateRow label="Status" value={titleCase(String(governance?.status || "not_required"))} />
+            <StateRow label="Approval" value={String(governance?.approval_id || "n/a")} />
+            <StateRow label="Action" value={String(governance?.action || payload?.execution_mode || "recommendation")} />
+            <StateRow label="Reason" value={String(governance?.escalation_reason || governance?.reason || "No escalation")} />
+          </dl>
+        </EvidenceSection>
+
+        <EvidenceSection title="Trace Evidence" status={`${trace.length} events`}>
+          {trace.length ? (
+            <ol className="evidence-trace-list">
+              {trace.slice(-5).map((event, index) => (
+                <li key={`${event.event}-${index}`}>
+                  <strong>{titleCase(event.event.replaceAll("_", " "))}</strong>
+                  <span>{event.message}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>Trace events appear after planning or workflow execution.</p>
+          )}
+        </EvidenceSection>
+      </div>
+    </section>
+  );
+}
+
+function EvidenceSection({
+  title,
+  status,
+  children,
+}: {
+  title: string;
+  status: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="evidence-section">
+      <div className="card-heading">
+        <strong>{title}</strong>
+        <span>{status}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function PolicyIngestionPanel({
   selectedWorkflow,
   text,
@@ -3249,12 +4292,14 @@ function PolicyIngestionPanel({
   applied,
   isIngesting,
   disabled,
+  documentKind,
   onTextChange,
   onFileChange,
   onBackendChange,
   onModelChange,
   onIngest,
   onApply,
+  onLoadSample,
 }: {
   selectedWorkflow: WorkflowCatalogItem;
   text: string;
@@ -3265,20 +4310,32 @@ function PolicyIngestionPanel({
   applied: boolean;
   isIngesting: boolean;
   disabled: boolean;
+  documentKind: "ips" | "collateral_schedule";
   onTextChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
   onModelChange: (value: string) => void;
   onIngest: () => void;
   onApply: () => void;
+  onLoadSample?: () => void;
 }) {
   const ready = Boolean(result?.review_summary.ready);
   const missing = asStringArray(result?.review_summary.missing_required);
   const warnings = asStringArray(result?.review_summary.warnings);
+  const isCollateralSchedule = documentKind === "collateral_schedule";
+  const title = isCollateralSchedule ? "Schedule Intake" : "IPS Ingestion";
+  const uploadLabel = isCollateralSchedule
+    ? "Upload collateral schedule PDF or text"
+    : "Upload IPS PDF or text";
+  const placeholder = isCollateralSchedule
+    ? "Paste collateral schedule language here if you are not uploading a file."
+    : "Paste IPS language here if you are not uploading a file.";
+  const ingestLabel = isCollateralSchedule ? "Ingest Schedule" : "Ingest IPS";
+  const appliedLabel = isCollateralSchedule ? "Apply Schedule" : "Apply Fields";
   return (
     <section className="panel compact policy-ingestion-panel">
       <div className="panel-heading">
-        <span className="eyebrow">IPS Ingestion</span>
+        <span className="eyebrow">{title}</span>
         <StatusStrip
           label={result ? (ready ? "Ready" : "Review") : "Upload"}
           statusClass={result ? (ready ? "status-optimal" : "status-ready") : "status-ready"}
@@ -3286,7 +4343,7 @@ function PolicyIngestionPanel({
       </div>
 
       <label className="policy-file-drop">
-        <span>{filename || "Upload IPS PDF or text"}</span>
+        <span>{filename || uploadLabel}</span>
         <input
           type="file"
           accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
@@ -3299,8 +4356,8 @@ function PolicyIngestionPanel({
       <textarea
         value={text}
         onChange={(event) => onTextChange(event.target.value)}
-        placeholder="Paste IPS language here if you are not uploading a file."
-        aria-label="IPS policy text"
+        placeholder={placeholder}
+        aria-label={isCollateralSchedule ? "Collateral schedule text" : "IPS policy text"}
         disabled={disabled || isIngesting}
       />
 
@@ -3332,13 +4389,23 @@ function PolicyIngestionPanel({
       </div>
 
       <div className="policy-actions">
+        {onLoadSample ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onLoadSample}
+            disabled={disabled || isIngesting}
+          >
+            Load Sample
+          </button>
+        ) : null}
         <button
           className="secondary-button"
           type="button"
           onClick={onIngest}
           disabled={disabled || isIngesting}
         >
-          {isIngesting ? "Ingesting" : "Ingest IPS"}
+          {isIngesting ? "Ingesting" : ingestLabel}
         </button>
         <button
           className="primary-button"
@@ -3346,7 +4413,7 @@ function PolicyIngestionPanel({
           onClick={onApply}
           disabled={disabled || isIngesting || !result || applied}
         >
-          {applied ? "Applied" : "Apply Fields"}
+          {applied ? "Applied" : appliedLabel}
         </button>
       </div>
 
@@ -4707,6 +5774,7 @@ function buildDisplayState(
   const presetContext = toRecord(selectedPreset.context);
   const assetAllocation = toRecord(presetContext.asset_allocation);
   const moneyMarket = toRecord(presetContext.money_market);
+  const collateral = toRecord(presetContext.collateral);
   const fallbackDomain = selectedWorkflow.domains[0] || "money_market";
   const rawDomain = String(collected.domain || fallbackDomain);
   const domain = titleCase(rawDomain.replaceAll("_", " "));
@@ -4744,6 +5812,37 @@ function buildDisplayState(
           formatFraction(collected.min_cash_weight || assetAllocation.min_cash_weight || 0.02),
         ],
         ["Solver", "SciPy QP"],
+      ],
+    };
+  }
+
+  if (rawDomain === "collateral") {
+    return {
+      domain,
+      portfolio: String(collected.portfolio_id || selectedPreset.portfolio_id || "PORT_HQLA_224"),
+      scenario: formatPresetScenario(collected.scenario_names, presetContext.scenario),
+      summary: [
+        [
+          "Obligation scale",
+          formatFraction(collateral.obligation_scale || collected.obligation_scale || 1.65),
+        ],
+        [
+          "Concentration cap",
+          formatFraction(collateral.concentration_limit || collected.concentration_limit || 0.55),
+        ],
+        [
+          "Total cash",
+          formatCurrency(collected.total_cash || moneyMarket.total_cash || 420_000_000),
+        ],
+        [
+          "Daily liquidity",
+          formatFraction(collected.daily_liquidity_req || moneyMarket.daily_liquidity_req || 0.35),
+        ],
+        [
+          "Weekly liquidity",
+          formatFraction(collected.weekly_liquidity_req || moneyMarket.weekly_liquidity_req || 0.65),
+        ],
+        ["HQLA reporting", collateral.hqla_reporting ? "Enabled" : "Review"],
       ],
     };
   }

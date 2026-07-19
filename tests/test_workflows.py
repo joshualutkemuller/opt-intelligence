@@ -158,6 +158,7 @@ def test_loads_demo_presets_for_registered_workflows():
 
     assert [preset.preset_id for preset in presets] == [
         "balanced_mvo_rebalance",
+        "collateral_hqla_schedule_stress",
         "collateral_pressure_review",
         "executive_liquidity_stress",
         "funding_capacity_crisis",

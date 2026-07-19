@@ -160,6 +160,28 @@ portfolio notional, target annual return, risk aversion, max single asset
 weight, and minimum cash weight. MVO results show expected return, volatility,
 and Sharpe in the recommendation metrics.
 
+The **Collateral HQLA Schedule Stress** preset mirrors the collateral MP4 demo
+path. Click **Load Collateral HQLA** to prefill the collateral schedule sample,
+ingest the schedule, optionally ask local Ollama to explain the control changes,
+then run the collateral liquidity workflow. The browser renders
+**Collateral HQLA Analytics** with before/after liquidity profile, HQLA tier
+exposure, concentration usage, allocation counts, and dependency effects.
+
+The **Production Adapter** panel surfaces the production optimizer catalog from
+`GET /api/production-optimizers`. Select **Balanced MVO Rebalance**, switch the
+runtime from **Phase 1** to **Production**, then run the workflow to show model
+version, config version, data snapshot ID, solver version, and reproducibility
+fingerprint from the production adapter evidence. For **Collateral HQLA
+Schedule Stress**, the runtime becomes a hybrid path: the collateral step runs
+through `production.collateral.allocation`, while the downstream money-market
+step remains on the phase-1 optimizer until a production money-market adapter is
+registered.
+
+The **Evidence Room** panel is the live audit viewer for the current workflow.
+It combines document extraction evidence, model/runtime evidence, solver
+metadata, validation checks, governance state, and workflow trace events before
+the user downloads the JSON/PDF/CSV/XLSX evidence package.
+
 The corresponding YAML template configs live in:
 
 ```text
