@@ -1,0 +1,68 @@
+preset_id: treasury_cash_movement_cutoff
+version: 1
+name: Treasury Cash Movement Cutoff
+description: >
+  Treasury operations walkthrough showing same-day clearing and settlement
+  funding routed through open payment rails while source account buffers are
+  protected.
+audience: Treasury operations, payments, liquidity control, and settlement teams
+workflow_id: treasury_cash_movement
+portfolio_id: PORT_TREASURY_OPS
+seed: 42
+duration_minutes: 4
+context:
+  scenario: treasury_cash_movement_cutoff
+  optimizer_runtime: production
+  production_optimizer_id: production.treasury.cash_movement
+  treasury_operations:
+    cutoff_hour: 15
+    stress_multiplier: 1.0
+    liquidity_buffer_pct: 0.05
+    cash_balances:
+      - account_id: SRC_1
+        entity: Broker Dealer
+        currency: USD
+        available_cash: 150000000
+        minimum_buffer: 20000000
+      - account_id: SRC_2
+        entity: Bank Entity
+        currency: USD
+        available_cash: 80000000
+        minimum_buffer: 15000000
+    funding_requirements:
+      - requirement_id: PAY_A
+        target_account_id: CLEARING_A
+        currency: USD
+        required_cash: 90000000
+        cutoff_hour: 15
+      - requirement_id: PAY_B
+        target_account_id: SETTLEMENT_B
+        currency: USD
+        required_cash: 65000000
+        cutoff_hour: 16
+    payment_rails:
+      - rail_id: FEDWIRE
+        currency: USD
+        fee_bps: 0.15
+        fixed_fee: 35
+        cutoff_hour: 17
+        max_transfer: 250000000
+      - rail_id: CHIPS
+        currency: USD
+        fee_bps: 0.08
+        fixed_fee: 20
+        cutoff_hour: 16
+        max_transfer: 125000000
+  governance:
+    materiality_notional: 155000000
+    estimated_pnl_impact: 0
+    production_constraint_change: false
+talking_points:
+  - Start with two same-day funding requirements and two source cash pools.
+  - Show how the adapter preserves minimum buffers while selecting feasible payment rails.
+  - Export the recommendation as transfers, remaining liquidity, model lineage, and reproducibility evidence.
+success_criteria:
+  - Treasury workflow appears in the workflow selector.
+  - Production adapter run completes with transfer recommendations.
+  - Evidence export includes operational cash-movement rows.
+

@@ -14,11 +14,15 @@ FUNDING_CAPACITY_SHOCK_WORKFLOW_ID = "funding_capacity_shock"
 COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID = "collateral_liquidity_review"
 PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID = "portfolio_rebalance_mvo"
 MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID = "money_market_policy_optimization"
+TREASURY_CASH_MOVEMENT_WORKFLOW_ID = "treasury_cash_movement"
+MARGIN_CALL_WORKFLOW_ID = "margin_call_workflow"
 
 _PRODUCTION_ADAPTER_BY_DOMAIN = {
     "asset_allocation": "production.asset_allocation.mvo",
     "collateral": "production.collateral.allocation",
+    "margin_operations": "production.margin_call.workflow",
     "money_market": "production.money_market.allocation",
+    "treasury_operations": "production.treasury.cash_movement",
 }
 
 _DOMAIN_BY_PRODUCTION_ADAPTER = {
@@ -458,6 +462,194 @@ def build_money_market_policy_optimization_workflow(
     )
 
 
+def build_treasury_cash_movement_workflow(
+    *,
+    portfolio_id: str = "PORT_001",
+    seed: int = 42,
+    context: dict[str, Any] | None = None,
+) -> WorkflowPlan:
+    """Build a one-step production treasury cash movement workflow."""
+
+    overrides = dict(context or {})
+    workflow_context = _workflow_context(portfolio_id, seed, overrides, "treasury_cash_movement")
+    workflow_context["optimizer_runtime"] = "production"
+    workflow_context["production_optimizer_id"] = "production.treasury.cash_movement"
+    treasury_context = _domain_context(
+        overrides,
+        "treasury_operations",
+        TREASURY_CASH_MOVEMENT_WORKFLOW_ID,
+        {
+            "optimizer_runtime": "production",
+            "production_optimizer_id": "production.treasury.cash_movement",
+            "cutoff_hour": 15,
+            "stress_multiplier": 1.0,
+            "cash_balances": [
+                {
+                    "account_id": "SRC_1",
+                    "entity": "Broker Dealer",
+                    "currency": "USD",
+                    "available_cash": 150_000_000,
+                    "minimum_buffer": 20_000_000,
+                },
+                {
+                    "account_id": "SRC_2",
+                    "entity": "Bank Entity",
+                    "currency": "USD",
+                    "available_cash": 80_000_000,
+                    "minimum_buffer": 15_000_000,
+                },
+            ],
+            "funding_requirements": [
+                {
+                    "requirement_id": "PAY_A",
+                    "target_account_id": "CLEARING_A",
+                    "currency": "USD",
+                    "required_cash": 90_000_000,
+                    "cutoff_hour": 15,
+                },
+                {
+                    "requirement_id": "PAY_B",
+                    "target_account_id": "SETTLEMENT_B",
+                    "currency": "USD",
+                    "required_cash": 65_000_000,
+                    "cutoff_hour": 16,
+                },
+            ],
+            "payment_rails": [
+                {
+                    "rail_id": "FEDWIRE",
+                    "currency": "USD",
+                    "fee_bps": 0.15,
+                    "fixed_fee": 35,
+                    "cutoff_hour": 17,
+                    "max_transfer": 250_000_000,
+                },
+                {
+                    "rail_id": "CHIPS",
+                    "currency": "USD",
+                    "fee_bps": 0.08,
+                    "fixed_fee": 20,
+                    "cutoff_hour": 16,
+                    "max_transfer": 125_000_000,
+                },
+            ],
+        },
+        workflow_context,
+    )
+
+    return WorkflowPlan(
+        workflow_id=TREASURY_CASH_MOVEMENT_WORKFLOW_ID,
+        name="Treasury Cash Movement",
+        description=(
+            "Routes operational cash to clearing and settlement requirements "
+            "through open payment rails while preserving source buffers."
+        ),
+        context=workflow_context,
+        steps=[
+            WorkflowStep(
+                step_id="treasury_cash_001",
+                domain="treasury_operations",
+                name="Treasury cash movement routing",
+                description=(
+                    "Minimize payment cost and cutoff risk while satisfying "
+                    "same-day funding requirements."
+                ),
+                request=_request(
+                    domain="treasury_operations",
+                    portfolio_id=portfolio_id,
+                    direction=ObjectiveDirection.MINIMIZE,
+                    metric="transfer_cost",
+                    context=treasury_context,
+                ),
+            ),
+        ],
+    )
+
+
+def build_margin_call_workflow(
+    *,
+    portfolio_id: str = "PORT_001",
+    seed: int = 42,
+    context: dict[str, Any] | None = None,
+) -> WorkflowPlan:
+    """Build a one-step production margin-call workflow prioritization run."""
+
+    overrides = dict(context or {})
+    workflow_context = _workflow_context(portfolio_id, seed, overrides, "margin_call_workflow")
+    workflow_context["optimizer_runtime"] = "production"
+    workflow_context["production_optimizer_id"] = "production.margin_call.workflow"
+    margin_context = _domain_context(
+        overrides,
+        "margin_operations",
+        MARGIN_CALL_WORKFLOW_ID,
+        {
+            "optimizer_runtime": "production",
+            "production_optimizer_id": "production.margin_call.workflow",
+            "team_capacity_minutes": 150,
+            "materiality_threshold": 25_000_000,
+            "dispute_stress_multiplier": 1.0,
+            "margin_call_queue": [
+                {
+                    "call_id": "MC_A",
+                    "counterparty": "Dealer A",
+                    "amount": 40_000_000,
+                    "due_in_hours": 2,
+                    "dispute_probability": 0.20,
+                    "ops_minutes": 80,
+                    "risk_tier": "high",
+                },
+                {
+                    "call_id": "MC_B",
+                    "counterparty": "CCP B",
+                    "amount": 70_000_000,
+                    "due_in_hours": 1,
+                    "dispute_probability": 0.05,
+                    "ops_minutes": 70,
+                    "risk_tier": "critical",
+                },
+                {
+                    "call_id": "MC_C",
+                    "counterparty": "Dealer C",
+                    "amount": 15_000_000,
+                    "due_in_hours": 8,
+                    "dispute_probability": 0.60,
+                    "ops_minutes": 90,
+                    "risk_tier": "medium",
+                },
+            ],
+        },
+        workflow_context,
+    )
+
+    return WorkflowPlan(
+        workflow_id=MARGIN_CALL_WORKFLOW_ID,
+        name="Margin Call Workflow",
+        description=(
+            "Prioritizes margin calls by exposure, SLA urgency, dispute risk, "
+            "counterparty tier, and available operations capacity."
+        ),
+        context=workflow_context,
+        steps=[
+            WorkflowStep(
+                step_id="margin_call_001",
+                domain="margin_operations",
+                name="Margin call queue prioritization",
+                description=(
+                    "Assign the highest-risk margin calls inside the current "
+                    "team capacity window and explain deferrals."
+                ),
+                request=_request(
+                    domain="margin_operations",
+                    portfolio_id=portfolio_id,
+                    direction=ObjectiveDirection.MINIMIZE,
+                    metric="residual_risk",
+                    context=margin_context,
+                ),
+            ),
+        ],
+    )
+
+
 def _workflow_context(
     portfolio_id: str,
     seed: int,
@@ -489,6 +681,8 @@ def _domain_context(
             "collateral",
             "money_market",
             "asset_allocation",
+            "treasury_operations",
+            "margin_operations",
             "scenario",
         }
     }

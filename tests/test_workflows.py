@@ -14,8 +14,10 @@ from decision_intelligence.workflows import (
     DEFAULT_WORKFLOW_REGISTRY,
     FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
     LIQUIDITY_STRESS_WORKFLOW_ID,
+    MARGIN_CALL_WORKFLOW_ID,
     MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
     PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
+    TREASURY_CASH_MOVEMENT_WORKFLOW_ID,
     SequentialWorkflowRunner,
     WorkflowRegistry,
     WorkflowTemplate,
@@ -67,8 +69,10 @@ def test_default_workflow_registry_lists_and_builds_liquidity_workflow():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        MARGIN_CALL_WORKFLOW_ID,
         MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
+        TREASURY_CASH_MOVEMENT_WORKFLOW_ID,
     ]
     liquidity = next(
         item for item in catalog if item["workflow_id"] == LIQUIDITY_STRESS_WORKFLOW_ID
@@ -103,8 +107,10 @@ def test_default_workflow_registry_builds_all_templates():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID: ["collateral", "money_market"],
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID: ["financing", "money_market"],
         LIQUIDITY_STRESS_WORKFLOW_ID: ["financing", "collateral", "money_market"],
+        MARGIN_CALL_WORKFLOW_ID: ["margin_operations"],
         MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID: ["money_market"],
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID: ["asset_allocation"],
+        TREASURY_CASH_MOVEMENT_WORKFLOW_ID: ["treasury_operations"],
     }
 
     for workflow_id, domains in expected_domains.items():
@@ -120,8 +126,10 @@ def test_loads_workflow_template_configs():
         COLLATERAL_LIQUIDITY_REVIEW_WORKFLOW_ID,
         FUNDING_CAPACITY_SHOCK_WORKFLOW_ID,
         LIQUIDITY_STRESS_WORKFLOW_ID,
+        MARGIN_CALL_WORKFLOW_ID,
         MONEY_MARKET_POLICY_OPTIMIZATION_WORKFLOW_ID,
         PORTFOLIO_REBALANCE_MVO_WORKFLOW_ID,
+        TREASURY_CASH_MOVEMENT_WORKFLOW_ID,
     ]
     liquidity = next(
         config for config in configs if config.workflow_id == LIQUIDITY_STRESS_WORKFLOW_ID
@@ -170,7 +178,9 @@ def test_loads_demo_presets_for_registered_workflows():
         "institutional_csv_liquidity_base",
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
+        "margin_call_capacity_triage",
         "production_constraint_change_review",
+        "treasury_cash_movement_cutoff",
         "treasury_mmf_policy_optimization",
     ]
     executive = next(
@@ -189,6 +199,18 @@ def test_loads_demo_presets_for_registered_workflows():
         preset for preset in presets if preset.preset_id == "production_constraint_change_review"
     )
     assert tier5.context["governance"]["production_constraint_change"] is True
+    margin = next(
+        preset for preset in presets if preset.preset_id == "margin_call_capacity_triage"
+    )
+    assert margin.workflow_id == MARGIN_CALL_WORKFLOW_ID
+    assert margin.context["margin_operations"]["team_capacity_minutes"] == 150
+    treasury = next(
+        preset for preset in presets if preset.preset_id == "treasury_cash_movement_cutoff"
+    )
+    assert treasury.workflow_id == TREASURY_CASH_MOVEMENT_WORKFLOW_ID
+    assert treasury.context["treasury_operations"]["payment_rails"][0]["rail_id"] == (
+        "FEDWIRE"
+    )
     csv_base = next(
         preset for preset in presets if preset.preset_id == "institutional_csv_liquidity_base"
     )

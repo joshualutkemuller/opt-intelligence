@@ -1,0 +1,64 @@
+workflow_id: treasury_cash_movement
+version: 1
+name: Treasury Cash Movement
+description: >
+  Routes operational cash to clearing and settlement requirements through open
+  payment rails while preserving source buffers and producing production
+  evidence.
+domains:
+  - treasury_operations
+tags:
+  - treasury
+  - operations
+  - cash-movement
+  - payments
+  - production-adapter
+default_context:
+  scenario: treasury_cash_movement
+  optimizer_runtime: production
+  production_optimizer_id: production.treasury.cash_movement
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_TREASURY_OPS
+  - key: seed
+    label: Simulation seed
+    type: integer
+    default: 42
+  - key: treasury_operations.cutoff_hour
+    label: Payment cutoff hour
+    type: number
+    default: 15
+  - key: treasury_operations.stress_multiplier
+    label: Funding stress multiplier
+    type: fraction
+    default: 1.0
+  - key: treasury_operations.liquidity_buffer_pct
+    label: Liquidity buffer
+    type: fraction
+    default: 0.05
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 155000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
+steps:
+  - step_id: treasury_cash_001
+    domain: treasury_operations
+    name: Treasury cash movement routing
+    objective_metric: transfer_cost
+    objective_direction: minimize
+    context:
+      optimizer_runtime: production
+      production_optimizer_id: production.treasury.cash_movement
+      cutoff_hour: 15
+      stress_multiplier: 1.0
+

@@ -36,6 +36,7 @@ def build_workflow_evidence_packet(
     policy_ingestion = _policy_ingestion_evidence(payload)
     governance_evidence = _governance_evidence(steps, policy_ingestion)
     comparison_evidence = _comparison_evidence(comparison)
+    operational_evidence = _operational_evidence(steps)
     workflow_id = (
         result.get("workflow_id")
         or workflow.get("workflow_id")
@@ -84,6 +85,7 @@ def build_workflow_evidence_packet(
         "policy_ingestion_evidence": policy_ingestion,
         "solver_evidence": [_solver_summary(step) for step in steps],
         "allocation_evidence": [_allocation_summary(step) for step in steps],
+        "operational_evidence": operational_evidence,
         "dependency_evidence": {
             "summary": dependency,
             "effects": _list(dependency.get("context_changes")),
@@ -177,6 +179,9 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
         Spacer(1, 8),
         Paragraph("Allocation Evidence", heading_style),
         _allocation_table(_list(packet.get("allocation_evidence"))),
+        Spacer(1, 8),
+        Paragraph("Operational Action Evidence", heading_style),
+        _operational_table(_list(_dig(packet, "operational_evidence", "actions"))),
         Spacer(1, 8),
         Paragraph("Recommendation", heading_style),
         Paragraph(str(story.get("recommendation") or "Review workflow output."), body_style),
@@ -384,6 +389,90 @@ def _comparison_evidence(comparison: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _operational_evidence(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    actions: list[dict[str, Any]] = []
+    for step in steps:
+        result = _record(step.get("result"))
+        domain = str(step.get("domain") or result.get("domain") or "")
+        attachments = _record(_dig(result, "solver_metadata", "domain_attachments"))
+
+        if domain == "treasury_operations":
+            for allocation in [_record(item) for item in _list(result.get("allocations"))]:
+                metadata = _record(allocation.get("metadata"))
+                actions.append(
+                    {
+                        "step_id": step.get("step_id"),
+                        "domain": domain,
+                        "action_type": "cash_transfer",
+                        "action_id": allocation.get("asset_id"),
+                        "label": allocation.get("label"),
+                        "status": result.get("status"),
+                        "amount": allocation.get("allocated_value"),
+                        "currency": metadata.get("currency"),
+                        "source": metadata.get("from_account_id"),
+                        "target": metadata.get("to_account_id"),
+                        "route": metadata.get("rail_id"),
+                        "cost": metadata.get("cost"),
+                        "priority": "",
+                        "recommended_action": "execute_transfer",
+                        "reason": "least-cost cutoff-feasible route",
+                    }
+                )
+
+        if domain == "margin_operations":
+            for call in [_record(item) for item in _list(attachments.get("assigned_calls"))]:
+                actions.append(
+                    {
+                        "step_id": step.get("step_id"),
+                        "domain": domain,
+                        "action_type": "assigned_margin_call",
+                        "action_id": call.get("call_id"),
+                        "label": call.get("counterparty"),
+                        "status": result.get("status"),
+                        "amount": call.get("amount"),
+                        "currency": "USD",
+                        "source": call.get("counterparty"),
+                        "target": "margin_operations_queue",
+                        "route": f"order_{call.get('assigned_order')}",
+                        "cost": call.get("capacity_minutes"),
+                        "priority": call.get("priority_score"),
+                        "recommended_action": call.get("recommended_action"),
+                        "reason": "assigned inside current capacity window",
+                    }
+                )
+            for call in [_record(item) for item in _list(attachments.get("deferred_calls"))]:
+                actions.append(
+                    {
+                        "step_id": step.get("step_id"),
+                        "domain": domain,
+                        "action_type": "deferred_margin_call",
+                        "action_id": call.get("call_id"),
+                        "label": call.get("counterparty"),
+                        "status": result.get("status"),
+                        "amount": call.get("amount"),
+                        "currency": "USD",
+                        "source": call.get("counterparty"),
+                        "target": "deferred_queue",
+                        "route": call.get("defer_reason"),
+                        "cost": call.get("ops_minutes"),
+                        "priority": call.get("priority_score"),
+                        "recommended_action": call.get("recommended_action"),
+                        "reason": call.get("defer_reason"),
+                    }
+                )
+
+    return {
+        "summary": {
+            "present": bool(actions),
+            "action_count": len(actions),
+            "domains": sorted(
+                {str(action.get("domain")) for action in actions if action.get("domain")}
+            ),
+        },
+        "actions": actions,
+    }
+
+
 def _evidence_tables(packet: dict[str, Any]) -> dict[str, list[list[Any]]]:
     overview = _record(packet.get("overview"))
     policy = _record(packet.get("policy_ingestion_evidence"))
@@ -404,6 +493,9 @@ def _evidence_tables(packet: dict[str, Any]) -> dict[str, list[list[Any]]]:
         ],
         "workflow_steps": _workflow_step_rows(_list(packet.get("solver_evidence"))),
         "allocations": _allocation_rows(_list(packet.get("allocation_evidence"))),
+        "operational_actions": _operational_action_rows(
+            _list(_dig(packet, "operational_evidence", "actions"))
+        ),
         "dependencies": _dependency_rows(_list(_dig(packet, "dependency_evidence", "effects"))),
         "validation": _validation_rows(validation),
         "governance": _governance_rows(governance),
@@ -488,6 +580,49 @@ def _dependency_rows(items: list[Any]) -> list[list[Any]]:
             ]
         )
     return _with_empty_row(rows, "No dependency effects recorded.")
+
+
+def _operational_action_rows(items: list[Any]) -> list[list[Any]]:
+    rows = [
+        [
+            "Step ID",
+            "Domain",
+            "Action Type",
+            "Action ID",
+            "Label",
+            "Status",
+            "Amount",
+            "Currency",
+            "Source",
+            "Target",
+            "Route",
+            "Cost / Minutes",
+            "Priority",
+            "Recommended Action",
+            "Reason",
+        ]
+    ]
+    for item in [_record(value) for value in items]:
+        rows.append(
+            [
+                item.get("step_id"),
+                item.get("domain"),
+                item.get("action_type"),
+                item.get("action_id"),
+                item.get("label"),
+                item.get("status"),
+                item.get("amount"),
+                item.get("currency"),
+                item.get("source"),
+                item.get("target"),
+                item.get("route"),
+                item.get("cost"),
+                item.get("priority"),
+                item.get("recommended_action"),
+                item.get("reason"),
+            ]
+        )
+    return _with_empty_row(rows, "No operational actions recorded.")
 
 
 def _validation_rows(summary: dict[str, Any]) -> list[list[Any]]:
@@ -738,6 +873,24 @@ def _validation_table(summary: dict[str, Any]) -> Any:
         ],
         widths=[1.55 * inch, 5.15 * inch],
     )
+
+
+def _operational_table(items: list[Any]) -> Any:
+    rows = [["Step", "Type", "Action", "Amount", "Route", "Recommendation"]]
+    for item in [_record(value) for value in items[:8]]:
+        rows.append(
+            [
+                item.get("step_id"),
+                item.get("action_type"),
+                item.get("label") or item.get("action_id"),
+                _format_number(item.get("amount")),
+                item.get("route"),
+                item.get("recommended_action"),
+            ]
+        )
+    if len(rows) == 1:
+        rows.append(["None", "", "No operational actions recorded.", "", "", ""])
+    return _table(rows)
 
 
 def _write_xlsx_static_files(workbook: ZipFile, sheet_names: list[str]) -> None:

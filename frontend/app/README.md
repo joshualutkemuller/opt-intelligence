@@ -153,6 +153,9 @@ Registered demo templates:
 - Liquidity Stress Funding Workflow
 - Funding Capacity Shock
 - Collateral Liquidity Review
+- Money Market Policy Optimization
+- Treasury Cash Movement
+- Margin Call Workflow
 
 The **Balanced MVO Rebalance** preset demonstrates the Asset Allocation MVO
 optimizer in the same browser workflow shell, with editable inputs for
@@ -171,16 +174,18 @@ The **Production Adapter** panel surfaces the production optimizer catalog from
 `GET /api/production-optimizers`. Select **Balanced MVO Rebalance**, switch the
 runtime from **Phase 1** to **Production**, then run the workflow to show model
 version, config version, data snapshot ID, solver version, and reproducibility
-fingerprint from the production adapter evidence. For **Collateral HQLA
-Schedule Stress**, the runtime becomes a hybrid path: the collateral step runs
-through `production.collateral.allocation`, while the downstream money-market
-step remains on the phase-1 optimizer until a production money-market adapter is
-registered.
+fingerprint from the production adapter evidence. **Collateral HQLA Schedule
+Stress** can run collateral and downstream money-market steps through production
+adapters. **Treasury Cash Movement** and **Margin Call Workflow** are
+production-only operational demos that surface transfer recommendations,
+assigned/deferred queue actions, and reproducibility evidence.
 
 The **Evidence Room** panel is the live audit viewer for the current workflow.
 It combines document extraction evidence, model/runtime evidence, solver
 metadata, validation checks, governance state, and workflow trace events before
 the user downloads the JSON/PDF/CSV/XLSX evidence package.
+For operational workflows, the exported evidence package includes an
+`operational_actions` table for cash transfers or margin-call queue actions.
 
 The corresponding YAML template configs live in:
 

@@ -614,6 +614,11 @@ decision-intelligence-platform/
     those sets, and attach the active comparison to evidence exports. Evidence
     export now persists comparison tables into JSON, PDF, HTML package, CSV
     tables, and an XLSX workbook.
+-   ✅ **Operational Workflow Templates + Evidence (POC)** — treasury cash
+    movement and margin-call workflow production adapters are now exposed as
+    workflow templates and demo presets, selectable in the browser workflow
+    catalog, runnable through the production runtime, and exported with
+    operational action rows in JSON, PDF, CSV, and XLSX evidence packages.
 
 ## Phase 6
 

@@ -157,9 +157,45 @@ They also make the platform more credible for enterprise production use:
 
 ## Next Build Steps
 
-1. Add workflow templates and demo presets for both operational adapters.
-2. Surface the adapters in the front-end workflow selector.
-3. Add document ingestion examples for payment policies, SLA rules, and margin
+1. ✅ Add workflow templates and demo presets for both operational adapters.
+2. ✅ Surface the adapters in the front-end workflow selector.
+3. ✅ Extend evidence export with operational queue tables and action logs.
+4. Add document ingestion examples for payment policies, SLA rules, and margin
    call procedures.
-4. Extend evidence export with operational queue tables and action logs.
 5. Replace scaffold solve logic with firm production engines when available.
+
+## Implementation Update: Workflow And Evidence Demo Layer
+
+The two operational adapters are now runnable through the same workflow,
+preset, API, UI selector, and evidence-export pattern as the portfolio,
+collateral, and money-market demos.
+
+New workflow templates:
+
+- `treasury_cash_movement`
+- `margin_call_workflow`
+
+New demo presets:
+
+- `treasury_cash_movement_cutoff`
+- `margin_call_capacity_triage`
+
+The browser workflow selector receives these from `GET /api/workflows` and
+`GET /api/demo-presets`. The React fallback catalog also includes both demos so
+the interface remains intelligible if the API catalog is temporarily
+unavailable.
+
+Evidence export now includes an `operational_evidence` section plus
+`operational_actions.csv` / XLSX worksheet rows. For treasury cash movement,
+the action rows describe transfer amount, source, target, rail, cost, and
+recommendation. For margin-call workflow, the action rows describe assigned and
+deferred calls, priority score, capacity minutes, recommended action, and
+deferral/escalation reason.
+
+Remaining production-hardening work:
+
+- Add document ingestion examples for payment policies, SLA rules, and margin
+  call procedures.
+- Add richer front-end tables for operational actions before export, not only
+  inside the evidence package.
+- Replace scaffold solve logic with firm production engines when available.

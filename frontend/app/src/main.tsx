@@ -562,6 +562,8 @@ const MAX_COMPARISON_SETS = 8;
 const VIDEO_DEMO_PRESET_ID = "institutional_csv_liquidity_stress";
 const COLLATERAL_HQLA_PRESET_ID = "collateral_hqla_schedule_stress";
 const MONEY_MARKET_POLICY_PRESET_ID = "treasury_mmf_policy_optimization";
+const TREASURY_CASH_MOVEMENT_PRESET_ID = "treasury_cash_movement_cutoff";
+const MARGIN_CALL_PRESET_ID = "margin_call_capacity_triage";
 const COLLATERAL_SCHEDULE_SAMPLE = `Collateral Schedule - Counterparty Stress Addendum
 
 Mandate: Collateral and cash review for Portfolio PORT_HQLA_224.
@@ -624,6 +626,84 @@ const pocPresenterScript: PresenterScriptStep[] = [
 ];
 
 const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
+  {
+    workflow_id: "treasury_cash_movement",
+    name: "Treasury Cash Movement",
+    description:
+      "Routes operational cash to clearing and settlement requirements through open payment rails.",
+    domains: ["treasury_operations"],
+    tags: ["treasury", "operations", "cash-movement", "payments", "production-adapter"],
+    version: 1,
+    default_context: {
+      scenario: "treasury_cash_movement",
+      optimizer_runtime: "production",
+      production_optimizer_id: "production.treasury.cash_movement",
+    },
+    inputs: [
+      { key: "portfolio_id", label: "Portfolio ID", type: "string", default: "PORT_TREASURY_OPS", required: true },
+      { key: "seed", label: "Simulation seed", type: "integer", default: 42, required: true },
+      {
+        key: "treasury_operations.cutoff_hour",
+        label: "Payment cutoff hour",
+        type: "number",
+        default: 15,
+        required: true,
+      },
+      {
+        key: "treasury_operations.stress_multiplier",
+        label: "Funding stress multiplier",
+        type: "fraction",
+        default: 1.0,
+        required: true,
+      },
+      {
+        key: "treasury_operations.liquidity_buffer_pct",
+        label: "Liquidity buffer",
+        type: "fraction",
+        default: 0.05,
+        required: true,
+      },
+    ],
+  },
+  {
+    workflow_id: "margin_call_workflow",
+    name: "Margin Call Workflow",
+    description:
+      "Prioritizes a margin-call operations queue by exposure, SLA urgency, dispute risk, and team capacity.",
+    domains: ["margin_operations"],
+    tags: ["margin", "operations", "workflow", "sla", "production-adapter"],
+    version: 1,
+    default_context: {
+      scenario: "margin_call_workflow",
+      optimizer_runtime: "production",
+      production_optimizer_id: "production.margin_call.workflow",
+    },
+    inputs: [
+      { key: "portfolio_id", label: "Portfolio ID", type: "string", default: "PORT_MARGIN_OPS", required: true },
+      { key: "seed", label: "Simulation seed", type: "integer", default: 42, required: true },
+      {
+        key: "margin_operations.team_capacity_minutes",
+        label: "Team capacity minutes",
+        type: "integer",
+        default: 150,
+        required: true,
+      },
+      {
+        key: "margin_operations.materiality_threshold",
+        label: "Materiality threshold",
+        type: "currency",
+        default: 25_000_000,
+        required: true,
+      },
+      {
+        key: "margin_operations.dispute_stress_multiplier",
+        label: "Dispute stress multiplier",
+        type: "fraction",
+        default: 1.0,
+        required: true,
+      },
+    ],
+  },
   {
     workflow_id: "money_market_policy_optimization",
     name: "Money Market Policy Optimization",
@@ -881,6 +961,80 @@ const fallbackWorkflowCatalog: WorkflowCatalogItem[] = [
 ];
 
 const fallbackDemoPresets: DemoPresetCatalogItem[] = [
+  {
+    preset_id: TREASURY_CASH_MOVEMENT_PRESET_ID,
+    version: 1,
+    name: "Treasury Cash Movement Cutoff",
+    description:
+      "Treasury operations walkthrough routing same-day clearing and settlement funding through open payment rails.",
+    audience: "Treasury operations, payments, liquidity control, and settlement teams",
+    workflow_id: "treasury_cash_movement",
+    portfolio_id: "PORT_TREASURY_OPS",
+    seed: 42,
+    duration_minutes: 4,
+    context: {
+      scenario: "treasury_cash_movement_cutoff",
+      optimizer_runtime: "production",
+      production_optimizer_id: "production.treasury.cash_movement",
+      treasury_operations: {
+        cutoff_hour: 15,
+        stress_multiplier: 1.0,
+        liquidity_buffer_pct: 0.05,
+      },
+      governance: {
+        materiality_notional: 155_000_000,
+        estimated_pnl_impact: 0,
+        production_constraint_change: false,
+      },
+    },
+    talking_points: [
+      "Start with two same-day funding requirements and two source cash pools.",
+      "Show how the adapter preserves buffers while selecting feasible payment rails.",
+      "Export transfers, remaining liquidity, lineage, and reproducibility evidence.",
+    ],
+    success_criteria: [
+      "Treasury workflow appears in the workflow selector.",
+      "Production adapter run completes with transfer recommendations.",
+      "Evidence export includes operational cash-movement rows.",
+    ],
+  },
+  {
+    preset_id: MARGIN_CALL_PRESET_ID,
+    version: 1,
+    name: "Margin Call Capacity Triage",
+    description:
+      "Margin operations walkthrough prioritizing a stressed queue inside a limited team-capacity window.",
+    audience: "Margin operations, collateral management, counterparty risk, and controls teams",
+    workflow_id: "margin_call_workflow",
+    portfolio_id: "PORT_MARGIN_OPS",
+    seed: 42,
+    duration_minutes: 4,
+    context: {
+      scenario: "margin_call_capacity_triage",
+      optimizer_runtime: "production",
+      production_optimizer_id: "production.margin_call.workflow",
+      margin_operations: {
+        team_capacity_minutes: 150,
+        materiality_threshold: 25_000_000,
+        dispute_stress_multiplier: 1.0,
+      },
+      governance: {
+        materiality_notional: 125_000_000,
+        estimated_pnl_impact: 0,
+        production_constraint_change: false,
+      },
+    },
+    talking_points: [
+      "Start with a margin-call queue that exceeds available operations capacity.",
+      "Explain priority using exposure, SLA urgency, dispute probability, and counterparty tier.",
+      "Show assigned calls, deferred calls, and evidence for escalation or deferral.",
+    ],
+    success_criteria: [
+      "Margin workflow appears in the workflow selector.",
+      "Production adapter run completes with assigned and deferred call actions.",
+      "Evidence export includes operational margin queue rows.",
+    ],
+  },
   {
     preset_id: MONEY_MARKET_POLICY_PRESET_ID,
     version: 1,
@@ -1149,6 +1303,76 @@ const fallbackDemoDataPackets: DemoDataPacketCatalogItem[] = [
 ];
 
 const fallbackProductionOptimizers: ProductionOptimizerCatalogItem[] = [
+  {
+    optimizer_id: "production.treasury.cash_movement",
+    domain: "treasury_operations",
+    model_name: "Treasury Cash Movement Optimizer",
+    model_version: "0.1.0",
+    config_version: "2026.07.19",
+    objectives: [
+      {
+        name: "transfer_cost",
+        direction: "minimize",
+        weight: 1,
+        units: "usd",
+      },
+    ],
+    constraints: [
+      { name: "funding_requirements", constraint_type: "budget", hard: true },
+      { name: "source_liquidity_buffer", constraint_type: "liquidity", hard: true },
+      { name: "payment_cutoff", constraint_type: "operational", hard: true },
+      { name: "rail_capacity", constraint_type: "capacity", hard: true },
+    ],
+    data_contract: {
+      required_datasets: ["cash_balances", "funding_requirements", "payment_rails"],
+      optional_datasets: ["holiday_calendar", "entity_transfer_limits"],
+      quality_checks: ["source cash is available", "payment rails exist before cutoff"],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "adapter_native",
+      problem_family: "custom",
+      vendor: "internal",
+      version: "least_cost_cutoff_feasible",
+      parameters: {},
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
+  {
+    optimizer_id: "production.margin_call.workflow",
+    domain: "margin_operations",
+    model_name: "Margin Call Workflow Optimizer",
+    model_version: "0.1.0",
+    config_version: "2026.07.19",
+    objectives: [
+      {
+        name: "sla_breach_risk",
+        direction: "minimize",
+        weight: 1,
+        units: "risk_score",
+      },
+    ],
+    constraints: [
+      { name: "team_capacity", constraint_type: "capacity", hard: true },
+      { name: "sla_cutoff", constraint_type: "operational", hard: true },
+      { name: "counterparty_escalation", constraint_type: "governance", hard: false },
+      { name: "approval_required", constraint_type: "governance", hard: false },
+    ],
+    data_contract: {
+      required_datasets: ["margin_call_queue", "ops_capacity"],
+      optional_datasets: ["counterparty_risk_scores", "holiday_calendar"],
+      quality_checks: ["queue amounts are nonnegative", "ops capacity is positive"],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "adapter_native",
+      problem_family: "custom",
+      vendor: "internal",
+      version: "exposure_sla_dispute_weighted_score",
+      parameters: {},
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
   {
     optimizer_id: "production.asset_allocation.mvo",
     domain: "asset_allocation",
@@ -3351,6 +3575,8 @@ function workflowDomainsForId(
   if (workflowId === "portfolio_rebalance_mvo") return ["asset_allocation"];
   if (workflowId === "money_market_policy_optimization") return ["money_market"];
   if (workflowId === "collateral_liquidity_review") return ["collateral", "money_market"];
+  if (workflowId === "treasury_cash_movement") return ["treasury_operations"];
+  if (workflowId === "margin_call_workflow") return ["margin_operations"];
   if (workflowId === "funding_capacity_shock") return ["financing", "money_market"];
   if (workflowId === "liquidity_stress_funding_workflow") {
     return ["financing", "collateral", "money_market"];
@@ -6917,6 +7143,8 @@ function buildDisplayState(
   const assetAllocation = toRecord(presetContext.asset_allocation);
   const moneyMarket = toRecord(presetContext.money_market);
   const collateral = toRecord(presetContext.collateral);
+  const treasury = toRecord(presetContext.treasury_operations);
+  const margin = toRecord(presetContext.margin_operations);
   const fallbackDomain = selectedWorkflow.domains[0] || "money_market";
   const rawDomain = String(collected.domain || fallbackDomain);
   const domain = titleCase(rawDomain.replaceAll("_", " "));
@@ -6985,6 +7213,55 @@ function buildDisplayState(
           formatFraction(collected.weekly_liquidity_req || moneyMarket.weekly_liquidity_req || 0.65),
         ],
         ["HQLA reporting", collateral.hqla_reporting ? "Enabled" : "Review"],
+      ],
+    };
+  }
+
+  if (rawDomain === "treasury_operations") {
+    return {
+      domain,
+      portfolio: String(collected.portfolio_id || selectedPreset.portfolio_id || "PORT_TREASURY_OPS"),
+      scenario: formatPresetScenario(collected.scenario_names, presetContext.scenario),
+      summary: [
+        ["Funding need", formatCurrency(155_000_000)],
+        ["Cutoff hour", `${treasury.cutoff_hour || 15}:00`],
+        [
+          "Stress multiplier",
+          formatFraction(treasury.stress_multiplier || collected.stress_multiplier || 1),
+        ],
+        [
+          "Liquidity buffer",
+          formatFraction(treasury.liquidity_buffer_pct || collected.liquidity_buffer_pct || 0.05),
+        ],
+        ["Payment rails", "CHIPS / FEDWIRE"],
+        ["Runtime", "Production adapter"],
+      ],
+    };
+  }
+
+  if (rawDomain === "margin_operations") {
+    return {
+      domain,
+      portfolio: String(collected.portfolio_id || selectedPreset.portfolio_id || "PORT_MARGIN_OPS"),
+      scenario: formatPresetScenario(collected.scenario_names, presetContext.scenario),
+      summary: [
+        ["Queue amount", formatCurrency(125_000_000)],
+        [
+          "Team capacity",
+          `${margin.team_capacity_minutes || collected.team_capacity_minutes || 150} min`,
+        ],
+        [
+          "Materiality",
+          formatCurrency(margin.materiality_threshold || collected.materiality_threshold || 25_000_000),
+        ],
+        [
+          "Dispute stress",
+          formatFraction(
+            margin.dispute_stress_multiplier || collected.dispute_stress_multiplier || 1,
+          ),
+        ],
+        ["Priority factors", "Exposure / SLA / dispute / tier"],
+        ["Runtime", "Production adapter"],
       ],
     };
   }

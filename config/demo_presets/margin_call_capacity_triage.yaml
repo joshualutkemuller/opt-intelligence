@@ -1,0 +1,54 @@
+preset_id: margin_call_capacity_triage
+version: 1
+name: Margin Call Capacity Triage
+description: >
+  Margin operations walkthrough showing a stressed queue prioritized inside a
+  limited team-capacity window with assigned, deferred, and escalation-ready
+  actions.
+audience: Margin operations, collateral management, counterparty risk, and controls teams
+workflow_id: margin_call_workflow
+portfolio_id: PORT_MARGIN_OPS
+seed: 42
+duration_minutes: 4
+context:
+  scenario: margin_call_capacity_triage
+  optimizer_runtime: production
+  production_optimizer_id: production.margin_call.workflow
+  margin_operations:
+    team_capacity_minutes: 150
+    materiality_threshold: 25000000
+    dispute_stress_multiplier: 1.0
+    margin_call_queue:
+      - call_id: MC_A
+        counterparty: Dealer A
+        amount: 40000000
+        due_in_hours: 2
+        dispute_probability: 0.20
+        ops_minutes: 80
+        risk_tier: high
+      - call_id: MC_B
+        counterparty: CCP B
+        amount: 70000000
+        due_in_hours: 1
+        dispute_probability: 0.05
+        ops_minutes: 70
+        risk_tier: critical
+      - call_id: MC_C
+        counterparty: Dealer C
+        amount: 15000000
+        due_in_hours: 8
+        dispute_probability: 0.60
+        ops_minutes: 90
+        risk_tier: medium
+  governance:
+    materiality_notional: 125000000
+    estimated_pnl_impact: 0
+    production_constraint_change: false
+talking_points:
+  - Start with a margin-call queue that exceeds available operations capacity.
+  - Explain the priority score using exposure, SLA urgency, dispute probability, and counterparty tier.
+  - Show assigned calls, deferred calls, and evidence for escalation or deferral.
+success_criteria:
+  - Margin workflow appears in the workflow selector.
+  - Production adapter run completes with assigned and deferred call actions.
+  - Evidence export includes operational margin queue rows.

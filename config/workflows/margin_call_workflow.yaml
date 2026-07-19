@@ -1,0 +1,63 @@
+workflow_id: margin_call_workflow
+version: 1
+name: Margin Call Workflow
+description: >
+  Prioritizes a margin-call operations queue by exposure, SLA urgency, dispute
+  risk, counterparty tier, and available team capacity.
+domains:
+  - margin_operations
+tags:
+  - margin
+  - operations
+  - workflow
+  - sla
+  - production-adapter
+default_context:
+  scenario: margin_call_workflow
+  optimizer_runtime: production
+  production_optimizer_id: production.margin_call.workflow
+inputs:
+  - key: portfolio_id
+    label: Portfolio ID
+    type: string
+    default: PORT_MARGIN_OPS
+  - key: seed
+    label: Simulation seed
+    type: integer
+    default: 42
+  - key: margin_operations.team_capacity_minutes
+    label: Team capacity minutes
+    type: integer
+    default: 150
+  - key: margin_operations.materiality_threshold
+    label: Materiality threshold
+    type: currency
+    default: 25000000
+  - key: margin_operations.dispute_stress_multiplier
+    label: Dispute stress multiplier
+    type: fraction
+    default: 1.0
+  - key: governance.materiality_notional
+    label: Materiality notional
+    type: currency
+    default: 125000000
+  - key: governance.estimated_pnl_impact
+    label: Estimated PnL impact
+    type: currency
+    default: 0
+  - key: governance.production_constraint_change
+    label: Production constraint change
+    type: boolean
+    default: false
+steps:
+  - step_id: margin_call_001
+    domain: margin_operations
+    name: Margin call queue prioritization
+    objective_metric: residual_risk
+    objective_direction: minimize
+    context:
+      optimizer_runtime: production
+      production_optimizer_id: production.margin_call.workflow
+      team_capacity_minutes: 150
+      materiality_threshold: 25000000
+      dispute_stress_multiplier: 1.0

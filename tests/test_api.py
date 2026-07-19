@@ -314,8 +314,10 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
         "collateral_liquidity_review",
         "funding_capacity_shock",
         "liquidity_stress_funding_workflow",
+        "margin_call_workflow",
         "money_market_policy_optimization",
         "portfolio_rebalance_mvo",
+        "treasury_cash_movement",
     ]
     assert body["workflows"][0]["version"] == 1
     assert body["workflows"][0]["inputs"] == [
@@ -429,7 +431,31 @@ def test_workflow_catalog_endpoint_lists_registered_workflows():
         "collateral",
         "money_market",
     ]
-    mvo = body["workflows"][-1]
+    margin = next(item for item in body["workflows"] if item["workflow_id"] == (
+        "margin_call_workflow"
+    ))
+    assert margin["domains"] == ["margin_operations"]
+    assert margin["default_context"]["optimizer_runtime"] == "production"
+    assert [item["key"] for item in margin["inputs"]] == [
+        "portfolio_id",
+        "seed",
+        "margin_operations.team_capacity_minutes",
+        "margin_operations.materiality_threshold",
+        "margin_operations.dispute_stress_multiplier",
+        "governance.materiality_notional",
+        "governance.estimated_pnl_impact",
+        "governance.production_constraint_change",
+    ]
+    treasury = next(item for item in body["workflows"] if item["workflow_id"] == (
+        "treasury_cash_movement"
+    ))
+    assert treasury["domains"] == ["treasury_operations"]
+    assert treasury["default_context"]["production_optimizer_id"] == (
+        "production.treasury.cash_movement"
+    )
+    mvo = next(item for item in body["workflows"] if item["workflow_id"] == (
+        "portfolio_rebalance_mvo"
+    ))
     assert mvo["domains"] == ["asset_allocation"]
     assert mvo["default_context"]["problem_type"] == "qp"
     assert [item["key"] for item in mvo["inputs"]] == [
@@ -462,7 +488,9 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "institutional_csv_liquidity_base",
         "institutional_csv_liquidity_stress",
         "large_notional_approval_review",
+        "margin_call_capacity_triage",
         "production_constraint_change_review",
+        "treasury_cash_movement_cutoff",
         "treasury_mmf_policy_optimization",
     ]
     mvo = body["presets"][0]
@@ -484,6 +512,22 @@ def test_demo_preset_catalog_endpoint_lists_repeatable_walkthroughs():
         "production_constraint_change_review"
     ))
     assert tier5["context"]["governance"]["production_constraint_change"] is True
+    margin = next(
+        item for item in body["presets"] if item["preset_id"] == (
+            "margin_call_capacity_triage"
+        )
+    )
+    assert margin["workflow_id"] == "margin_call_workflow"
+    assert margin["context"]["margin_operations"]["team_capacity_minutes"] == 150
+    treasury = next(
+        item for item in body["presets"] if item["preset_id"] == (
+            "treasury_cash_movement_cutoff"
+        )
+    )
+    assert treasury["workflow_id"] == "treasury_cash_movement"
+    assert treasury["context"]["treasury_operations"]["funding_requirements"][0][
+        "required_cash"
+    ] == 90_000_000
     csv_preset = next(
         item for item in body["presets"] if item["preset_id"] == (
             "institutional_csv_liquidity_base"
@@ -644,6 +688,72 @@ def test_workflow_endpoint_supports_full_production_runtime_for_collateral():
     )
     assert body["plan"]["steps"][0]["request"]["context"]["optimizer_runtime"] == "production"
     assert body["plan"]["steps"][1]["request"]["context"]["optimizer_runtime"] == "production"
+
+
+def test_workflow_endpoint_runs_treasury_cash_movement_workflow():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "treasury_cash_movement",
+            "portfolio_id": "PORT_TREASURY_API",
+            "seed": 42,
+            "context": {
+                "treasury_operations": {
+                    "data_snapshot_id": "SNAP_TREASURY_WORKFLOW_API",
+                    "cutoff_hour": 15,
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    step = body["result"]["step_results"][0]
+    metadata = step["result"]["solver_metadata"]
+    assert body["plan"]["workflow_id"] == "treasury_cash_movement"
+    assert body["result"]["status"] == "complete"
+    assert step["domain"] == "treasury_operations"
+    assert step["result"]["status"] == "optimal"
+    assert metadata["optimizer_runtime"] == "production"
+    assert metadata["production_optimizer_id"] == "production.treasury.cash_movement"
+    assert metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_TREASURY_WORKFLOW_API"
+    )
+    assert metadata["domain_attachments"]["total_moved_cash"] == 155_000_000
+
+
+def test_workflow_endpoint_runs_margin_call_workflow():
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "margin_call_workflow",
+            "portfolio_id": "PORT_MARGIN_API",
+            "seed": 42,
+            "context": {
+                "margin_operations": {
+                    "data_snapshot_id": "SNAP_MARGIN_WORKFLOW_API",
+                    "team_capacity_minutes": 150,
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    step = body["result"]["step_results"][0]
+    metadata = step["result"]["solver_metadata"]
+    assert body["plan"]["workflow_id"] == "margin_call_workflow"
+    assert body["result"]["status"] == "complete"
+    assert step["domain"] == "margin_operations"
+    assert step["result"]["status"] == "optimal"
+    assert metadata["optimizer_runtime"] == "production"
+    assert metadata["production_optimizer_id"] == "production.margin_call.workflow"
+    assert metadata["production_evidence"]["data_snapshot_id"] == "SNAP_MARGIN_WORKFLOW_API"
+    assert [row["call_id"] for row in metadata["domain_attachments"]["assigned_calls"]] == [
+        "MC_B",
+        "MC_A",
+    ]
+    assert metadata["domain_attachments"]["deferred_calls"][0]["call_id"] == "MC_C"
 
 
 def test_workflow_compare_endpoint_returns_scenario_deltas():
@@ -1087,6 +1197,64 @@ def test_workflow_export_evidence_endpoint_returns_json_and_pdf():
     assert xlsx_bytes.startswith(b"PK")
     pdf_bytes = base64.b64decode(body["pdf_base64"])
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_workflow_export_evidence_includes_operational_action_tables():
+    run_response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow": "margin_call_workflow",
+            "portfolio_id": "PORT_MARGIN_EVIDENCE",
+            "seed": 42,
+            "context": {
+                "margin_operations": {
+                    "data_snapshot_id": "SNAP_MARGIN_EVIDENCE_API",
+                    "team_capacity_minutes": 150,
+                }
+            },
+        },
+    )
+    assert run_response.status_code == 200
+    run_body = run_response.json()
+
+    response = client.post(
+        "/api/workflows/export-evidence",
+        json={
+            "response": run_body,
+            "payload": {
+                "workflow": "margin_call_workflow",
+                "portfolio_id": "PORT_MARGIN_EVIDENCE",
+                "seed": 42,
+                "context": {},
+            },
+            "preset": {
+                "preset_id": "margin_call_capacity_triage",
+                "name": "Margin Call Capacity Triage",
+                "audience": "Margin operations",
+                "talking_points": ["Show assigned and deferred calls."],
+                "success_criteria": ["Evidence packet includes action rows."],
+            },
+            "workflow": {
+                "workflow_id": "margin_call_workflow",
+                "name": "Margin Call Workflow",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    packet = body["json_payload"]
+    assert packet["operational_evidence"]["summary"]["present"] is True
+    assert packet["operational_evidence"]["summary"]["action_count"] == 3
+    assert packet["operational_evidence"]["actions"][0]["action_type"] == (
+        "assigned_margin_call"
+    )
+    operational_csv = next(
+        item for item in body["csv_files"] if item["filename"] == "operational_actions.csv"
+    )
+    assert "MC_B" in operational_csv["content"]
+    assert "deferred_margin_call" in operational_csv["content"]
+    assert base64.b64decode(body["xlsx_base64"]).startswith(b"PK")
 
 
 def test_audit_narrative_endpoint_returns_markdown_sections():
