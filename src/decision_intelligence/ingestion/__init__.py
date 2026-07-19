@@ -1,12 +1,12 @@
 """PDF ingestion — parse a document into a validated OptimizationRequest."""
 
-from .mapper import IngestionError, to_optimization_request
 from .ips import (
     PolicyFieldExtraction,
     PolicyIngestionResult,
     ingest_policy_document,
     supported_policy_workflows,
 )
+from .mapper import IngestionError, to_optimization_request
 from .pdf_ingest import (
     extract_heuristic,
     extract_text,

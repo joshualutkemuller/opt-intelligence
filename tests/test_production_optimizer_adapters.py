@@ -12,6 +12,7 @@ from decision_intelligence.production_optimizers import (
     ConstraintFamilySpec,
     DataContractSpec,
     ExecutionIsolationSpec,
+    FinancingProductionAdapter,
     MarginCallWorkflowProductionAdapter,
     ModelConfigSpec,
     ModelLineageSpec,
@@ -302,6 +303,41 @@ def test_money_market_production_adapter_runs_native_optimizer() -> None:
     )
 
 
+def test_financing_production_adapter_runs_native_optimizer() -> None:
+    request = OptimizationRequest(
+        domain="financing",
+        portfolio_id="PORT_FIN_PROD",
+        objective=Objective(
+            name="minimize_funding_spread",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="funding_spread",
+        ),
+        context={
+            "seed": 42,
+            "total_funding_need": 300_000_000,
+            "max_cp_concentration": 0.40,
+            "capital_budget_pct": 5.0,
+            "solver_backend": "scipy",
+            "problem_type": "lp",
+            "data_snapshot_id": "SNAP_FIN_001",
+        },
+    )
+
+    result = FinancingProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.financing.allocation"
+    assert result.status == "optimal"
+    assert result.allocations
+    assert result.baseline_value > result.objective_value
+    assert result.domain_attachments["total_funding"] == pytest.approx(300_000_000)
+    assert result.domain_attachments["counterparties_used"] > 0
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_FIN_001"
+    assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
+        "production.financing.allocation"
+    )
+
+
 def test_cash_movement_production_adapter_routes_operational_cash() -> None:
     request = OptimizationRequest(
         domain="treasury_operations",
@@ -440,6 +476,7 @@ def test_default_production_registry_contains_current_adapters() -> None:
     assert registry.list_ids() == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.financing.allocation",
         "production.margin_call.workflow",
         "production.money_market.allocation",
         "production.treasury.cash_movement",

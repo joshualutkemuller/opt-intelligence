@@ -25,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from decision_intelligence.ingestion import ingest_policy_document
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = [
     (

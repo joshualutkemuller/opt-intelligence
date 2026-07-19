@@ -126,6 +126,7 @@ def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
     assert [item["optimizer_id"] for item in body["optimizers"]] == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.financing.allocation",
         "production.margin_call.workflow",
         "production.money_market.allocation",
         "production.treasury.cash_movement",
@@ -144,6 +145,12 @@ def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
     money_market = by_id["production.money_market.allocation"]
     assert money_market["domain"] == "money_market"
     assert money_market["solver"]["backend"] == "scipy"
+    financing = by_id["production.financing.allocation"]
+    assert financing["domain"] == "financing"
+    assert financing["data_contract"]["required_datasets"] == [
+        "financing_counterparties",
+        "funding_needs",
+    ]
 
 
 def test_direct_optimization_endpoint_supports_production_runtime():

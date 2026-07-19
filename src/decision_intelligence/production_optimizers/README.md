@@ -12,6 +12,8 @@ Current scaffold:
   behind the production adapter lifecycle.
 - `adapters/collateral` wraps the current Collateral optimizer behind the
   production adapter lifecycle.
+- `adapters/financing` wraps the current Financing optimizer behind the
+  production adapter lifecycle.
 - `adapters/money_market` wraps the current Money Market optimizer behind the
   production adapter lifecycle.
 - `adapters/cash_movement` provides a treasury operations scaffold for routing

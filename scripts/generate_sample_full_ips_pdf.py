@@ -14,14 +14,13 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
-    Paragraph,
     PageBreak,
+    Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = REPO_ROOT / "examples/policies/sample_full_ips.pdf"

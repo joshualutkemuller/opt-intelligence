@@ -20,6 +20,7 @@ MARGIN_CALL_WORKFLOW_ID = "margin_call_workflow"
 _PRODUCTION_ADAPTER_BY_DOMAIN = {
     "asset_allocation": "production.asset_allocation.mvo",
     "collateral": "production.collateral.allocation",
+    "financing": "production.financing.allocation",
     "margin_operations": "production.margin_call.workflow",
     "money_market": "production.money_market.allocation",
     "treasury_operations": "production.treasury.cash_movement",

@@ -161,3 +161,21 @@ platform output sections:
 | turnover | `turnover` |
 | transaction costs | `transaction_costs` |
 | proprietary dense output | `domain_attachments` |
+
+## Current Production Adapter Contract Inventory
+
+| Adapter | Objective terms | Constraint families | Required data contract | Solver family | Evidence emphasis |
+|---|---|---|---|---|---|
+| `production.asset_allocation.mvo` | Maximize mean-variance utility and target-return tradeoff. | Budget, target return, asset bounds, cash floor, concentration. | Asset universe and covariance matrix. | SciPy QP/SLSQP. | Portfolio assumptions, covariance shape, optimized weights, risk/return diagnostics, sensitivities. |
+| `production.collateral.allocation` | Minimize collateral funding/opportunity cost. | Obligation coverage, eligible inventory, concentration, haircuts, venue eligibility. | Collateral inventory and margin obligations. | SciPy LP/HiGHS. | Posted collateral, counterparty obligations, venue mix, binding concentration/capacity limits. |
+| `production.financing.allocation` | Minimize funding spread cost; optional capital-usage objective mode. | Funding coverage, counterparty capacity, tenor compatibility, single-counterparty concentration, capital budget. | Financing counterparties and funding needs. | SciPy LP/HiGHS. | Funding source allocations, instrument mix, counterparty usage, capital usage, binding capacity/concentration limits. |
+| `production.money_market.allocation` | Maximize weighted money-market yield. | Cash budget, daily liquidity, weekly liquidity, prime concentration, WAM, single-fund bounds. | Money-market fund universe and cash position. | SciPy LP/HiGHS with optional MILP controls. | Fund allocations, liquidity profile, WAM, prime exposure, binding liquidity/concentration checks. |
+| `production.treasury.cash_movement` | Minimize transfer cost and cutoff/buffer risk. | Account buffers, funding coverage, payment rail eligibility, cutoff windows, rail capacity. | Cash balances, funding requirements, payment rails. | Custom operational assignment scaffold. | Routed transfers, cash moved, rail mix, uncovered requirements, cutoff/capacity diagnostics. |
+| `production.margin_call.workflow` | Minimize residual SLA/materiality/dispute risk under capacity. | Team capacity, call priority, due-time urgency, materiality, dispute probability. | Margin-call queue and ops capacity. | Custom operational prioritization scaffold. | Assigned calls, deferred calls, capacity usage, residual risk, SLA pressure. |
+
+## Tonight Closeout Notes
+
+The config and data-contract layer now covers the current optimizer inventory.
+The remaining production work is not schema design; it is connecting these
+contracts to firm data sources, firm model packages or services, immutable
+evidence storage, and model-governance promotion controls.

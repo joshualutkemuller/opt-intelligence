@@ -39,6 +39,7 @@ def build_default_production_registry() -> ProductionOptimizerRegistry:
         AssetAllocationMVOProductionAdapter,
         CashMovementProductionAdapter,
         CollateralProductionAdapter,
+        FinancingProductionAdapter,
         MarginCallWorkflowProductionAdapter,
         MoneyMarketProductionAdapter,
     )
@@ -47,6 +48,7 @@ def build_default_production_registry() -> ProductionOptimizerRegistry:
     registry.register(AssetAllocationMVOProductionAdapter())
     registry.register(CashMovementProductionAdapter())
     registry.register(CollateralProductionAdapter())
+    registry.register(FinancingProductionAdapter())
     registry.register(MarginCallWorkflowProductionAdapter())
     registry.register(MoneyMarketProductionAdapter())
     return registry

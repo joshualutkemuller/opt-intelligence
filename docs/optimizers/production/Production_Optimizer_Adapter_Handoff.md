@@ -22,6 +22,12 @@ Initial scaffold:
 - `adapter.py`: formal adapter lifecycle.
 - `adapters/asset_allocation`: production wrapper for Asset Allocation MVO.
 - `adapters/collateral`: production wrapper for Collateral Optimization.
+- `adapters/financing`: production wrapper for Financing Optimization.
+- `adapters/money_market`: production wrapper for Money Market Optimization.
+- `adapters/cash_movement`: production scaffold for operational treasury cash
+  routing.
+- `adapters/margin_call`: production scaffold for operational margin-call
+  workflow prioritization.
 - `contracts.py`: typed model config, data contract, result, preflight, and
   evidence schemas.
 - `execution.py`: execution-isolation boundary.
@@ -179,19 +185,64 @@ Implemented:
 
 - Asset Allocation MVO production adapter and `ModelConfigSpec`.
 - Collateral production adapter and `ModelConfigSpec`.
-- Default production registry containing both adapters.
+- Financing production adapter and `ModelConfigSpec`.
+- Money Market production adapter and `ModelConfigSpec`.
+- Treasury cash movement production adapter and `ModelConfigSpec`.
+- Margin-call workflow production adapter and `ModelConfigSpec`.
+- Default production registry containing all current production adapters.
 - Orchestrator runtime switch via `context["optimizer_runtime"]`.
 - Normalization bridge from `NormalizedOptimizerResult` into the existing
   `OptimizationResult` shape.
 - Direct API and workflow API runtime fields.
 - Production optimizer catalog endpoint for UI discovery.
+- Front-end production-runtime controls, adapter selection, catalog fallback,
+  and evidence-oriented summary panels.
+- Production workflow templates and demo presets for asset allocation,
+  collateral, money market, treasury cash movement, and margin-call workflow.
 - Focused tests for successful runs, blocked preflight, evidence attachment,
   and registry discovery.
 
-Next:
+## Current Adapter Inventory
 
-- Surface model config, data contract, and evidence sections in the UI.
-- Add front-end controls for `optimizer_runtime` and production adapter
-  selection.
-- Add production adapters for money market and financing when those models are
-  ready for the same contract.
+| Adapter ID | Domain | Native model | Status | Primary production value |
+|---|---|---|---|---|
+| `production.asset_allocation.mvo` | `asset_allocation` | Asset Allocation MVO | Implemented | Shows quant portfolio construction through the production adapter lifecycle. |
+| `production.collateral.allocation` | `collateral` | Collateral Optimizer | Implemented | Connects eligibility, haircuts, obligations, and concentration constraints to evidence. |
+| `production.financing.allocation` | `financing` | Financing Optimizer | Implemented | Sources funding across counterparties under capacity, tenor, concentration, and capital limits. |
+| `production.money_market.allocation` | `money_market` | Money Market Optimizer | Implemented | Allocates cash under yield, daily/weekly liquidity, WAM, prime, and single-fund constraints. |
+| `production.treasury.cash_movement` | `treasury_operations` | Operational scaffold | Implemented | Demonstrates payment-routing, cutoff, account-buffer, and rail-cost workflow optimization. |
+| `production.margin_call.workflow` | `margin_operations` | Operational scaffold | Implemented | Demonstrates queue prioritization under SLA, materiality, dispute, and ops-capacity constraints. |
+
+## Completion Checklist
+
+For tonight's closeout, the adapter handoff should be considered complete when:
+
+- ✅ Every currently enabled optimizer has a production adapter ID, config spec,
+  data contract, preflight, normalized output, and evidence serialization.
+- ✅ The orchestrator can run production mode via
+  `context["optimizer_runtime"] = "production"` without per-domain special
+  handling.
+- ✅ API catalog discovery returns all production adapters.
+- ✅ The front-end can select production runtime and render adapter facts,
+  evidence, and result attachments for every current adapter.
+- ✅ Tests cover adapter lifecycle, registry discovery, orchestrator production
+  runtime, and API catalog exposure.
+- ✅ Documentation identifies the remaining firm-integration work separately
+  from the POC-ready platform contract.
+
+## Remaining Production-Hardening Work
+
+These items are intentionally outside the POC adapter closeout, but they are
+the next credible path from demo to firm integration:
+
+- Replace phase-1 native optimizer calls with firm production engines where
+  available.
+- Add real data adapters for holdings, risk models, curves, collateral
+  schedules, funding facilities, counterparty limits, and policy repositories.
+- Add execution-isolation examples for subprocess, REST/gRPC, batch, and
+  containerized optimizer runtimes.
+- Persist evidence artifacts to controlled storage with immutable run IDs.
+- Add model-risk approval metadata, config promotion workflow, and versioned
+  data-snapshot lineage.
+- Expand duals, shadow prices, infeasibility diagnostics, and scenario grids
+  where the native optimizer emits those dense outputs.

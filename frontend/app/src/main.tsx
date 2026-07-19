@@ -1445,6 +1445,46 @@ const fallbackProductionOptimizers: ProductionOptimizerCatalogItem[] = [
     execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
   },
   {
+    optimizer_id: "production.financing.allocation",
+    domain: "financing",
+    model_name: "Financing Source Optimizer",
+    model_version: "0.1.0",
+    config_version: "2026.07.19",
+    objectives: [
+      {
+        name: "funding_spread_cost",
+        direction: "minimize",
+        weight: 1,
+        units: "usd_annualized_cost",
+      },
+    ],
+    constraints: [
+      { name: "funding_need_coverage", constraint_type: "budget", hard: true },
+      { name: "counterparty_capacity", constraint_type: "bounds", hard: true },
+      { name: "tenor_compatibility", constraint_type: "custom", hard: true },
+      { name: "single_counterparty_concentration", constraint_type: "risk", hard: true },
+      { name: "capital_budget", constraint_type: "regulatory", hard: true },
+    ],
+    data_contract: {
+      required_datasets: ["financing_counterparties", "funding_needs"],
+      optional_datasets: ["counterparty_eligibility", "capital_policy_limits"],
+      quality_checks: [
+        "funding notionals are positive",
+        "counterparty capacities are nonnegative",
+        "each funding need has at least one tenor-compatible counterparty",
+      ],
+      snapshot_required: true,
+    },
+    solver: {
+      backend: "scipy",
+      problem_family: "lp",
+      vendor: "scipy",
+      version: "HiGHS",
+      parameters: { method: "highs" },
+    },
+    execution: { mode: "in_process", timeout_seconds: 60, resource_profile: "standard" },
+  },
+  {
     optimizer_id: "production.money_market.allocation",
     domain: "money_market",
     model_name: "Money Market Allocation Optimizer",

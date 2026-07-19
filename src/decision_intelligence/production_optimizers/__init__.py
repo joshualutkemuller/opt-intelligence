@@ -29,6 +29,7 @@ __all__ = [
     "ConstraintFamilySpec",
     "DataContractSpec",
     "ExecutionIsolationSpec",
+    "FinancingProductionAdapter",
     "LimitSourceSpec",
     "ModelConfigSpec",
     "ModelLineageSpec",
@@ -55,6 +56,10 @@ def __getattr__(name: str):
         from .adapters import CollateralProductionAdapter
 
         return CollateralProductionAdapter
+    if name == "FinancingProductionAdapter":
+        from .adapters import FinancingProductionAdapter
+
+        return FinancingProductionAdapter
     if name == "CashMovementProductionAdapter":
         from .adapters import CashMovementProductionAdapter
 

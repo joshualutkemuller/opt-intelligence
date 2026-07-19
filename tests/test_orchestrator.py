@@ -163,6 +163,30 @@ def test_money_market_production_runtime(orchestrator):
     assert result.validation.passed
 
 
+def test_financing_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "financing",
+            optimizer_runtime="production",
+            data_snapshot_id="SNAP_FIN_ORCH",
+            total_funding_need=300_000_000,
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == (
+        "production.financing.allocation"
+    )
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_FIN_ORCH"
+    )
+    assert result.solver_metadata["domain_attachments"]["total_funding"] == pytest.approx(
+        300_000_000
+    )
+    assert result.validation.passed
+
+
 def test_cash_movement_production_runtime(orchestrator):
     result = orchestrator.run(
         _req(
@@ -206,8 +230,14 @@ def test_margin_call_workflow_production_runtime(orchestrator):
     assert result.validation.passed
 
 
-def test_production_runtime_unknown_domain_returns_error(orchestrator):
-    result = orchestrator.run(_req("financing", optimizer_runtime="production"))
+def test_production_runtime_unknown_adapter_returns_error(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "financing",
+            optimizer_runtime="production",
+            production_optimizer_id="production.financing.unknown",
+        )
+    )
 
     assert result.status == SolveStatus.ERROR
     assert not result.validation.passed
