@@ -106,7 +106,13 @@ async function main() {
     );
     await page.waitForTimeout(sleeps.long);
 
-    await clickByRole(page, "button", "Apply Schedule");
+    await page
+      .locator(".policy-review-summary")
+      .filter({ hasText: "Collateral Liquidity Review" })
+      .first()
+      .waitFor({ timeout: 12000 });
+    await clickButtonText(page, "Apply Schedule");
+    await page.getByRole("button", { name: "Applied", exact: true }).first().waitFor({ timeout: 8000 });
     await caption(
       page,
       stage(
@@ -489,6 +495,18 @@ async function clickByRoleMatch(page, role, name) {
   await locator.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   await locator.click();
+}
+
+async function clickButtonText(page, name) {
+  await page.evaluate((buttonName) => {
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (node) => node.textContent?.trim() === buttonName,
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`Button not found: ${buttonName}`);
+    }
+    button.click();
+  }, name);
 }
 
 async function fillTextbox(page, label, value) {
