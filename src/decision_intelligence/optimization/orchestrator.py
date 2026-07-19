@@ -242,7 +242,9 @@ class OptimizationOrchestrator:
 _DOMAIN_DEFAULT_PRODUCTION_ADAPTERS = {
     "asset_allocation": "production.asset_allocation.mvo",
     "collateral": "production.collateral.allocation",
+    "margin_operations": "production.margin_call.workflow",
     "money_market": "production.money_market.allocation",
+    "treasury_operations": "production.treasury.cash_movement",
 }
 
 

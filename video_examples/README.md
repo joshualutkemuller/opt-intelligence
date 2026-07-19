@@ -18,6 +18,7 @@ platform.
 | `mvo/ips-pdf-upload-optimization-workflow-example.mp4` | 84 second silent clip showing a full IPS PDF upload, ingestion review, optimization workflow, and before/after analytics. |
 | `mvo/ips-to-optimization-workflow-example.mp4` | 78 second silent clip showing IPS ingestion, before analytics, optimization, and after analytics. |
 | `mvo/mvo-constraint-negotiation-example.mp4` | 76 second silent presentation clip showing MVO tradeoff exploration and constraint negotiation. |
+| `operations/treasury-margin-operations-storyboard-demo.mp4` | 64 second silent storyboard clip rendered at 1.5x pacing, combining the new treasury cash-movement and margin-call workflow production adapters with high-level captions, real local adapter outputs, normalized evidence, and production integration framing. |
 
 ## Regenerate Compelling WebM Examples
 
@@ -131,6 +132,27 @@ using real local money-market optimizer output and presentation-safe rendered
 captions. The opening stage renders the first page of
 `examples/policies/sample_money_market_policy.pdf` into the frame so audiences
 can see that a real PDF document is being ingested.
+
+## Regenerate Operational Optimizer MP4 Example
+
+```bash
+.venv/bin/python scripts/generate_operational_optimizer_video_examples.py
+```
+
+This generator renders a deterministic 1280x720 storyboard that combines the
+two operational production adapters:
+
+1. `production.treasury.cash_movement`
+2. `production.margin_call.workflow`
+
+The clip writes:
+
+- `video_examples/operations/treasury-margin-operations-storyboard-demo.mp4`
+
+The video uses real local adapter outputs for cash moved, transfer count,
+assigned margin amount, capacity usage, binding checks, and evidence metadata.
+It renders the original 96 second storyboard timeline at 1.5x pacing, producing
+a 64 second presentation clip.
 
 ## Regenerate IPS Analytics MP4
 

@@ -24,6 +24,7 @@ from .registry import ProductionOptimizerRegistry, build_default_production_regi
 
 __all__ = [
     "AssetAllocationMVOProductionAdapter",
+    "CashMovementProductionAdapter",
     "CollateralProductionAdapter",
     "ConstraintFamilySpec",
     "DataContractSpec",
@@ -31,6 +32,7 @@ __all__ = [
     "LimitSourceSpec",
     "ModelConfigSpec",
     "ModelLineageSpec",
+    "MarginCallWorkflowProductionAdapter",
     "MoneyMarketProductionAdapter",
     "NormalizedOptimizerResult",
     "ObjectiveTermSpec",
@@ -53,6 +55,14 @@ def __getattr__(name: str):
         from .adapters import CollateralProductionAdapter
 
         return CollateralProductionAdapter
+    if name == "CashMovementProductionAdapter":
+        from .adapters import CashMovementProductionAdapter
+
+        return CashMovementProductionAdapter
+    if name == "MarginCallWorkflowProductionAdapter":
+        from .adapters import MarginCallWorkflowProductionAdapter
+
+        return MarginCallWorkflowProductionAdapter
     if name == "MoneyMarketProductionAdapter":
         from .adapters import MoneyMarketProductionAdapter
 

@@ -7,10 +7,12 @@ import pytest
 from decision_intelligence.contracts import Objective, ObjectiveDirection, OptimizationRequest
 from decision_intelligence.production_optimizers import (
     AssetAllocationMVOProductionAdapter,
+    CashMovementProductionAdapter,
     CollateralProductionAdapter,
     ConstraintFamilySpec,
     DataContractSpec,
     ExecutionIsolationSpec,
+    MarginCallWorkflowProductionAdapter,
     ModelConfigSpec,
     ModelLineageSpec,
     MoneyMarketProductionAdapter,
@@ -300,11 +302,145 @@ def test_money_market_production_adapter_runs_native_optimizer() -> None:
     )
 
 
+def test_cash_movement_production_adapter_routes_operational_cash() -> None:
+    request = OptimizationRequest(
+        domain="treasury_operations",
+        portfolio_id="PORT_TREASURY_OPS",
+        objective=Objective(
+            name="minimize_cash_movement_cost",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="transfer_cost",
+        ),
+        context={
+            "data_snapshot_id": "SNAP_CASHMOVE_001",
+            "cutoff_hour": 15,
+            "cash_balances": [
+                {
+                    "account_id": "SRC_1",
+                    "entity": "Broker Dealer",
+                    "currency": "USD",
+                    "available_cash": 150_000_000,
+                    "minimum_buffer": 20_000_000,
+                },
+                {
+                    "account_id": "SRC_2",
+                    "entity": "Bank Entity",
+                    "currency": "USD",
+                    "available_cash": 80_000_000,
+                    "minimum_buffer": 15_000_000,
+                },
+            ],
+            "funding_requirements": [
+                {
+                    "requirement_id": "PAY_A",
+                    "target_account_id": "CLEARING_A",
+                    "currency": "USD",
+                    "required_cash": 90_000_000,
+                    "cutoff_hour": 15,
+                },
+                {
+                    "requirement_id": "PAY_B",
+                    "target_account_id": "SETTLEMENT_B",
+                    "currency": "USD",
+                    "required_cash": 65_000_000,
+                    "cutoff_hour": 16,
+                },
+            ],
+            "payment_rails": [
+                {
+                    "rail_id": "FEDWIRE",
+                    "currency": "USD",
+                    "fee_bps": 0.15,
+                    "fixed_fee": 35,
+                    "cutoff_hour": 17,
+                    "max_transfer": 250_000_000,
+                },
+                {
+                    "rail_id": "CHIPS",
+                    "currency": "USD",
+                    "fee_bps": 0.08,
+                    "fixed_fee": 20,
+                    "cutoff_hour": 16,
+                    "max_transfer": 125_000_000,
+                },
+            ],
+        },
+    )
+
+    result = CashMovementProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.treasury.cash_movement"
+    assert result.status == "optimal"
+    assert result.allocations
+    assert result.baseline_value > result.objective_value
+    assert result.domain_attachments["total_moved_cash"] == pytest.approx(155_000_000)
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_CASHMOVE_001"
+
+
+def test_margin_call_workflow_adapter_prioritizes_queue_within_capacity() -> None:
+    request = OptimizationRequest(
+        domain="margin_operations",
+        portfolio_id="PORT_MARGIN_OPS",
+        objective=Objective(
+            name="minimize_sla_breach_risk",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="residual_risk",
+        ),
+        context={
+            "data_snapshot_id": "SNAP_MARGIN_001",
+            "team_capacity_minutes": 150,
+            "materiality_threshold": 25_000_000,
+            "margin_call_queue": [
+                {
+                    "call_id": "MC_A",
+                    "counterparty": "Dealer A",
+                    "amount": 40_000_000,
+                    "due_in_hours": 2,
+                    "dispute_probability": 0.20,
+                    "ops_minutes": 80,
+                    "risk_tier": "high",
+                },
+                {
+                    "call_id": "MC_B",
+                    "counterparty": "CCP B",
+                    "amount": 70_000_000,
+                    "due_in_hours": 1,
+                    "dispute_probability": 0.05,
+                    "ops_minutes": 70,
+                    "risk_tier": "critical",
+                },
+                {
+                    "call_id": "MC_C",
+                    "counterparty": "Dealer C",
+                    "amount": 15_000_000,
+                    "due_in_hours": 8,
+                    "dispute_probability": 0.60,
+                    "ops_minutes": 90,
+                    "risk_tier": "medium",
+                },
+            ],
+        },
+    )
+
+    result = MarginCallWorkflowProductionAdapter().run(request)
+
+    assert result.optimizer_id == "production.margin_call.workflow"
+    assert result.status == "optimal"
+    assert [row["metadata"]["call_id"] for row in result.allocations] == ["MC_B", "MC_A"]
+    assert result.binding_constraints == ["team_capacity"]
+    assert result.domain_attachments["capacity_used"] == pytest.approx(150)
+    assert result.evidence is not None
+    assert result.evidence.data_snapshot_id == "SNAP_MARGIN_001"
+
+
 def test_default_production_registry_contains_current_adapters() -> None:
     registry = build_default_production_registry()
 
     assert registry.list_ids() == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.margin_call.workflow",
         "production.money_market.allocation",
+        "production.treasury.cash_movement",
     ]

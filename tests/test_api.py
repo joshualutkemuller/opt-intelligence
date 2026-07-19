@@ -126,19 +126,22 @@ def test_production_optimizer_catalog_endpoint_lists_supported_adapters():
     assert [item["optimizer_id"] for item in body["optimizers"]] == [
         "production.asset_allocation.mvo",
         "production.collateral.allocation",
+        "production.margin_call.workflow",
         "production.money_market.allocation",
+        "production.treasury.cash_movement",
     ]
-    mvo = body["optimizers"][0]
+    by_id = {item["optimizer_id"]: item for item in body["optimizers"]}
+    mvo = by_id["production.asset_allocation.mvo"]
     assert mvo["domain"] == "asset_allocation"
     assert mvo["model_name"] == "Asset Allocation MVO"
     assert mvo["data_contract"]["required_datasets"] == [
         "asset_universe",
         "covariance_matrix",
     ]
-    collateral = body["optimizers"][1]
+    collateral = by_id["production.collateral.allocation"]
     assert collateral["domain"] == "collateral"
     assert collateral["solver"]["problem_family"] == "lp"
-    money_market = body["optimizers"][2]
+    money_market = by_id["production.money_market.allocation"]
     assert money_market["domain"] == "money_market"
     assert money_market["solver"]["backend"] == "scipy"
 

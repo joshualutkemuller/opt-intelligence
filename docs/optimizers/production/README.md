@@ -17,6 +17,12 @@ The matching code scaffold lives in:
 - `production.money_market.allocation`: wraps the phase 1 Money Market
   optimizer with production config, liquidity preflight, normalized output, and
   reproducibility evidence.
+- `production.treasury.cash_movement`: provides an operational treasury
+  cash-movement adapter scaffold for routing cash across accounts, entities, and
+  payment rails under cutoff and liquidity-buffer controls.
+- `production.margin_call.workflow`: provides an operational margin-call
+  workflow adapter scaffold for prioritizing calls by exposure, SLA urgency,
+  dispute risk, counterparty risk, and available team capacity.
 
 ## Runtime Selection
 
@@ -101,6 +107,7 @@ result.solver_metadata.production_evidence
 - [Adapter Interface Spec](Adapter_Interface_Spec.md)
 - [Model Config and Data Contracts](Model_Config_And_Data_Contracts.md)
 - [Execution Isolation and Governance](Execution_Isolation_And_Governance.md)
+- [Operational Optimizer Expansion](Operational_Optimizer_Expansion.md)
 
 ## Build Objective
 

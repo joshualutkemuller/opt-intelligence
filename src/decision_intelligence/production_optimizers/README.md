@@ -12,6 +12,12 @@ Current scaffold:
   behind the production adapter lifecycle.
 - `adapters/collateral` wraps the current Collateral optimizer behind the
   production adapter lifecycle.
+- `adapters/money_market` wraps the current Money Market optimizer behind the
+  production adapter lifecycle.
+- `adapters/cash_movement` provides a treasury operations scaffold for routing
+  cash movements across accounts and payment rails.
+- `adapters/margin_call` provides a margin operations scaffold for prioritizing
+  margin-call workflow actions inside team capacity.
 - `contracts.py` defines richer model configuration, data contracts, execution
   isolation, preflight, normalized result, and evidence contracts.
 - `execution.py` defines the execution-isolation boundary for in-process,

@@ -163,6 +163,49 @@ def test_money_market_production_runtime(orchestrator):
     assert result.validation.passed
 
 
+def test_cash_movement_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "treasury_operations",
+            optimizer_runtime="production",
+            data_snapshot_id="SNAP_CASHMOVE_ORCH",
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == (
+        "production.treasury.cash_movement"
+    )
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_CASHMOVE_ORCH"
+    )
+    assert result.solver_metadata["domain_attachments"]["total_moved_cash"] > 0
+    assert result.validation.passed
+
+
+def test_margin_call_workflow_production_runtime(orchestrator):
+    result = orchestrator.run(
+        _req(
+            "margin_operations",
+            optimizer_runtime="production",
+            data_snapshot_id="SNAP_MARGIN_ORCH",
+            team_capacity_minutes=165,
+        )
+    )
+
+    assert result.status == SolveStatus.OPTIMAL
+    assert result.solver_metadata["optimizer_runtime"] == "production"
+    assert result.solver_metadata["production_optimizer_id"] == (
+        "production.margin_call.workflow"
+    )
+    assert result.solver_metadata["production_evidence"]["data_snapshot_id"] == (
+        "SNAP_MARGIN_ORCH"
+    )
+    assert result.solver_metadata["domain_attachments"]["assigned_calls"]
+    assert result.validation.passed
+
+
 def test_production_runtime_unknown_domain_returns_error(orchestrator):
     result = orchestrator.run(_req("financing", optimizer_runtime="production"))
 

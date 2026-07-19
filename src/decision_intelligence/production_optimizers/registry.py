@@ -37,12 +37,16 @@ def build_default_production_registry() -> ProductionOptimizerRegistry:
 
     from .adapters import (
         AssetAllocationMVOProductionAdapter,
+        CashMovementProductionAdapter,
         CollateralProductionAdapter,
+        MarginCallWorkflowProductionAdapter,
         MoneyMarketProductionAdapter,
     )
 
     registry = ProductionOptimizerRegistry()
     registry.register(AssetAllocationMVOProductionAdapter())
+    registry.register(CashMovementProductionAdapter())
     registry.register(CollateralProductionAdapter())
+    registry.register(MarginCallWorkflowProductionAdapter())
     registry.register(MoneyMarketProductionAdapter())
     return registry

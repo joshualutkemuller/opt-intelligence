@@ -8,6 +8,7 @@ The combined video includes two examples:
 
 - **Example #1: Collateral Management**: collateral schedule ingestion, bilateral/CCP/exchange obligation review, HQLA and liquidity analytics, optimizer orchestration, local LLM explanation, and governance evidence.
 - **Example #2: Money Market Optimization**: money-market policy PDF upload, structured policy extraction, local LLM discussion, constrained fund allocation, before/after analytics, and traceable evidence.
+- **Example #3: Storyboard of Operational Use-Cases**: Treasury cash movement and Margin Call workflows.  High-level proof of concept that shows cash moved, transfers, assigned margin, capacity, binding checks, and evidence metadata
 
 ## AI Platform And Tooling Used
 
