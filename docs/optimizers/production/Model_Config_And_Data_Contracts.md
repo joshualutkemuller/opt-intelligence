@@ -122,6 +122,71 @@ Each dataset should declare:
 - snapshot requirement;
 - blocking behavior.
 
+## Implemented Source Adapter Layer
+
+The POC now includes a production data adapter layer in:
+
+`src/decision_intelligence/production_optimizers/data/`
+
+The layer introduces:
+
+- `DataSourceContract`: typed expectation for one optimizer dataset;
+- `DataSourceReport`: observed source presence, row count, columns, content
+  hash, freshness, missing columns, duplicate key count, and blocking issues;
+- `DataPreflightResult`: aggregate source-level preflight result for the
+  optimizer run;
+- local CSV, JSON, document, and simulated-source adapters;
+- a compatibility bridge from the existing `context["data_source"]` convention
+  into production-style source evidence;
+- explicit `context["production_data_sources"]` support for stricter
+  production-shaped source declarations.
+
+For local POC/demo usage, the source layer supports:
+
+```json
+{
+  "data_source": {
+    "type": "csv",
+    "funds": "examples/data/mmf_universe.csv",
+    "position": "examples/data/money_market_cash_position_production.csv"
+  },
+  "production_data_sources": {
+    "money_market_fund_universe": {
+      "type": "csv",
+      "path": "examples/data/mmf_universe.csv",
+      "freshness_sla_hours": 1000000
+    },
+    "cash_position": {
+      "type": "csv",
+      "path": "examples/data/money_market_cash_position_production.csv",
+      "freshness_sla_hours": 1000000
+    }
+  }
+}
+```
+
+When `production_data_sources` is provided, required datasets fail closed if
+missing or malformed. When only legacy `data_source` is provided, the adapter
+records source evidence while preserving the existing phase-1 loader behavior.
+
+Implemented local-source examples:
+
+- `examples/data/asset_allocation_assets.csv`
+- `examples/data/asset_allocation_covariance.csv`
+- `examples/data/mmf_universe.csv`
+- `examples/data/money_market_cash_position_production.csv`
+- `examples/data/collateral_assets.csv`
+- `examples/data/collateral_obligations.csv`
+- `examples/data/financing_counterparties.csv`
+- `examples/data/financing_needs.csv`
+
+Current production adapters all attach source reports to preflight/evidence.
+MVO, collateral, money-market, and financing can use the existing local CSV
+loader path for runnable file-backed demos. Treasury cash movement and
+margin-call workflow currently use context/default rows for solve payloads, but
+they still inspect declared production sources and block incomplete source
+contracts before solve.
+
 ## Preflight Validation
 
 Preflight should run before `build_problem()`.

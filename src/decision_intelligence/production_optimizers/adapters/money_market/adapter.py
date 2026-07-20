@@ -9,6 +9,7 @@ import numpy as np
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.data import load_money_market
 from decision_intelligence.optimizers.money_market import MoneyMarketOptimizer
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -41,7 +42,19 @@ class MoneyMarketProductionAdapter(ProductionOptimizerAdapter):
         blocking_issues = self.native_optimizer.validate_request(request)
         warnings: list[str] = []
         checked_datasets: dict[str, int] = {}
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets.update(data_preflight.checked_datasets)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
 
         try:
             funds, position = load_money_market(request)
@@ -94,6 +107,14 @@ class MoneyMarketProductionAdapter(ProductionOptimizerAdapter):
                 "max_single_fund": request.context.get("max_single_fund", 0.50),
                 "max_funds": request.context.get("max_funds"),
                 "problem_type": request.context.get("problem_type", "lp"),
+            },
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
             },
         )
         self._last_preflight = report

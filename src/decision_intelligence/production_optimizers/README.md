@@ -22,6 +22,9 @@ Current scaffold:
   margin-call workflow actions inside team capacity.
 - `contracts.py` defines richer model configuration, data contracts, execution
   isolation, preflight, normalized result, and evidence contracts.
+- `data/` defines production data-source contracts and local CSV/JSON/document
+  adapters for source freshness, row-count, content-hash, required-column, and
+  snapshot evidence.
 - `execution.py` defines the execution-isolation boundary for in-process,
   subprocess, REST/gRPC, batch, and containerized optimizers. In-process,
   subprocess, and REST-style JSON POST examples are implemented.
@@ -48,3 +51,24 @@ The manifest is attached under:
 ```text
 result.solver_metadata.production_evidence.artifacts.persistent_evidence
 ```
+
+To provide explicit production-style local sources during a run, include:
+
+```json
+{
+  "optimizer_runtime": "production",
+  "production_data_sources": {
+    "money_market_fund_universe": {
+      "type": "csv",
+      "path": "examples/data/mmf_universe.csv"
+    },
+    "cash_position": {
+      "type": "csv",
+      "path": "examples/data/money_market_cash_position_production.csv"
+    }
+  }
+}
+```
+
+Required sources declared this way fail closed when missing or malformed. The
+existing `data_source` CSV convention remains supported for POC compatibility.

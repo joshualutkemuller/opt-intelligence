@@ -9,6 +9,7 @@ import numpy as np
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.data import load_asset_allocation
 from decision_intelligence.optimizers.asset_allocation import AssetAllocationMVOOptimizer
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -41,7 +42,19 @@ class AssetAllocationMVOProductionAdapter(ProductionOptimizerAdapter):
         blocking_issues = self.native_optimizer.validate_request(request)
         warnings: list[str] = []
         checked_datasets: dict[str, int] = {}
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets.update(data_preflight.checked_datasets)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
 
         try:
             assets, covariance = load_asset_allocation(request)
@@ -74,6 +87,14 @@ class AssetAllocationMVOProductionAdapter(ProductionOptimizerAdapter):
                 "target_return": request.context.get("target_return"),
                 "max_single_asset_weight": request.context.get("max_single_asset_weight"),
                 "min_cash_weight": request.context.get("min_cash_weight", 0.02),
+            },
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
             },
         )
         self._last_preflight = report

@@ -236,6 +236,43 @@ def test_asset_allocation_mvo_production_adapter_runs_native_optimizer() -> None
     )
 
 
+def test_asset_allocation_mvo_adapter_reports_local_csv_data_sources() -> None:
+    request = OptimizationRequest(
+        domain="asset_allocation",
+        portfolio_id="PORT_MVO_CSV",
+        objective=Objective(
+            name="mvo_rebalance",
+            direction=ObjectiveDirection.MAXIMIZE,
+            metric="risk_adjusted_return",
+        ),
+        context={
+            "portfolio_notional": 250_000_000,
+            "target_return": 0.05,
+            "risk_aversion": 3.0,
+            "max_single_asset_weight": 0.45,
+            "min_cash_weight": 0.02,
+            "data_source": {
+                "type": "csv",
+                "assets": "examples/data/asset_allocation_assets.csv",
+                "covariance": "examples/data/asset_allocation_covariance.csv",
+            },
+        },
+    )
+
+    result = AssetAllocationMVOProductionAdapter().run(request)
+
+    assert result.status == "optimal"
+    assert result.evidence is not None
+    preflight = result.evidence.artifacts["preflight"]
+    assert result.evidence.data_snapshot_id.startswith("DATA-ASSET_ALLOCATION-")
+    assert preflight["checked_datasets"]["asset_universe"] == 6
+    assert preflight["checked_datasets"]["covariance_matrix"] == 6
+    assert {item["dataset"] for item in preflight["data_sources"]} == {
+        "asset_universe",
+        "covariance_matrix",
+    }
+
+
 def test_collateral_production_adapter_runs_native_optimizer() -> None:
     request = OptimizationRequest(
         domain="collateral",
@@ -264,6 +301,37 @@ def test_collateral_production_adapter_runs_native_optimizer() -> None:
     assert result.evidence.data_snapshot_id == "SNAP_COLLATERAL_001"
     assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
         "production.collateral.allocation"
+    )
+
+
+def test_collateral_adapter_blocks_missing_declared_production_source() -> None:
+    request = OptimizationRequest(
+        domain="collateral",
+        portfolio_id="PORT_COLLATERAL_SOURCE_BLOCK",
+        objective=Objective(
+            name="minimize_funding_cost",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="funding_cost",
+        ),
+        context={
+            "production_data_sources": {
+                "collateral_inventory": {
+                    "type": "csv",
+                    "path": "examples/data/collateral_assets.csv",
+                }
+            }
+        },
+    )
+
+    result = CollateralProductionAdapter().run(request)
+
+    assert result.status == "blocked"
+    assert result.evidence is not None
+    preflight = result.diagnostics["preflight"]
+    assert preflight["data_quality"]["passed"] is False
+    assert any(
+        "margin_obligations source is missing" in item
+        for item in preflight["blocking_issues"]
     )
 
 
@@ -303,6 +371,56 @@ def test_money_market_production_adapter_runs_native_optimizer() -> None:
     )
 
 
+def test_money_market_adapter_reports_explicit_production_data_sources() -> None:
+    request = OptimizationRequest(
+        domain="money_market",
+        portfolio_id="PORT_MM_SOURCES",
+        objective=Objective(
+            name="maximize_yield",
+            direction=ObjectiveDirection.MAXIMIZE,
+            metric="yield",
+        ),
+        context={
+            "total_cash": 500_000_000,
+            "daily_liquidity_req": 0.30,
+            "weekly_liquidity_req": 0.60,
+            "max_prime_fraction": 0.40,
+            "max_wam_days": 60,
+            "max_single_fund": 0.50,
+            "solver_backend": "scipy",
+            "problem_type": "lp",
+            "data_source": {
+                "type": "csv",
+                "funds": "examples/data/mmf_universe.csv",
+                "position": "examples/data/money_market_cash_position_production.csv",
+            },
+            "production_data_sources": {
+                "money_market_fund_universe": {
+                    "type": "csv",
+                    "path": "examples/data/mmf_universe.csv",
+                    "freshness_sla_hours": 1_000_000,
+                },
+                "cash_position": {
+                    "type": "csv",
+                    "path": "examples/data/money_market_cash_position_production.csv",
+                    "freshness_sla_hours": 1_000_000,
+                },
+            },
+        },
+    )
+
+    result = MoneyMarketProductionAdapter().run(request)
+
+    assert result.status == "optimal"
+    assert result.evidence is not None
+    preflight = result.evidence.artifacts["preflight"]
+    reports = {item["dataset"]: item for item in preflight["data_sources"]}
+    assert reports["money_market_fund_universe"]["row_count"] == 8
+    assert reports["money_market_fund_universe"]["content_hash"]
+    assert reports["cash_position"]["row_count"] == 1
+    assert preflight["data_quality"]["passed"] is True
+
+
 def test_financing_production_adapter_runs_native_optimizer() -> None:
     request = OptimizationRequest(
         domain="financing",
@@ -336,6 +454,40 @@ def test_financing_production_adapter_runs_native_optimizer() -> None:
     assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
         "production.financing.allocation"
     )
+
+
+def test_financing_adapter_reports_local_csv_data_sources() -> None:
+    request = OptimizationRequest(
+        domain="financing",
+        portfolio_id="PORT_FIN_SOURCES",
+        objective=Objective(
+            name="minimize_funding_spread",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="funding_spread",
+        ),
+        context={
+            "max_cp_concentration": 0.40,
+            "capital_budget_pct": 5.0,
+            "solver_backend": "scipy",
+            "problem_type": "lp",
+            "data_source": {
+                "type": "csv",
+                "counterparties": "examples/data/financing_counterparties.csv",
+                "needs": "examples/data/financing_needs.csv",
+            },
+        },
+    )
+
+    result = FinancingProductionAdapter().run(request)
+
+    assert result.status == "optimal"
+    assert result.evidence is not None
+    preflight = result.evidence.artifacts["preflight"]
+    reports = {item["dataset"]: item for item in preflight["data_sources"]}
+    assert result.evidence.data_snapshot_id.startswith("DATA-FINANCING-")
+    assert reports["financing_counterparties"]["row_count"] == 10
+    assert reports["funding_needs"]["row_count"] == 3
+    assert reports["financing_counterparties"]["content_hash"]
 
 
 def test_cash_movement_production_adapter_routes_operational_cash() -> None:
@@ -414,6 +566,37 @@ def test_cash_movement_production_adapter_routes_operational_cash() -> None:
     assert result.evidence.data_snapshot_id == "SNAP_CASHMOVE_001"
 
 
+def test_cash_movement_adapter_blocks_missing_declared_production_source() -> None:
+    request = OptimizationRequest(
+        domain="treasury_operations",
+        portfolio_id="PORT_CASH_SOURCE_BLOCK",
+        objective=Objective(
+            name="minimize_transfer_cost",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="transfer_cost",
+        ),
+        context={
+            "production_data_sources": {
+                "cash_balances": {
+                    "type": "csv",
+                    "path": "examples/data/cash_position.csv",
+                }
+            }
+        },
+    )
+
+    result = CashMovementProductionAdapter().run(request)
+
+    assert result.status == "blocked"
+    assert result.evidence is not None
+    preflight = result.diagnostics["preflight"]
+    assert preflight["data_quality"]["passed"] is False
+    assert any(
+        "funding_requirements source is missing" in item
+        for item in preflight["blocking_issues"]
+    )
+
+
 def test_margin_call_workflow_adapter_prioritizes_queue_within_capacity() -> None:
     request = OptimizationRequest(
         domain="margin_operations",
@@ -468,6 +651,34 @@ def test_margin_call_workflow_adapter_prioritizes_queue_within_capacity() -> Non
     assert result.domain_attachments["capacity_used"] == pytest.approx(150)
     assert result.evidence is not None
     assert result.evidence.data_snapshot_id == "SNAP_MARGIN_001"
+
+
+def test_margin_call_adapter_blocks_missing_declared_production_source() -> None:
+    request = OptimizationRequest(
+        domain="margin_operations",
+        portfolio_id="PORT_MARGIN_SOURCE_BLOCK",
+        objective=Objective(
+            name="prioritize_margin_calls",
+            direction=ObjectiveDirection.MINIMIZE,
+            metric="residual_queue_risk",
+        ),
+        context={
+            "production_data_sources": {
+                "margin_call_queue": {
+                    "type": "csv",
+                    "path": "examples/data/financing_needs.csv",
+                }
+            }
+        },
+    )
+
+    result = MarginCallWorkflowProductionAdapter().run(request)
+
+    assert result.status == "blocked"
+    assert result.evidence is not None
+    preflight = result.diagnostics["preflight"]
+    assert preflight["data_quality"]["passed"] is False
+    assert any("ops_capacity source is missing" in item for item in preflight["blocking_issues"])
 
 
 def test_default_production_registry_contains_current_adapters() -> None:

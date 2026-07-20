@@ -106,6 +106,8 @@ class PreflightReport(BaseModel):
     blocking_issues: list[str] = Field(default_factory=list)
     checked_datasets: dict[str, int] = Field(default_factory=dict)
     checked_limits: dict[str, Any] = Field(default_factory=dict)
+    data_sources: list[dict[str, Any]] = Field(default_factory=list)
+    data_quality: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProductionOptimizerEvidence(BaseModel):

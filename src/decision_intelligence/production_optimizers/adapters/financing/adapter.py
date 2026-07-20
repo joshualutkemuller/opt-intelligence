@@ -9,6 +9,7 @@ import numpy as np
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.data import load_financing
 from decision_intelligence.optimizers.financing import FinancingOptimizer
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -42,7 +43,19 @@ class FinancingProductionAdapter(ProductionOptimizerAdapter):
         warnings: list[str] = []
         checked_datasets: dict[str, int] = {}
         checked_limits: dict[str, Any] = {}
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets.update(data_preflight.checked_datasets)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
 
         try:
             counterparties, needs = load_financing(request)
@@ -118,6 +131,14 @@ class FinancingProductionAdapter(ProductionOptimizerAdapter):
             blocking_issues=blocking_issues,
             checked_datasets=checked_datasets,
             checked_limits=checked_limits,
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
+            },
         )
         self._last_preflight = report
         return report

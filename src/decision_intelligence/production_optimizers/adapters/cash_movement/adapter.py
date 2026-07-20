@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from decision_intelligence.contracts import OptimizationRequest
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -32,6 +33,10 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
         rails = _payment_rails(request.context)
         blocking_issues: list[str] = []
         warnings: list[str] = []
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets = dict(data_preflight.checked_datasets)
 
         if request.domain != self.domain:
             blocking_issues.append(f"Expected domain '{self.domain}', got '{request.domain}'.")
@@ -59,11 +64,26 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
         if len(requirements) > 8:
             warnings.append("Large funding queue; consider batch execution isolation.")
 
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
         fingerprint = reproducibility_fingerprint(
             model_config=self.model_config,
             request_payload=request.model_dump(mode="json"),
             snapshot_id=snapshot_id,
+        )
+        checked_datasets.update(
+            {
+                "cash_balances": len(balances),
+                "funding_requirements": len(requirements),
+                "payment_rails": len(rails),
+            }
         )
         report = PreflightReport(
             passed=not blocking_issues,
@@ -71,15 +91,19 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
             reproducibility_fingerprint=fingerprint,
             warnings=warnings,
             blocking_issues=blocking_issues,
-            checked_datasets={
-                "cash_balances": len(balances),
-                "funding_requirements": len(requirements),
-                "payment_rails": len(rails),
-            },
+            checked_datasets=checked_datasets,
             checked_limits={
                 "cutoff_hour": request.context.get("cutoff_hour", 15),
                 "liquidity_buffer_pct": request.context.get("liquidity_buffer_pct", 0.05),
                 "stress_multiplier": request.context.get("stress_multiplier", 1.0),
+            },
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
             },
         )
         self._last_preflight = report

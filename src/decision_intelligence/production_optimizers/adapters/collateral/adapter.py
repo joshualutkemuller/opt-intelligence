@@ -7,6 +7,7 @@ from typing import Any
 from decision_intelligence.contracts import OptimizationRequest
 from decision_intelligence.data import load_collateral
 from decision_intelligence.optimizers.collateral import CollateralOptimizer
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -39,7 +40,19 @@ class CollateralProductionAdapter(ProductionOptimizerAdapter):
         blocking_issues = self.native_optimizer.validate_request(request)
         checked_datasets: dict[str, int] = {}
         warnings: list[str] = []
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets.update(data_preflight.checked_datasets)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
 
         try:
             assets, obligations = load_collateral(request)
@@ -79,6 +92,14 @@ class CollateralProductionAdapter(ProductionOptimizerAdapter):
                 "concentration_limit": request.context.get("concentration_limit", 0.60),
                 "solver_backend": request.context.get("solver_backend", "scipy"),
                 "problem_type": request.context.get("problem_type", "lp"),
+            },
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
             },
         )
         self._last_preflight = report

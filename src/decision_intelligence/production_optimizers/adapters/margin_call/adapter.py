@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from decision_intelligence.contracts import OptimizationRequest
+from decision_intelligence.production_optimizers.data import build_data_preflight_report
 
 from ...adapter import ProductionOptimizerAdapter
 from ...contracts import (
@@ -31,6 +32,10 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
         capacity = float(request.context.get("team_capacity_minutes", 420))
         blocking_issues: list[str] = []
         warnings: list[str] = []
+        data_preflight = build_data_preflight_report(request, self.model_config)
+        blocking_issues.extend(data_preflight.blocking_issues)
+        warnings.extend(data_preflight.warnings)
+        checked_datasets = dict(data_preflight.checked_datasets)
 
         if request.domain != self.domain:
             blocking_issues.append(f"Expected domain '{self.domain}', got '{request.domain}'.")
@@ -51,11 +56,25 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
             if float(call.get("due_in_hours", 0.0)) < 0:
                 warnings.append(f"Call {call_id} is already past due.")
 
-        snapshot_id = data_snapshot_id(self.domain, request.portfolio_id, request.context)
+        snapshot_id = (
+            request.context.get("data_snapshot_id")
+            or data_preflight.snapshot_id
+            or data_snapshot_id(
+                self.domain,
+                request.portfolio_id,
+                request.context,
+            )
+        )
         fingerprint = reproducibility_fingerprint(
             model_config=self.model_config,
             request_payload=request.model_dump(mode="json"),
             snapshot_id=snapshot_id,
+        )
+        checked_datasets.update(
+            {
+                "margin_call_queue": len(queue),
+                "ops_capacity": 1,
+            }
         )
         report = PreflightReport(
             passed=not blocking_issues,
@@ -63,10 +82,7 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
             reproducibility_fingerprint=fingerprint,
             warnings=warnings,
             blocking_issues=blocking_issues,
-            checked_datasets={
-                "margin_call_queue": len(queue),
-                "ops_capacity": 1,
-            },
+            checked_datasets=checked_datasets,
             checked_limits={
                 "team_capacity_minutes": capacity,
                 "materiality_threshold": request.context.get("materiality_threshold", 25_000_000),
@@ -74,6 +90,14 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
                     "dispute_stress_multiplier",
                     1.0,
                 ),
+            },
+            data_sources=[
+                report.model_dump(mode="json") for report in data_preflight.reports
+            ],
+            data_quality={
+                "passed": data_preflight.passed,
+                "warning_count": len(data_preflight.warnings),
+                "blocking_issue_count": len(data_preflight.blocking_issues),
             },
         )
         self._last_preflight = report

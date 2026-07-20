@@ -44,8 +44,14 @@ Output:
 - `warnings`;
 - `checked_datasets`;
 - `checked_limits`;
+- `data_sources`;
+- `data_quality`;
 - `data_snapshot_id`;
 - `reproducibility_fingerprint`.
+
+Current POC adapters use the production data adapter layer to populate
+`data_sources` and `data_quality` for local CSV/JSON/document sources before
+calling native optimizer logic.
 
 ### `build_problem(request)`
 

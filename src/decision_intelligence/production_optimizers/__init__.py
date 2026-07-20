@@ -20,6 +20,12 @@ from .contracts import (
     ScenarioKnobSpec,
     SolverBackendSpec,
 )
+from .data import (
+    DataPreflightResult,
+    DataSourceContract,
+    DataSourceReport,
+    build_data_preflight_report,
+)
 from .evidence import EvidenceManifest, LocalProductionEvidenceStore
 from .execution import (
     InProcessExecutionBackend,
@@ -37,6 +43,9 @@ __all__ = [
     "CollateralProductionAdapter",
     "ConstraintFamilySpec",
     "DataContractSpec",
+    "DataPreflightResult",
+    "DataSourceContract",
+    "DataSourceReport",
     "EvidenceManifest",
     "ExecutionIsolationSpec",
     "InProcessExecutionBackend",
@@ -60,6 +69,7 @@ __all__ = [
     "SubprocessExecutionBackend",
     "backend_for_spec",
     "build_default_production_registry",
+    "build_data_preflight_report",
     "execute_isolated",
 ]
 

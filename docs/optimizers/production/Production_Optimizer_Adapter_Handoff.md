@@ -203,6 +203,13 @@ Implemented:
   stdio, and REST-style JSON POST services.
 - Opt-in persistent evidence storage under a configurable local artifact root,
   including JSON, CSV, XLSX, and manifest files.
+- Production data adapter layer under
+  `src/decision_intelligence/production_optimizers/data/`, including typed
+  source contracts, local CSV/JSON/document inspection, freshness checks,
+  source hashes, row counts, and source-level preflight evidence.
+- All current production adapters now attach data-source reports to
+  preflight/evidence and fail closed when explicitly configured production
+  sources are missing or malformed.
 - Production workflow templates and demo presets for asset allocation,
   collateral, money market, treasury cash movement, and margin-call workflow.
 - Focused tests for successful runs, blocked preflight, evidence attachment,
@@ -237,6 +244,8 @@ For tonight's closeout, the adapter handoff should be considered complete when:
   with unit tests.
 - ✅ Production evidence can be persisted to local JSON, CSV, XLSX, and manifest
   artifacts through an opt-in runtime context flag.
+- ✅ Production data-source contracts can inspect local CSV/JSON/document
+  sources and attach snapshot/freshness/quality evidence to optimizer runs.
 - ✅ Documentation identifies the remaining firm-integration work separately
   from the POC-ready platform contract.
 
@@ -247,8 +256,9 @@ the next credible path from demo to firm integration:
 
 - Replace phase-1 native optimizer calls with firm production engines where
   available.
-- Add real data adapters for holdings, risk models, curves, collateral
-  schedules, funding facilities, counterparty limits, and policy repositories.
+- Connect the local production data adapter pattern to firm-managed holdings,
+  risk models, curves, collateral schedules, funding facilities, counterparty
+  limits, and policy repositories.
 - Extend execution isolation from examples to firm-managed gRPC, batch, and
   containerized optimizer runtimes.
 - Move local evidence artifacts into controlled storage with immutable run IDs,
