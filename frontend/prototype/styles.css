@@ -2310,6 +2310,52 @@ h2 {
   flex-wrap: wrap;
 }
 
+.llm-settings-panel .llm-settings-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.llm-settings-panel .llm-settings-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.llm-settings-panel .llm-settings-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.llm-settings-panel .llm-settings-fields label span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.llm-settings-panel .llm-settings-fields input,
+.llm-settings-panel .llm-settings-fields select {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.model-badge {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
 .governance-factor-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

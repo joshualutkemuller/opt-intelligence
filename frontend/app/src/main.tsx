@@ -1677,7 +1677,17 @@ function App() {
   const [ollamaInput, setOllamaInput] = useState(
     "Explain the MVO asset allocation demo in plain English.",
   );
-  const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
+  const [llmConfig, setLlmConfig] = useState<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+  }>({
+    provider: "openai",
+    model: "llama3.1:8b",
+    baseUrl: "http://localhost:11434/v1",
+    apiKey: "",
+  });
   const [isOllamaRunning, setIsOllamaRunning] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
@@ -1704,7 +1714,7 @@ function App() {
   const [policyPdfPreviewUrl, setPolicyPdfPreviewUrl] = useState<string | null>(null);
   const [policyBackend, setPolicyBackend] =
     useState<"deterministic" | "llm" | "auto">("deterministic");
-  const [policyModel, setPolicyModel] = useState("llama3.1:8b");
+  // policyModel is now sourced from llmConfig.model
   const [policyResult, setPolicyResult] = useState<PolicyIngestionResponse | null>(null);
   const [policyApplied, setPolicyApplied] = useState(false);
   const [isPolicyIngesting, setIsPolicyIngesting] = useState(false);
@@ -2205,7 +2215,7 @@ function App() {
     setIsOllamaRunning(true);
     setOllamaMessages((items) => [
       ...items,
-      { role: "assistant", content: "Thinking locally with Ollama...", pending: true },
+      { role: "assistant", content: `Thinking with ${llmConfig.provider} / ${llmConfig.model}…`, pending: true },
     ]);
 
     try {
@@ -2216,9 +2226,10 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
-            provider: "openai",
-            model: ollamaModel,
-            base_url: "http://localhost:11434/v1",
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            base_url: llmConfig.baseUrl || undefined,
+            api_key: llmConfig.apiKey || undefined,
             max_tokens: 512,
             system:
               "You are a concise portfolio optimization assistant. Explain concepts plainly for a nontechnical market stakeholder.",
@@ -2239,7 +2250,7 @@ function App() {
       setOllamaMessages((items) =>
         replacePendingMessage(
           items,
-          `Ollama chat did not complete (${detail}). Confirm Ollama is running on http://localhost:11434 and that the model exists.`,
+          `LLM chat did not complete (${detail}). Check that ${llmConfig.provider} is reachable at ${llmConfig.baseUrl || "default endpoint"} and the model "${llmConfig.model}" is available.`,
         ),
       );
     } finally {
@@ -2371,10 +2382,10 @@ function App() {
             pdf_base64: policyPdfBase64 || undefined,
             filename: policyFilename || undefined,
             backend: policyBackend,
-            provider: policyBackend === "deterministic" ? undefined : "openai",
-            model: policyBackend === "deterministic" ? undefined : policyModel,
-            base_url:
-              policyBackend === "deterministic" ? undefined : "http://localhost:11434/v1",
+            provider: policyBackend === "deterministic" ? undefined : llmConfig.provider,
+            model: policyBackend === "deterministic" ? undefined : llmConfig.model,
+            base_url: policyBackend === "deterministic" ? undefined : (llmConfig.baseUrl || undefined),
+            api_key: policyBackend === "deterministic" ? undefined : (llmConfig.apiKey || undefined),
           }),
         },
         policyBackend === "deterministic" ? 15000 : 60000,
@@ -3057,7 +3068,7 @@ function App() {
             text={policyText}
             filename={policyFilename}
             backend={policyBackend}
-            model={policyModel}
+            llmModel={llmConfig.model}
             result={policyResult}
             applied={policyApplied}
             isIngesting={isPolicyIngesting}
@@ -3076,7 +3087,6 @@ function App() {
             pdfPreviewUrl={policyPdfPreviewUrl}
             onFileChange={handlePolicyFileChange}
             onBackendChange={setPolicyBackend}
-            onModelChange={setPolicyModel}
             onIngest={ingestPolicyDocument}
             onApply={applyPolicyInputs}
             onLoadSample={isCollateralHqlaSelected ? selectCollateralHqlaPath : undefined}
@@ -3240,27 +3250,22 @@ function App() {
             </form>
           </section>
 
-          <section className="ollama-panel panel" aria-label="Local Ollama chat">
+          <LLMSettingsPanel config={llmConfig} onChange={setLlmConfig} />
+
+          <section className="ollama-panel panel" aria-label="Local LLM chat">
             <div className="section-header">
               <div>
                 <span className="eyebrow">Local LLM</span>
-                <h2>Ollama Chat</h2>
+                <h2>LLM Chat</h2>
               </div>
-              <label className="model-control">
-                <span>Model</span>
-                <input
-                  value={ollamaModel}
-                  onChange={(event) => setOllamaModel(event.target.value)}
-                  aria-label="Ollama model"
-                />
-              </label>
+              <span className="model-badge">{llmConfig.provider} · {llmConfig.model}</span>
             </div>
 
             <div className="messages ollama-messages" aria-live="polite">
               {ollamaMessages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
                   <span className="message-label">
-                    {message.role === "user" ? "User" : "Ollama"}
+                    {message.role === "user" ? "User" : llmConfig.provider}
                   </span>
                   <p>{message.content}</p>
                 </article>
@@ -3275,7 +3280,7 @@ function App() {
                 aria-label="Ollama chat input"
               />
               <button className="primary-button" type="submit" disabled={isOllamaRunning}>
-                {isOllamaRunning ? "Thinking" : "Ask Ollama"}
+                {isOllamaRunning ? "Thinking" : "Ask LLM"}
               </button>
             </form>
           </section>
@@ -3374,7 +3379,7 @@ function App() {
             selectedPreset={selectedPreset}
             selectedWorkflow={selectedWorkflow}
             selectedProductionOptimizer={selectedProductionOptimizer}
-            ollamaModel={ollamaModel}
+            llmConfig={llmConfig}
             latestWorkflowRunPayload={latestWorkflowRunPayload}
           />
 
@@ -5518,7 +5523,7 @@ function EvidenceRoomPanel({
   selectedPreset,
   selectedWorkflow,
   selectedProductionOptimizer,
-  ollamaModel,
+  llmConfig,
   latestWorkflowRunPayload,
 }: {
   workflowRun: WorkflowRunResult | null;
@@ -5528,7 +5533,7 @@ function EvidenceRoomPanel({
   selectedPreset: DemoPresetCatalogItem;
   selectedWorkflow: WorkflowCatalogItem;
   selectedProductionOptimizer: ProductionOptimizerCatalogItem | null;
-  ollamaModel: string;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
   latestWorkflowRunPayload: WorkflowRunPayload | null;
 }) {
   const steps = workflowRun?.step_results || [];
@@ -5568,9 +5573,10 @@ function EvidenceRoomPanel({
           response: { result: workflowRun },
           payload: latestWorkflowRunPayload,
           llm_polish: true,
-          provider: "openai",
-          model: ollamaModel,
-          base_url: "http://localhost:11434/v1",
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          base_url: llmConfig.baseUrl || undefined,
+          api_key: llmConfig.apiKey || undefined,
         }),
       });
       const data = await res.json();
@@ -5762,7 +5768,7 @@ function EvidenceRoomPanel({
                     type="button"
                     onClick={handlePolishNarrative}
                     disabled={isPolishing}
-                    title={`Polish via Ollama (${ollamaModel})`}
+                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
                   >
                     {isPolishing ? "Polishing…" : "Polish with LLM"}
                   </button>
@@ -5782,7 +5788,7 @@ function EvidenceRoomPanel({
                     type="button"
                     onClick={handlePolishNarrative}
                     disabled={isPolishing}
-                    title={`Polish via Ollama (${ollamaModel})`}
+                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
                   >
                     {isPolishing ? "Polishing…" : "Polish with LLM"}
                   </button>
@@ -5817,12 +5823,94 @@ function EvidenceSection({
   );
 }
 
+function LLMSettingsPanel({
+  config,
+  onChange,
+}: {
+  config: { provider: string; model: string; baseUrl: string; apiKey: string };
+  onChange: (config: { provider: string; model: string; baseUrl: string; apiKey: string }) => void;
+}) {
+  function set(key: string, value: string) {
+    onChange({ ...config, [key]: value });
+  }
+
+  const presets: Array<{ label: string; provider: string; model: string; baseUrl: string }> = [
+    { label: "Ollama (local)", provider: "openai", model: "llama3.1:8b", baseUrl: "http://localhost:11434/v1" },
+    { label: "Anthropic Claude", provider: "anthropic", model: "claude-sonnet-5", baseUrl: "" },
+    { label: "OpenAI GPT-4o", provider: "openai", model: "gpt-4o", baseUrl: "" },
+  ];
+
+  return (
+    <section className="panel compact llm-settings-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">LLM Settings</span>
+        <span className="model-badge">{config.provider} · {config.model}</span>
+      </div>
+
+      <div className="llm-settings-presets">
+        {presets.map((preset) => (
+          <button
+            key={preset.label}
+            className={`segmented-button${config.provider === preset.provider && config.model === preset.model ? " active" : ""}`}
+            type="button"
+            onClick={() => onChange({ ...config, provider: preset.provider, model: preset.model, baseUrl: preset.baseUrl })}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="llm-settings-fields">
+        <label>
+          <span>Provider</span>
+          <select
+            value={config.provider}
+            onChange={(e) => set("provider", e.target.value)}
+            aria-label="LLM provider"
+          >
+            <option value="openai">openai (Ollama / OpenAI / compatible)</option>
+            <option value="anthropic">anthropic</option>
+          </select>
+        </label>
+        <label>
+          <span>Model</span>
+          <input
+            value={config.model}
+            onChange={(e) => set("model", e.target.value)}
+            placeholder="e.g. llama3.1:8b, claude-sonnet-5, gpt-4o"
+            aria-label="LLM model"
+          />
+        </label>
+        <label>
+          <span>Base URL</span>
+          <input
+            value={config.baseUrl}
+            onChange={(e) => set("baseUrl", e.target.value)}
+            placeholder="Leave blank for hosted; http://localhost:11434/v1 for Ollama"
+            aria-label="LLM base URL"
+          />
+        </label>
+        <label>
+          <span>API Key</span>
+          <input
+            type="password"
+            value={config.apiKey}
+            onChange={(e) => set("apiKey", e.target.value)}
+            placeholder="Leave blank to use environment variable"
+            aria-label="LLM API key"
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
 function PolicyIngestionPanel({
   selectedWorkflow,
   text,
   filename,
   backend,
-  model,
+  llmModel,
   result,
   applied,
   isIngesting,
@@ -5832,7 +5920,6 @@ function PolicyIngestionPanel({
   onTextChange,
   onFileChange,
   onBackendChange,
-  onModelChange,
   onIngest,
   onApply,
   onLoadSample,
@@ -5841,7 +5928,7 @@ function PolicyIngestionPanel({
   text: string;
   filename: string;
   backend: "deterministic" | "llm" | "auto";
-  model: string;
+  llmModel: string;
   result: PolicyIngestionResponse | null;
   applied: boolean;
   isIngesting: boolean;
@@ -5851,7 +5938,6 @@ function PolicyIngestionPanel({
   onTextChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
-  onModelChange: (value: string) => void;
   onIngest: () => void;
   onApply: () => void;
   onLoadSample?: () => void;
@@ -5934,17 +6020,18 @@ function PolicyIngestionPanel({
             aria-label="IPS ingestion backend"
           >
             <option value="deterministic">Deterministic</option>
-            <option value="llm">Ollama assisted</option>
+            <option value="llm">LLM assisted</option>
             <option value="auto">Auto</option>
           </select>
         </label>
         <label>
           <span>Model</span>
           <input
-            value={model}
-            onChange={(event) => onModelChange(event.target.value)}
-            disabled={disabled || isIngesting || backend === "deterministic"}
-            aria-label="IPS ingestion model"
+            value={llmModel}
+            readOnly
+            disabled={backend === "deterministic"}
+            aria-label="IPS ingestion model (set in LLM Settings)"
+            title="Configure model in the LLM Settings panel"
           />
         </label>
       </div>
