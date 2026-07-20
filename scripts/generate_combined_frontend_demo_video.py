@@ -219,6 +219,7 @@ def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str)
     if not use_h264:
         out_stream.options = {"b": "2M"}
 
+    # libvpx encoder ignores frame.pts; override packet PTS/DTS after encoding.
     frame_index = 0
     for src_path in inputs:
         in_container = av.open(str(src_path))
@@ -226,14 +227,18 @@ def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str)
         in_stream.thread_type = "AUTO"
         for raw_frame in in_container.decode(in_stream):
             frame = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p")
-            frame.pts = frame_index
             for packet in out_stream.encode(frame):
+                packet.pts = frame_index
+                packet.dts = frame_index
                 out_container.mux(packet)
-            frame_index += 1
+                frame_index += 1
         in_container.close()
 
     for packet in out_stream.encode():
+        packet.pts = frame_index
+        packet.dts = frame_index
         out_container.mux(packet)
+        frame_index += 1
     out_container.close()
 
 
