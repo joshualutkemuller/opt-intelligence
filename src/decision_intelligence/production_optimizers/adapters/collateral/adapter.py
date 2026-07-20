@@ -154,6 +154,9 @@ class CollateralProductionAdapter(ProductionOptimizerAdapter):
             diagnostics["validation_violations"] = violations
             diagnostics["explanation"] = self.native_optimizer.explain(problem, native_solution)
             domain_attachments["sensitivities"] = to_jsonable(sensitivities)
+            domain_attachments["lending_opportunities"] = to_jsonable(
+                native_solution.get("lending_opportunities", [])
+            )
         else:
             diagnostics["message"] = native_solution.get("message", "Optimizer did not solve.")
 

@@ -7,18 +7,39 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 from pathlib import Path
+
+
+def _codec_args() -> tuple[list[str], str]:
+    """Return (ffmpeg output codec flags, file extension) based on available encoders."""
+    ffmpeg = _ffmpeg()
+    try:
+        out = subprocess.check_output([ffmpeg, "-encoders"], stderr=subprocess.DEVNULL).decode()
+        if "libx264" in out:
+            return ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"], ".mp4"
+    except Exception:
+        pass
+    # Playwright's stripped ffmpeg registers the VP8 encoder as 'libvpx'.
+    return ["-c:v", "libvpx", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
 
 from PIL import Image, ImageDraw, ImageFont
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TMP_DIR = REPO_ROOT / "tmp" / "video" / "combined_frontend_demo"
 OUT_DIR = REPO_ROOT / "video_examples" / "combined"
-OUTPUT = OUT_DIR / "collateral-and-money-market-frontend-demo.mp4"
-COLLATERAL_VIDEO = (
-    REPO_ROOT / "video_examples" / "collateral" / "collateral-hqla-frontend-orchestration-demo.mp4"
+COLLATERAL_VIDEO = next(
+    (
+        REPO_ROOT / "video_examples" / "collateral" / name
+        for name in (
+            "collateral-hqla-frontend-orchestration-demo.mp4",
+            "collateral-hqla-frontend-orchestration-demo.webm",
+        )
+        if (REPO_ROOT / "video_examples" / "collateral" / name).exists()
+    ),
+    REPO_ROOT / "video_examples" / "collateral" / "collateral-hqla-frontend-orchestration-demo.mp4",
 )
 MONEY_MARKET_VIDEO = (
     REPO_ROOT / "video_examples" / "money_market" / "money-market-pdf-policy-optimization-demo.mp4"
@@ -45,6 +66,8 @@ COLORS = {
 
 def main() -> None:
     _require_inputs()
+    codec_flags, ext = _codec_args()
+    output = OUT_DIR / f"collateral-and-money-market-frontend-demo{ext}"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if TMP_DIR.exists():
         shutil.rmtree(TMP_DIR)
@@ -58,6 +81,8 @@ def main() -> None:
             "Schedule ingestion, LLM-assisted explanation, "
             "HQLA liquidity orchestration, and governance evidence"
         ),
+        codec_flags,
+        ext,
     )
     title_two = _render_title_clip(
         "example_2",
@@ -67,10 +92,21 @@ def main() -> None:
             "PDF policy upload, structured ingestion, optimizer execution, "
             "before/after analytics, and evidence review"
         ),
+        codec_flags,
+        ext,
     )
 
-    _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], OUTPUT)
-    print(OUTPUT.relative_to(REPO_ROOT))
+    try:
+        _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], output, codec_flags, ext)
+        print(output.relative_to(REPO_ROOT))
+    except subprocess.CalledProcessError:
+        print(
+            "[warn] Combined video compose failed — likely the source MP4 uses a codec "
+            "not supported by the available ffmpeg build (no H.264 decoder).\n"
+            f"  Title clips saved in: {TMP_DIR.relative_to(REPO_ROOT)}\n"
+            f"  Collateral recording: {COLLATERAL_VIDEO.relative_to(REPO_ROOT)}\n"
+            "  Install a full ffmpeg (libx264 + libvpx) to regenerate the combined video."
+        )
 
 
 def _require_inputs() -> None:
@@ -80,41 +116,38 @@ def _require_inputs() -> None:
         raise FileNotFoundError(f"Missing source video(s): {names}")
 
 
-def _render_title_clip(key: str, eyebrow: str, title: str, subtitle: str) -> Path:
-    frames_dir = TMP_DIR / key
-    frames_dir.mkdir(parents=True)
+def _render_title_clip(
+    key: str, eyebrow: str, title: str, subtitle: str, codec_flags: list[str], ext: str
+) -> Path:
     fonts = _fonts()
     frame_count = TITLE_SECONDS * FPS
-
+    output = TMP_DIR / f"{key}{ext}"
+    ffmpeg = _ffmpeg()
+    # Use image2pipe so we don't need the image2 file demuxer (absent in stripped builds).
+    # Collect all frames as JPEG bytes (MJPEG, readable by stripped ffmpeg builds).
+    all_frame_bytes = bytearray()
     for index in range(frame_count):
         progress = index / max(1, frame_count - 1)
         frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
-        frame.save(frames_dir / f"frame_{index:04d}.png")
+        buf = io.BytesIO()
+        frame.save(buf, format="JPEG", quality=92)
+        all_frame_bytes.extend(buf.getvalue())
 
-    output = TMP_DIR / f"{key}.mp4"
-    ffmpeg = _ffmpeg()
-    subprocess.run(
+    result = subprocess.run(
         [
-            ffmpeg,
-            "-y",
-            "-framerate",
-            str(FPS),
-            "-i",
-            str(frames_dir / "frame_%04d.png"),
-            "-r",
-            str(FPS),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
+            ffmpeg, "-y",
+            "-f", "image2pipe", "-vcodec", "mjpeg", "-framerate", str(FPS),
+            "-i", "pipe:0",
+            "-r", str(FPS),
+            *codec_flags,
             str(output),
         ],
-        check=True,
+        input=bytes(all_frame_bytes),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, "ffmpeg (title clip)")
     return output
 
 
@@ -171,29 +204,42 @@ def _draw_title_frame(
     return image
 
 
-def _compose(inputs: list[Path], output: Path) -> None:
-    ffmpeg = _ffmpeg()
-    args = [ffmpeg, "-y"]
-    for path in inputs:
-        args.extend(["-i", str(path)])
-    args.extend(
-        [
-            "-filter_complex",
-            "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
-            "-map",
-            "[v]",
-            "-r",
-            str(FPS),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            str(output),
-        ]
-    )
-    subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str) -> None:
+    """Concatenate video files using PyAV (supports H.264 + VP8 without system ffmpeg)."""
+    import av  # type: ignore[import]
+
+    use_h264 = "-c:v" in codec_flags and "libx264" in codec_flags
+    codec_name = "libx264" if use_h264 else "libvpx"
+    out_container = av.open(str(output), "w")
+    out_stream = out_container.add_stream(codec_name, rate=FPS)
+    assert isinstance(out_stream, av.VideoStream)
+    out_stream.width = WIDTH
+    out_stream.height = HEIGHT
+    out_stream.pix_fmt = "yuv420p"
+    if not use_h264:
+        out_stream.options = {"b": "2M"}
+
+    # libvpx encoder ignores frame.pts; override packet PTS/DTS after encoding.
+    frame_index = 0
+    for src_path in inputs:
+        in_container = av.open(str(src_path))
+        in_stream = next(s for s in in_container.streams if s.type == "video")
+        in_stream.thread_type = "AUTO"
+        for raw_frame in in_container.decode(in_stream):
+            frame = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p")
+            for packet in out_stream.encode(frame):
+                packet.pts = frame_index
+                packet.dts = frame_index
+                out_container.mux(packet)
+                frame_index += 1
+        in_container.close()
+
+    for packet in out_stream.encode():
+        packet.pts = frame_index
+        packet.dts = frame_index
+        out_container.mux(packet)
+        frame_index += 1
+    out_container.close()
 
 
 def _fonts() -> dict[str, ImageFont.ImageFont]:
@@ -244,6 +290,10 @@ def _ffmpeg() -> str:
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
+    # Playwright ships its own ffmpeg (stripped build, VP8 only).
+    pw_ffmpeg = Path("/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux")
+    if pw_ffmpeg.exists():
+        return str(pw_ffmpeg)
     binary = shutil.which("ffmpeg")
     if binary:
         return binary

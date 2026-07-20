@@ -6,7 +6,7 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +31,7 @@ from decision_intelligence.governance import (
     ApprovalPolicy,
     ApprovalStore,
     ApprovalThreshold,
+    DriftMonitor,
     GovernanceController,
     GovernanceOrchestrator,
     build_workflow_audit_narrative,
@@ -104,6 +105,7 @@ _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
 _NARRATIVE_STORE: dict[str, dict[str, Any]] = {}  # workflow_id → AuditNarrative dict
+_DRIFT_MONITOR = DriftMonitor()
 _GOVERNANCE_ORCHESTRATOR = GovernanceOrchestrator(
     store=_APPROVAL_STORE,
     audit=_APPROVAL_AUDIT,
@@ -596,6 +598,40 @@ def advance_governance(payload: dict[str, Any]) -> dict[str, Any]:
 def list_governance_pending() -> dict[str, Any]:
     """Return all pending (undecided) governance gates across all requests."""
     return {"pending": _GOVERNANCE_ORCHESTRATOR.pending()}
+
+
+@app.post("/api/drift/snapshot")
+def drift_snapshot(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Store the given workflow result as the drift baseline."""
+    workflow_result = payload.get("workflow_result") or payload
+    _DRIFT_MONITOR.snapshot(workflow_result)
+    return {"status": "ok", "baseline_time": _DRIFT_MONITOR.baseline_time()}
+
+
+@app.post("/api/drift/check")
+def drift_check(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Compare *workflow_result* against the stored baseline; return any drift alerts.
+
+    If ``session_id`` is provided and a matching chat session exists, the alerts
+    are also injected into that session so they surface on the next chat reply.
+    """
+    workflow_result = payload.get("workflow_result") or payload
+    alerts = _DRIFT_MONITOR.check(workflow_result)
+    if alerts and (session_id := payload.get("session_id")):
+        session = _CHAT_SESSIONS.get(str(session_id))
+        if session:
+            session.inject_alerts(alerts)
+    return {
+        "alert_count": len(alerts),
+        "alerts": [a.as_dict() for a in alerts],
+        "has_baseline": _DRIFT_MONITOR.has_baseline(),
+        "baseline_time": _DRIFT_MONITOR.baseline_time(),
+    }
+
+
+@app.get("/api/drift/thresholds")
+def drift_list_thresholds() -> dict[str, Any]:
+    return {"thresholds": _DRIFT_MONITOR.list_thresholds()}
 
 
 @app.post("/api/constraints/negotiate", response_model=ConstraintNegotiationResponse)

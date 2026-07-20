@@ -4634,3 +4634,203 @@ tbody tr:hover {
     border-color: var(--line);
   }
 }
+
+/* ── Drift alert banner ─────────────────────────────────────────────────── */
+.drift-alert-banner {
+  background: #fff8e6;
+  border: 1.5px solid #f59e0b;
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.drift-alert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.drift-alert-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.drift-dismiss-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #92400e;
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.drift-alert-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.drift-alert-item {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.drift-alert-item.drift-critical {
+  color: #991b1b;
+}
+
+.drift-alert-item.drift-warning {
+  color: #92400e;
+}
+
+.drift-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.drift-reoptimize-btn {
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.drift-reoptimize-btn:hover {
+  background: #d97706;
+}
+
+@media (prefers-color-scheme: dark) {
+  .drift-alert-banner {
+    background: rgba(146, 64, 14, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+  .drift-alert-title,
+  .drift-dismiss-btn {
+    color: #fde68a;
+  }
+  .drift-alert-item.drift-warning {
+    color: #fde68a;
+  }
+  .drift-alert-item.drift-critical {
+    color: #fca5a5;
+  }
+}
+
+/* ── Lending opportunity alerts ─────────────────────────────────────────── */
+.lending-opportunity-card {
+  background: var(--panel);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  grid-column: 1 / -1;
+}
+
+.lending-badge-warn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.lending-badge-ok {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.lending-opportunity-intro {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0.75rem;
+  line-height: 1.5;
+}
+
+.lending-ok-note {
+  color: #15803d;
+}
+
+.lending-opportunity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lending-opp-item {
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+  border-left: 3px solid #f59e0b;
+}
+
+.lending-opp-item.lending-opp-high {
+  background: #fff7ed;
+  border-left-color: #ef4444;
+}
+
+.lending-opp-item.lending-opp-medium {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+
+.lending-opp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.lending-opp-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lending-opp-rate {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.lending-opp-stats {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  .lending-opp-item.lending-opp-high {
+    background: rgba(239, 68, 68, 0.08);
+  }
+  .lending-opp-item.lending-opp-medium {
+    background: rgba(245, 158, 11, 0.08);
+  }
+  .lending-badge-warn {
+    background: rgba(146, 64, 14, 0.2);
+    color: #fde68a;
+  }
+  .lending-badge-ok {
+    background: rgba(21, 128, 61, 0.2);
+    color: #86efac;
+  }
+  .lending-ok-note {
+    color: #86efac;
+  }
+}

@@ -22,6 +22,7 @@ from decision_intelligence.contracts import (
 )
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.governance.drift import DriftAlert
 from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY, WorkflowPlan
 from decision_intelligence.workflows.config_loader import WorkflowInputConfig
 
@@ -67,6 +68,8 @@ class ChatSession:
         self._last_intent: AgentIntent | None = None
         self._last_plan: ExecutionPlan | None = None
         self._trace: list[AgentTraceEvent] = []
+        self._pending_alerts: list[DriftAlert] = []
+        self._last_alert_domains: list[str] = []
 
     @property
     def active(self) -> bool:
@@ -107,7 +110,41 @@ class ChatSession:
             "trace": _dump_models(self._trace),
         }
 
+    def inject_alerts(self, alerts: list[DriftAlert]) -> None:
+        """Push drift alerts into the session; they surface on the next reply()."""
+        for alert in alerts:
+            self._record_trace(
+                "proactive_alert",
+                alert.message,
+                threshold_name=alert.threshold_name,
+                domain=alert.domain,
+                metric_key=alert.metric_key,
+                current_value=alert.current_value,
+                baseline_value=alert.baseline_value,
+                cap_value=alert.cap_value,
+                severity=alert.severity,
+                reoptimize_domain=alert.reoptimize_domain,
+            )
+        self._pending_alerts.extend(alerts)
+
     def reply(self, text: str) -> ChatResponse:
+        # Surface any queued drift alerts before processing the user's message.
+        if self._pending_alerts:
+            alerts = self._pending_alerts[:]
+            self._pending_alerts.clear()
+            lines = ["**Proactive alert** — the orchestrator detected portfolio drift:"]
+            for alert in alerts:
+                icon = "🔴" if alert.severity == "critical" else "🟡"
+                lines.append(f"{icon} {alert.message}")
+            domains = sorted({a.reoptimize_domain for a in alerts})
+            self._last_alert_domains = domains
+            domain_list = ", ".join(domains)
+            lines.append(
+                f"\nType **re-optimize {domain_list}** or just **yes** to trigger "
+                "a fresh optimization, or continue with your original request."
+            )
+            return ChatResponse("\n".join(lines))
+
         prompt = text.strip()
         low = prompt.lower()
 
@@ -117,6 +154,19 @@ class ChatSession:
             return ChatResponse("Leaving guided workflow.", should_exit=True)
 
         if self._state is None:
+            # "re-optimize <domain>" shortcut — emitted by drift alert responses.
+            reopt_domain = _parse_reoptimize(low)
+            if reopt_domain == "__yes__":
+                reopt_domain = self._last_alert_domains[0] if self._last_alert_domains else None
+            if reopt_domain:
+                self._last_alert_domains = []
+                self._record_trace(
+                    "proactive_reoptimize",
+                    f"User accepted drift alert; re-optimizing {reopt_domain}.",
+                    domain=reopt_domain,
+                )
+                return self._start(reopt_domain, prompt, None)
+
             intent = self._intent_agent.analyze(prompt)
             self._last_intent = intent
             self._record_trace(
@@ -664,6 +714,29 @@ def _execution_plan_from_workflow(
         ],
         ready_to_run=True,
     )
+
+
+_KNOWN_DOMAINS = {
+    "asset_allocation", "collateral", "money_market", "financing",
+    "asset allocation", "money market",
+}
+_DOMAIN_ALIASES = {
+    "asset allocation": "asset_allocation",
+    "money market": "money_market",
+}
+
+
+def _parse_reoptimize(text: str) -> str | None:
+    """Return a domain name if the text is a re-optimize shortcut or plain 'yes'."""
+    text = text.strip().lower()
+    # "yes" alone → return a sentinel so caller uses last alerted domain
+    if text in {"yes", "y", "ok", "sure", "go", "do it"}:
+        return "__yes__"
+    m = re.match(r"re[-\s]?optim(?:ize|ise)[\s:]+([a-z_ ]+)", text)
+    if m:
+        raw = m.group(1).strip()
+        return _DOMAIN_ALIASES.get(raw, raw.replace(" ", "_"))
+    return None
 
 
 def _detect_portfolio_id(text: str) -> str | None:
