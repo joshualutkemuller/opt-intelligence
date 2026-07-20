@@ -2281,6 +2281,27 @@ h2 {
   margin-top: 6px;
 }
 
+.governance-orchestrator-card {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.governance-orchestrator-card .card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.audit-narrative-preview {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .governance-factor-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -5537,6 +5537,16 @@ function EvidenceRoomPanel({
   const trace = workflowRun?.trace || finalResult?.agent_trace || [];
   const solver = finalResult?.solver_metadata || {};
 
+  const [auditNarrative, setAuditNarrative] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    const wfId = workflowRun?.workflow_id;
+    if (!wfId) { setAuditNarrative(null); return; }
+    fetch(`/api/audit/narrative/${encodeURIComponent(wfId)}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setAuditNarrative(data?.narrative || null))
+      .catch(() => setAuditNarrative(null));
+  }, [workflowRun?.workflow_id]);
+
   return (
     <section className="panel evidence-room-panel">
       <div className="section-header">
@@ -5688,6 +5698,26 @@ function EvidenceRoomPanel({
             </ol>
           ) : (
             <p>Trace events appear after planning or workflow execution.</p>
+          )}
+        </EvidenceSection>
+
+        <EvidenceSection title="Audit Narrative" status={auditNarrative ? "Available" : workflowRun ? "Generating" : "Pending"}>
+          {auditNarrative ? (
+            <div className="audit-narrative-preview">
+              {String(auditNarrative.summary || auditNarrative.decision_summary || "Narrative generated. Included in evidence export.").slice(0, 400)}
+              {(auditNarrative.sections as unknown[])?.length ? (
+                <ul className="evidence-field-list" style={{ marginTop: "0.5rem" }}>
+                  {(auditNarrative.sections as Array<Record<string, unknown>>).slice(0, 4).map((section, i) => (
+                    <li key={i}>
+                      <strong>{String(section.title || section.heading || `Section ${i + 1}`)}</strong>
+                      <span>{String(section.summary || section.content || "").slice(0, 120)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : (
+            <p>{workflowRun ? "Narrative is being persisted — run export to include it in the evidence bundle." : "Run a workflow to generate the audit narrative."}</p>
           )}
         </EvidenceSection>
       </div>
@@ -6418,6 +6448,9 @@ function GovernanceReviewPanel({
 }) {
   const [approver, setApprover] = useState("demo.approver");
   const [reason, setReason] = useState("Reviewed materiality and controls.");
+  const [orchRouting, setOrchRouting] = useState<Record<string, unknown> | null>(null);
+  const [orchAdvancing, setOrchAdvancing] = useState(false);
+
   const governance = highestGovernanceRecord(workflowRun);
   const pendingRecords = pendingGovernanceRecords(workflowRun);
   const pendingApprovalIds = pendingRecords.flatMap((record) =>
@@ -6428,6 +6461,35 @@ function GovernanceReviewPanel({
   const pnlImpact = inputValues["governance.estimated_pnl_impact"] || "";
   const productionChange = inputValues["governance.production_constraint_change"] === "true";
   const status = governance?.status || (productionChange ? "review" : "not_required");
+
+  useEffect(() => {
+    if (!workflowRun) { setOrchRouting(null); return; }
+    fetch("/api/governance/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: workflowRun }),
+    })
+      .then((res) => res.json())
+      .then((data) => setOrchRouting(data))
+      .catch(() => setOrchRouting(null));
+  }, [workflowRun]);
+
+  async function handleOrchAdvance(granted: boolean) {
+    const approvalId = String(orchRouting?.approval_id || "");
+    if (!approvalId || !approver.trim()) return;
+    setOrchAdvancing(true);
+    try {
+      const res = await fetch("/api/governance/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approval_id: approvalId, approver, granted, reason }),
+      });
+      const data = await res.json();
+      setOrchRouting((prev) => prev ? { ...prev, status: data.status, action_performed: data.action_performed } : prev);
+    } finally {
+      setOrchAdvancing(false);
+    }
+  }
 
   return (
     <section className="panel governance-review-panel">
@@ -6501,6 +6563,43 @@ function GovernanceReviewPanel({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {orchRouting ? (
+        <div className="governance-orchestrator-card">
+          <div className="card-heading">
+            <strong>Auto-Routed Tier (Orchestrator)</strong>
+            <span className={orchRouting.status === "auto_allowed" ? "status-chip status-optimal" : orchRouting.status === "approved" ? "status-chip status-optimal" : orchRouting.status === "rejected" ? "status-chip status-block" : "status-chip status-warn"}>
+              {String(orchRouting.status).replaceAll("_", " ")}
+            </span>
+          </div>
+          <dl className="evidence-kv-list">
+            <StateRow label="Tier" value={String(orchRouting.tier ?? "—")} />
+            <StateRow label="Base tier" value={String(orchRouting.base_tier ?? "—")} />
+            <StateRow label="Action" value={String(orchRouting.action ?? "—")} />
+            <StateRow label="Escalated" value={orchRouting.escalated ? "Yes" : "No"} />
+            {orchRouting.escalation_reason ? <StateRow label="Escalation reason" value={String(orchRouting.escalation_reason)} /> : null}
+            {orchRouting.approval_id ? <StateRow label="Approval ID" value={String(orchRouting.approval_id)} /> : null}
+          </dl>
+          {orchRouting.required && orchRouting.status === "pending" ? (
+            <div className="approval-decision-box" style={{ marginTop: "0.75rem" }}>
+              <div className="approval-decision-fields">
+                <label>
+                  <span>Approver</span>
+                  <input value={approver} onChange={(e) => setApprover(e.target.value)} disabled={orchAdvancing} aria-label="Approver name" />
+                </label>
+                <label>
+                  <span>Reason</span>
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={orchAdvancing} aria-label="Approval reason" />
+                </label>
+              </div>
+              <div className="approval-actions">
+                <button className="primary-button" type="button" onClick={() => handleOrchAdvance(true)} disabled={orchAdvancing || !approver.trim()}>Approve</button>
+                <button className="secondary-button" type="button" onClick={() => handleOrchAdvance(false)} disabled={orchAdvancing || !approver.trim()}>Reject</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {governance?.required ? (

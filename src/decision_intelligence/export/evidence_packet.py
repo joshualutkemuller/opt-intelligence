@@ -17,6 +17,7 @@ def build_workflow_evidence_packet(
     preset: dict[str, Any] | None = None,
     workflow: dict[str, Any] | None = None,
     comparison: dict[str, Any] | None = None,
+    audit_narrative: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build a structured evidence packet from a completed workflow run."""
@@ -96,6 +97,7 @@ def build_workflow_evidence_packet(
             "summary": validation,
             "step_reports": [_step_validation_summary(step) for step in steps],
         },
+        "audit_narrative": _record(audit_narrative),
         "raw_response": {
             "plan": plan,
             "result": result,
@@ -185,6 +187,7 @@ def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
         Spacer(1, 8),
         Paragraph("Recommendation", heading_style),
         Paragraph(str(story.get("recommendation") or "Review workflow output."), body_style),
+        *_narrative_elements(packet, heading_style, body_style),
     ]
     document.build(elements)
     return buffer.getvalue()
@@ -226,6 +229,46 @@ def generate_workflow_evidence_xlsx(packet: dict[str, Any]) -> bytes:
                 _worksheet_xml(rows),
             )
     return buffer.getvalue()
+
+
+def _narrative_elements(
+    packet: dict[str, Any],
+    heading_style: Any,
+    body_style: Any,
+) -> list[Any]:
+    """Return PDF elements for the audit narrative section, if present."""
+    try:
+        from reportlab.platypus import Paragraph, Spacer
+        from reportlab.lib.units import inch
+    except ImportError:
+        return []
+
+    narrative = _record(packet.get("audit_narrative"))
+    markdown = str(narrative.get("markdown") or "").strip()
+    if not markdown:
+        return []
+
+    elements: list[Any] = [
+        Spacer(1, 10),
+        Paragraph("Audit Narrative", heading_style),
+        Paragraph(
+            f"Generated: {narrative.get('generated_at', '')}",
+            body_style,
+        ),
+    ]
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            elements.append(Spacer(1, 4))
+        elif stripped.startswith("# "):
+            pass  # already shown as section heading
+        elif stripped.startswith("## "):
+            elements.append(Paragraph(stripped[3:], heading_style))
+        elif stripped.startswith("- "):
+            elements.append(Paragraph(f"• {stripped[2:]}", body_style))
+        else:
+            elements.append(Paragraph(stripped, body_style))
+    return elements
 
 
 def _solver_summary(step: dict[str, Any]) -> dict[str, Any]:
@@ -501,6 +544,7 @@ def _evidence_tables(packet: dict[str, Any]) -> dict[str, list[list[Any]]]:
         "governance": _governance_rows(governance),
         "policy_fields": _policy_rows(policy),
         "comparison": _comparison_rows(comparison),
+        "audit_narrative": _narrative_rows(_record(packet.get("audit_narrative"))),
     }
 
 
@@ -1018,6 +1062,25 @@ def _bullet_paragraphs(items: list[Any], style: Any) -> list[Any]:
 
     entries = items or ["None recorded."]
     return [Paragraph(f"- {item}", style) for item in entries]
+
+
+def _narrative_rows(narrative: dict[str, Any]) -> list[list[Any]]:
+    if not narrative:
+        return [["Field", "Value"], ["Audit narrative", "Not generated"]]
+    rows: list[list[Any]] = [["Field", "Value"]]
+    rows.append(["Title", narrative.get("title")])
+    rows.append(["Generated at", narrative.get("generated_at")])
+    rows.append(["Decision summary", narrative.get("decision_summary")])
+    rows.append(["Outcome", narrative.get("outcome")])
+    for item in _list(narrative.get("constraint_context")):
+        rows.append(["Constraint context", item])
+    for item in _list(narrative.get("approval_chain")):
+        rows.append(["Approval chain", item])
+    for item in _list(narrative.get("risk_flags")):
+        rows.append(["Risk flag", item])
+    for item in _list(narrative.get("timeline")):
+        rows.append(["Timeline", item])
+    return rows
 
 
 def _record(value: Any) -> dict[str, Any]:

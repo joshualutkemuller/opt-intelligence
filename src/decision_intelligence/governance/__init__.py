@@ -7,8 +7,10 @@ from .approvals import (
 )
 from .audit import AuditLog
 from .narrative import AuditNarrative, build_workflow_audit_narrative
+from .orchestrator import AdvanceResult, GovernanceOrchestrator, RoutingDecision
 
 __all__ = [
+    "AdvanceResult",
     "AuditLog",
     "AuditNarrative",
     "ApprovalDecision",
@@ -16,5 +18,7 @@ __all__ = [
     "ApprovalStore",
     "ApprovalThreshold",
     "GovernanceController",
+    "GovernanceOrchestrator",
+    "RoutingDecision",
     "build_workflow_audit_narrative",
 ]

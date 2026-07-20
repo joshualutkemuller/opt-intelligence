@@ -32,6 +32,7 @@ from decision_intelligence.governance import (
     ApprovalStore,
     ApprovalThreshold,
     GovernanceController,
+    GovernanceOrchestrator,
     build_workflow_audit_narrative,
 )
 from decision_intelligence.governance.audit import AuditLog
@@ -101,6 +102,11 @@ app.add_middleware(
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
+_NARRATIVE_STORE: dict[str, dict[str, Any]] = {}  # workflow_id → AuditNarrative dict
+_GOVERNANCE_ORCHESTRATOR = GovernanceOrchestrator(
+    store=_APPROVAL_STORE,
+    audit=_APPROVAL_AUDIT,
+)
 
 
 @app.get("/api/health")
@@ -331,6 +337,11 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
 
     orchestrator, _audit = _build_orchestrator()
     result = SequentialWorkflowRunner(orchestrator).run(plan)
+    _persist_narrative(
+        workflow_id=plan.workflow_id,
+        response={"plan": _json(plan), "result": _json(result)},
+        payload=_json(payload),
+    )
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))
 
 
@@ -357,6 +368,13 @@ def run_workflow_stream(payload: WorkflowRunRequest) -> StreamingResponse:
 
     def generate():
         for event in SequentialWorkflowRunner(orchestrator).run_streaming(plan):
+            if event.get("event") == "workflow_completed":
+                result_dict = event.get("result") or {}
+                _persist_narrative(
+                    workflow_id=plan.workflow_id,
+                    response={"plan": _json(plan), "result": result_dict},
+                    payload=_json(payload),
+                )
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
@@ -448,12 +466,19 @@ def export_workflow_package(
 def export_workflow_evidence(
     payload: WorkflowEvidenceExportRequest,
 ) -> WorkflowEvidenceExportResponse:
+    wf_id = (
+        payload.response.get("result", {}).get("workflow_id")
+        or payload.workflow.get("workflow_id")
+        or payload.payload.get("workflow")
+    )
+    audit_narrative = _NARRATIVE_STORE.get(wf_id) if wf_id else None
     packet = build_workflow_evidence_packet(
         response=payload.response,
         payload=payload.payload,
         preset=payload.preset,
         workflow=payload.workflow,
         comparison=payload.comparison,
+        audit_narrative=audit_narrative,
     )
     pdf = generate_workflow_evidence_pdf(packet)
     csv_files = generate_workflow_evidence_csvs(packet)
@@ -484,7 +509,72 @@ def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeRe
         preset=payload.preset,
         workflow=payload.workflow,
     )
+    wf_id = (
+        payload.response.get("result", {}).get("workflow_id")
+        or payload.workflow.get("workflow_id") if payload.workflow else None
+        or payload.payload.get("workflow") if payload.payload else None
+    )
+    if wf_id:
+        _NARRATIVE_STORE[str(wf_id)] = _json(narrative)
     return AuditNarrativeResponse(narrative=_json(narrative))
+
+
+@app.get("/api/audit/narrative/{workflow_id}", response_model=AuditNarrativeResponse)
+def get_audit_narrative(workflow_id: str) -> AuditNarrativeResponse:
+    narrative = _NARRATIVE_STORE.get(workflow_id)
+    if narrative is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No narrative persisted for workflow_id '{workflow_id}'.",
+        )
+    return AuditNarrativeResponse(narrative=narrative)
+
+
+@app.post("/api/governance/route")
+def route_governance(payload: dict[str, Any]) -> dict[str, Any]:
+    """Auto-route a workflow result or request to the correct approval tier."""
+    from decision_intelligence.governance.orchestrator import _synthetic_request_from_workflow
+    request = _synthetic_request_from_workflow(payload, payload.get("context") or {})
+    decision = _GOVERNANCE_ORCHESTRATOR.route(request)
+    return decision.as_dict()
+
+
+@app.post("/api/governance/advance")
+def advance_governance(payload: dict[str, Any]) -> dict[str, Any]:
+    """Submit an approve/reject decision for a pending governance gate."""
+    approval_id = str(payload.get("approval_id") or "")
+    approver = str(payload.get("approver") or "").strip()
+    granted = bool(payload.get("granted", False))
+    reason = str(payload.get("reason") or "")
+    if not approval_id:
+        raise HTTPException(status_code=400, detail="approval_id is required.")
+    if not approver:
+        raise HTTPException(status_code=400, detail="approver is required.")
+    try:
+        result = _GOVERNANCE_ORCHESTRATOR.advance(
+            approval_id,
+            approver=approver,
+            granted=granted,
+            reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "approval_id": result.approval_id,
+        "fingerprint": result.fingerprint,
+        "status": result.status,
+        "approver": result.approver,
+        "reason": result.reason,
+        "tier": result.tier,
+        "action_performed": result.action_performed,
+        "decided_at": result.decided_at,
+    }
+
+
+@app.get("/api/governance/pending")
+def list_governance_pending() -> dict[str, Any]:
+    """Return all pending (undecided) governance gates across all requests."""
+    return {"pending": _GOVERNANCE_ORCHESTRATOR.pending()}
 
 
 @app.post("/api/constraints/negotiate", response_model=ConstraintNegotiationResponse)
@@ -611,6 +701,21 @@ def _pending_approval_items() -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _persist_narrative(
+    workflow_id: str,
+    response: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+) -> None:
+    try:
+        narrative = build_workflow_audit_narrative(
+            response=response,
+            payload=payload,
+        )
+        _NARRATIVE_STORE[workflow_id] = _json(narrative)
+    except Exception:  # noqa: BLE001 — narrative is best-effort; never block the run
+        pass
 
 
 def _safe_filename(value: str) -> str:
