@@ -169,6 +169,13 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
             for row in native_solution["assigned"]
         ]
         assigned_amount = sum(float(row["amount"]) for row in native_solution["assigned"])
+        action_rows = [
+            _margin_call_action_row(call=row, action_type="assigned_margin_call")
+            for row in native_solution["assigned"]
+        ] + [
+            _margin_call_action_row(call=row, action_type="deferred_margin_call")
+            for row in native_solution["deferred"]
+        ]
         return NormalizedOptimizerResult(
             optimizer_id=self.optimizer_id,
             domain=self.domain,
@@ -187,6 +194,7 @@ class MarginCallWorkflowProductionAdapter(ProductionOptimizerAdapter):
             domain_attachments={
                 "assigned_calls": to_jsonable(native_solution["assigned"]),
                 "deferred_calls": to_jsonable(native_solution["deferred"]),
+                "operational_action_table": to_jsonable(action_rows),
                 "capacity_used": native_solution["capacity_used"],
                 "capacity_remaining": native_solution["capacity_remaining"],
                 "total_queue_amount": total_amount,
@@ -255,6 +263,33 @@ def _recommended_action(call: dict[str, Any], materiality_threshold: float) -> s
     if float(call.get("due_in_hours", 24.0)) <= float(call.get("sla_escalation_hours", 2)):
         return "same_day_escalation"
     return "process"
+
+
+def _margin_call_action_row(
+    *,
+    call: dict[str, Any],
+    action_type: str,
+) -> dict[str, Any]:
+    assigned = action_type == "assigned_margin_call"
+    return {
+        "action_type": action_type,
+        "call_id": call.get("call_id"),
+        "counterparty": call.get("counterparty"),
+        "amount": call.get("amount"),
+        "due_in_hours": call.get("due_in_hours"),
+        "risk_tier": call.get("risk_tier"),
+        "dispute_probability": call.get("dispute_probability"),
+        "priority_score": call.get("priority_score"),
+        "capacity_minutes": call.get("capacity_minutes", call.get("ops_minutes")),
+        "assigned_order": call.get("assigned_order") if assigned else None,
+        "queue_status": "assigned" if assigned else "deferred",
+        "recommended_action": call.get("recommended_action"),
+        "reason": (
+            "assigned inside current capacity window"
+            if assigned
+            else call.get("defer_reason", "capacity_limit")
+        ),
+    }
 
 
 def _margin_call_queue(context: dict[str, Any]) -> list[dict[str, Any]]:

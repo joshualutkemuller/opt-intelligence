@@ -138,7 +138,7 @@ def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
         name = f"{prefix}.{key}" if prefix else str(key)
         if isinstance(item, dict):
             row.update(_flatten(item, name))
-        elif isinstance(item, (list, tuple)):
+        elif isinstance(item, list | tuple):
             row[name] = json.dumps(item, sort_keys=True)
         else:
             row[name] = item

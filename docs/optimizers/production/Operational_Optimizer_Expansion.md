@@ -162,7 +162,8 @@ They also make the platform more credible for enterprise production use:
 3. ✅ Extend evidence export with operational queue tables and action logs.
 4. ✅ Add document ingestion examples for payment policies, SLA rules, and
    margin call procedures.
-5. Replace scaffold solve logic with firm production engines when available.
+5. ✅ Add richer front-end tables for operational actions before export.
+6. Replace scaffold solve logic with firm production engines when available.
 
 ## Implementation Update: Workflow And Evidence Demo Layer
 
@@ -191,6 +192,39 @@ the action rows describe transfer amount, source, target, rail, cost, and
 recommendation. For margin-call workflow, the action rows describe assigned and
 deferred calls, priority score, capacity minutes, recommended action, and
 deferral/escalation reason.
+
+## Implementation Update: Front-End Operational Action Tables
+
+Operational workflow results now expose table-ready action rows directly in
+`domain_attachments.operational_action_table`, and the browser UI renders those
+rows before export.
+
+Treasury cash-movement rows show:
+
+- funding requirement;
+- source account and entity;
+- target account;
+- payment rail;
+- transfer amount and cost;
+- rail cutoff versus requirement cutoff;
+- remaining source liquidity;
+- recommended action.
+
+Margin-call workflow rows show:
+
+- margin-call ID;
+- counterparty;
+- assigned/deferred status;
+- call amount;
+- SLA due time;
+- risk tier and priority score;
+- dispute probability;
+- capacity minutes;
+- recommended action and reason.
+
+This closes the POC gap between evidence export and live demo review: users can
+see operational actions in the front-end workflow immediately after the run,
+then export the same decision trail to JSON/CSV/XLSX evidence packages.
 
 ## Implementation Update: Operational Policy Ingestion
 
@@ -236,12 +270,11 @@ The operational optimizer expansion is complete for POC/demo purposes:
 - operational adapters exist;
 - workflow templates and presets exist;
 - UI selector exposure exists;
+- front-end operational action tables exist;
 - evidence export includes operational action tables;
 - policy/SLA document ingestion examples exist;
 - tests cover ingestion and workflow execution from extracted context.
 
 Remaining production-hardening work:
 
-- Add richer front-end tables for operational actions before export, not only
-  inside the evidence package.
 - Replace scaffold solve logic with firm production engines when available.

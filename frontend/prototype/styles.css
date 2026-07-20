@@ -2731,6 +2731,41 @@ h2 {
   overflow: auto;
 }
 
+.operational-action-panel {
+  grid-column: 1 / -1;
+}
+
+.operational-action-table {
+  margin-top: 12px;
+}
+
+.operational-action-table table {
+  min-width: 960px;
+}
+
+.operational-action-table td {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.operational-action-table td strong,
+.operational-action-table td span {
+  display: block;
+}
+
+.operational-action-table td strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.operational-action-table td span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

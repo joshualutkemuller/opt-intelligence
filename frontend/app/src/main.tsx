@@ -3238,6 +3238,12 @@ function App() {
             <ConstraintPanel result={dashboard} />
           </section>
 
+          <OperationalActionTablePanel
+            workflowRun={workflowRun}
+            result={result}
+            selectedWorkflow={selectedWorkflow}
+          />
+
           <WorkflowTimelinePanel
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
@@ -4124,6 +4130,11 @@ function setNestedValue(target: Record<string, unknown>, path: string, value: un
 function toRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => toRecord(item)).filter((item) => Object.keys(item).length > 0);
 }
 
 function numberFrom(...values: unknown[]): number {
@@ -7104,6 +7115,152 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
   );
 }
 
+function OperationalActionTablePanel({
+  workflowRun,
+  result,
+  selectedWorkflow,
+}: {
+  workflowRun: WorkflowRunResult | null;
+  result: OptimizationResult | null;
+  selectedWorkflow: WorkflowCatalogItem;
+}) {
+  const operationalStep = workflowRun?.step_results.find((step) =>
+    ["treasury_operations", "margin_operations"].includes(step.domain),
+  );
+  const operationalResult = operationalStep?.result ||
+    (result && ["treasury_operations", "margin_operations"].includes(result.domain || "")
+      ? result
+      : null);
+  const domain = operationalStep?.domain || operationalResult?.domain || "";
+  const workflowIsOperational = selectedWorkflow.domains.some((item) =>
+    ["treasury_operations", "margin_operations"].includes(item),
+  );
+  if (!workflowIsOperational && !operationalResult) return null;
+
+  const attachments = toRecord(operationalResult?.solver_metadata.domain_attachments);
+  const rows = recordArray(attachments.operational_action_table);
+  const title = domain === "margin_operations"
+    ? "Margin-call action queue"
+    : "Treasury cash movement actions";
+  const statusLabel = operationalResult ? `${rows.length} actions` : "Pending run";
+
+  return (
+    <section className="panel operational-action-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Operational Actions</span>
+          <h2>{title}</h2>
+        </div>
+        <StatusStrip
+          label={statusLabel}
+          statusClass={operationalResult ? "status-optimal" : "status-ready"}
+        />
+      </div>
+
+      {operationalResult && rows.length ? (
+        domain === "margin_operations" ? (
+          <MarginCallActionTable rows={rows} />
+        ) : (
+          <TreasuryActionTable rows={rows} />
+        )
+      ) : (
+        <p className="workflow-empty">
+          Run the operational workflow to review table-ready actions before
+          exporting the evidence package.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function TreasuryActionTable({ rows }: { rows: Record<string, unknown>[] }) {
+  return (
+    <div className="table-wrap operational-action-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Requirement</th>
+            <th>Source</th>
+            <th>Target</th>
+            <th>Rail</th>
+            <th>Amount</th>
+            <th>Cost</th>
+            <th>Cutoff</th>
+            <th>Remaining</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${String(row.requirement_id || "transfer")}-${index}`}>
+              <td>{String(row.requirement_id || "-")}</td>
+              <td>
+                <strong>{String(row.source_account || "-")}</strong>
+                <span>{String(row.source_entity || "")}</span>
+              </td>
+              <td>{String(row.target_account || "-")}</td>
+              <td>{String(row.rail || "-")}</td>
+              <td>{formatCurrency(row.amount)}</td>
+              <td>{formatCurrency(row.cost)}</td>
+              <td>
+                <strong>{titleCase(String(row.cutoff_status || "open").replaceAll("_", " "))}</strong>
+                <span>{formatCutoffHours(row.rail_cutoff_hour, row.requirement_cutoff_hour)}</span>
+              </td>
+              <td>{formatCurrency(row.remaining_source_liquidity)}</td>
+              <td>{titleCase(String(row.recommended_action || "execute_transfer").replaceAll("_", " "))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MarginCallActionTable({ rows }: { rows: Record<string, unknown>[] }) {
+  return (
+    <div className="table-wrap operational-action-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Call</th>
+            <th>Counterparty</th>
+            <th>Status</th>
+            <th>Amount</th>
+            <th>Due</th>
+            <th>Risk</th>
+            <th>Dispute</th>
+            <th>Capacity</th>
+            <th>Action</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${String(row.call_id || "call")}-${index}`}>
+              <td>{String(row.call_id || "-")}</td>
+              <td>{String(row.counterparty || "-")}</td>
+              <td>
+                <strong>{titleCase(String(row.queue_status || "-"))}</strong>
+                <span>{row.assigned_order ? `Order ${row.assigned_order}` : ""}</span>
+              </td>
+              <td>{formatCurrency(row.amount)}</td>
+              <td>{formatHours(row.due_in_hours)}</td>
+              <td>
+                <strong>{titleCase(String(row.risk_tier || "medium"))}</strong>
+                <span>{formatScore(row.priority_score)}</span>
+              </td>
+              <td>{formatFraction(row.dispute_probability)}</td>
+              <td>{formatMinutes(row.capacity_minutes)}</td>
+              <td>{titleCase(String(row.recommended_action || "-").replaceAll("_", " "))}</td>
+              <td>{titleCase(String(row.reason || "-").replaceAll("_", " "))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AllocationTable({ result }: { result: OptimizationResult }) {
   return (
     <section className="panel">
@@ -7375,6 +7532,35 @@ function formatMaybePercent(value: unknown) {
   const number = Number(value);
   if (Number.isNaN(number)) return "-";
   return `${number.toFixed(2)}%`;
+}
+
+function formatHours(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  if (number <= 0) return "Past due";
+  if (number === 1) return "1h";
+  return `${number.toFixed(number % 1 === 0 ? 0 : 1)}h`;
+}
+
+function formatMinutes(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number.toFixed(0)}m`;
+}
+
+function formatScore(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `Score ${number.toFixed(2)}`;
+}
+
+function formatCutoffHours(railCutoff: unknown, requirementCutoff: unknown) {
+  const rail = Number(railCutoff);
+  const requirement = Number(requirementCutoff);
+  if (!Number.isFinite(rail) && !Number.isFinite(requirement)) return "";
+  if (!Number.isFinite(requirement)) return `Rail ${rail}:00`;
+  if (!Number.isFinite(rail)) return `Required ${requirement}:00`;
+  return `Rail ${rail}:00 / required ${requirement}:00`;
 }
 
 function formatNumber(value: unknown) {

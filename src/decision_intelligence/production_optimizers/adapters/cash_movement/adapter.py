@@ -187,6 +187,19 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
             for row in problem["funding_requirements"]
         )
         total_moved = sum(float(row["amount"]) for row in native_solution["transfers"])
+        requirement_rows = {
+            str(row["requirement_id"]): row for row in problem["funding_requirements"]
+        }
+        source_rows = {str(row["account_id"]): row for row in problem["cash_balances"]}
+        action_rows = [
+            _cash_transfer_action_row(
+                transfer=row,
+                requirement=requirement_rows.get(str(row["requirement_id"]), {}),
+                source=source_rows.get(str(row["from_account_id"]), {}),
+                remaining_liquidity=native_solution["remaining_liquidity"],
+            )
+            for row in native_solution["transfers"]
+        ]
         allocations = [
             {
                 "asset_id": f"{row['requirement_id']}:{row['rail_id']}:{row['from_account_id']}",
@@ -217,6 +230,8 @@ class CashMovementProductionAdapter(ProductionOptimizerAdapter):
                 "total_required_cash": total_required,
                 "total_moved_cash": total_moved,
                 "transfer_count": len(native_solution["transfers"]),
+                "transfers": to_jsonable(native_solution["transfers"]),
+                "operational_action_table": to_jsonable(action_rows),
                 "unmet_requirements": native_solution["unmet"],
                 "remaining_liquidity": native_solution["remaining_liquidity"],
             },
@@ -336,3 +351,36 @@ def _payment_rails(context: dict[str, Any]) -> list[dict[str, Any]]:
                 float(payment_rail_max_transfer),
             )
     return rails
+
+
+def _cash_transfer_action_row(
+    *,
+    transfer: dict[str, Any],
+    requirement: dict[str, Any],
+    source: dict[str, Any],
+    remaining_liquidity: dict[str, Any],
+) -> dict[str, Any]:
+    source_account = str(transfer.get("from_account_id", ""))
+    target_cutoff = requirement.get("cutoff_hour", transfer.get("cutoff_hour"))
+    rail_cutoff = transfer.get("cutoff_hour")
+    cutoff_status = "open"
+    if target_cutoff is not None and rail_cutoff is not None:
+        cutoff_status = "meets_cutoff" if float(rail_cutoff) >= float(target_cutoff) else "late"
+    return {
+        "action_type": "cash_transfer",
+        "requirement_id": transfer.get("requirement_id"),
+        "source_account": source_account,
+        "source_entity": source.get("entity"),
+        "target_account": transfer.get("to_account_id"),
+        "rail": transfer.get("rail_id"),
+        "currency": transfer.get("currency"),
+        "amount": transfer.get("amount"),
+        "cost": transfer.get("cost"),
+        "rail_cutoff_hour": rail_cutoff,
+        "requirement_cutoff_hour": target_cutoff,
+        "cutoff_status": cutoff_status,
+        "remaining_source_liquidity": remaining_liquidity.get(source_account),
+        "source_buffer": source.get("minimum_buffer"),
+        "recommended_action": "execute_transfer",
+        "reason": "least-cost cutoff-feasible route",
+    }

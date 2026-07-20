@@ -727,6 +727,11 @@ def test_workflow_endpoint_runs_treasury_cash_movement_workflow():
         "SNAP_TREASURY_WORKFLOW_API"
     )
     assert metadata["domain_attachments"]["total_moved_cash"] == 155_000_000
+    action_rows = metadata["domain_attachments"]["operational_action_table"]
+    assert action_rows[0]["action_type"] == "cash_transfer"
+    assert action_rows[0]["recommended_action"] == "execute_transfer"
+    assert action_rows[0]["cutoff_status"] == "meets_cutoff"
+    assert action_rows[0]["remaining_source_liquidity"] >= 0
 
 
 def test_workflow_endpoint_runs_margin_call_workflow():
@@ -761,6 +766,10 @@ def test_workflow_endpoint_runs_margin_call_workflow():
         "MC_A",
     ]
     assert metadata["domain_attachments"]["deferred_calls"][0]["call_id"] == "MC_C"
+    action_rows = metadata["domain_attachments"]["operational_action_table"]
+    assert [row["queue_status"] for row in action_rows] == ["assigned", "assigned", "deferred"]
+    assert action_rows[0]["recommended_action"] == "supervisor_review"
+    assert action_rows[-1]["reason"] == "capacity_limit"
 
 
 def test_workflow_compare_endpoint_returns_scenario_deltas():
