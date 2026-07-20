@@ -292,10 +292,10 @@ async function main() {
     await browser.close();
 
     const webmPath = await video.path();
-    await convertToMp4(webmPath, outputPath, targetSeconds);
-    const stat = await fs.stat(outputPath);
+    const finalPath = await convertToMp4(webmPath, outputPath, targetSeconds);
+    const stat = await fs.stat(finalPath);
     console.log(
-      `Wrote ${path.relative(repoRoot, outputPath)} (${targetSeconds}s, ${(stat.size / 1024 / 1024).toFixed(2)} MB)`,
+      `Wrote ${path.relative(repoRoot, finalPath)} (${targetSeconds}s, ${(stat.size / 1024 / 1024).toFixed(2)} MB)`,
     );
   } finally {
     for (const child of processes.reverse()) {
@@ -552,38 +552,36 @@ async function waitForUrl(url, timeoutMs) {
 }
 
 async function convertToMp4(webmPath, mp4Path, durationSeconds) {
-  const ffmpeg = await findFfmpeg();
+  const { ffmpeg, supportsH264 } = await findFfmpeg();
+  // If the only ffmpeg available is the stripped Playwright build (no libx264),
+  // fall back to webm output so the recording is still saved.
+  const outPath = supportsH264 ? mp4Path : mp4Path.replace(/\.mp4$/, ".webm");
+  const args = supportsH264
+    ? [
+        "-y", "-fflags", "+genpts", "-i", webmPath,
+        "-t", String(durationSeconds), "-r", "25",
+        "-vf", "setpts=PTS-STARTPTS",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        outPath,
+      ]
+    : [
+        "-y", "-i", webmPath,
+        "-t", String(durationSeconds),
+        "-c:v", "copy",
+        outPath,
+      ];
+  if (!supportsH264) {
+    console.log(`[warn] libx264 not available — saving as webm: ${outPath}`);
+  }
   await new Promise((resolve, reject) => {
-    const child = spawn(
-      ffmpeg,
-      [
-        "-y",
-        "-fflags",
-        "+genpts",
-        "-i",
-        webmPath,
-        "-t",
-        String(durationSeconds),
-        "-r",
-        "25",
-        "-vf",
-        "setpts=PTS-STARTPTS",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        mp4Path,
-      ],
-      { stdio: "ignore" },
-    );
+    const child = spawn(ffmpeg, args, { stdio: "ignore" });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited with status ${code}`));
     });
   });
+  return outPath;
 }
 
 async function findFfmpeg() {
@@ -602,18 +600,26 @@ async function findFfmpeg() {
       "darwin-x64",
       "ffmpeg",
     ),
+    "/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux",
     "ffmpeg",
   ];
   for (const candidate of candidates) {
-    if (candidate === "ffmpeg") return candidate;
     try {
       await fs.access(candidate);
-      return candidate;
+      // Check if this build supports libx264.
+      const supportsH264 = await new Promise((resolve) => {
+        const probe = spawn(candidate, ["-encoders"], { stdio: ["ignore", "pipe", "ignore"] });
+        let out = "";
+        probe.stdout.on("data", (d) => { out += d; });
+        probe.on("exit", () => resolve(out.includes("libx264")));
+        probe.on("error", () => resolve(false));
+      });
+      return { ffmpeg: candidate, supportsH264 };
     } catch {
-      // Keep looking for the bundled binary.
+      // Keep looking.
     }
   }
-  return "ffmpeg";
+  return { ffmpeg: "ffmpeg", supportsH264: true };
 }
 
 main().catch((error) => {
