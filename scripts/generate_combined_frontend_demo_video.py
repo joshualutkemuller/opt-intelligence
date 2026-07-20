@@ -7,13 +7,14 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 from pathlib import Path
 
 
 def _codec_args() -> tuple[list[str], str]:
-    """Return (ffmpeg codec flags, file extension) based on available encoders."""
+    """Return (ffmpeg output codec flags, file extension) based on available encoders."""
     ffmpeg = _ffmpeg()
     try:
         out = subprocess.check_output([ffmpeg, "-encoders"], stderr=subprocess.DEVNULL).decode()
@@ -21,7 +22,8 @@ def _codec_args() -> tuple[list[str], str]:
             return ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"], ".mp4"
     except Exception:
         pass
-    return ["-c:v", "libvpx", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
+    # Playwright's stripped ffmpeg supports libvpx_vp8 (not bare 'libvpx').
+    return ["-c:v", "libvpx_vp8", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -108,31 +110,35 @@ def _require_inputs() -> None:
 def _render_title_clip(
     key: str, eyebrow: str, title: str, subtitle: str, codec_flags: list[str], ext: str
 ) -> Path:
-    frames_dir = TMP_DIR / key
-    frames_dir.mkdir(parents=True)
     fonts = _fonts()
     frame_count = TITLE_SECONDS * FPS
-
-    for index in range(frame_count):
-        progress = index / max(1, frame_count - 1)
-        frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
-        frame.save(frames_dir / f"frame_{index:04d}.png")
-
     output = TMP_DIR / f"{key}{ext}"
     ffmpeg = _ffmpeg()
-    subprocess.run(
+    # Use image2pipe so we don't need the image2 file demuxer (absent in stripped builds).
+    proc = subprocess.Popen(
         [
             ffmpeg, "-y",
-            "-framerate", str(FPS),
-            "-i", str(frames_dir / "frame_%04d.png"),
+            "-f", "image2pipe", "-vcodec", "png", "-framerate", str(FPS),
+            "-i", "pipe:0",
             "-r", str(FPS),
             *codec_flags,
             str(output),
         ],
-        check=True,
+        stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    assert proc.stdin is not None
+    for index in range(frame_count):
+        progress = index / max(1, frame_count - 1)
+        frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
+        buf = io.BytesIO()
+        frame.save(buf, format="PNG")
+        proc.stdin.write(buf.getvalue())
+    proc.stdin.close()
+    ret = proc.wait()
+    if ret != 0:
+        raise subprocess.CalledProcessError(ret, "ffmpeg (title clip)")
     return output
 
 
