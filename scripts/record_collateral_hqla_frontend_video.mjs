@@ -504,18 +504,18 @@ async function ensureCollateralPathLoaded(page) {
 async function clickByRole(page, role, name) {
   const locator = page.getByRole(role, { name, exact: true }).first();
   await page.waitForTimeout(300);
-  await locator.click({ force: true });
+  await locator.dispatchEvent("click");
 }
 
 async function clickByRoleMatch(page, role, name) {
   const locator = page.getByRole(role, { name }).first();
   await page.waitForTimeout(300);
-  await locator.click({ force: true });
+  await locator.dispatchEvent("click");
 }
 
 async function clickButtonText(page, name) {
   const locator = page.getByRole("button", { name, exact: true }).first();
-  await locator.click({ force: true });
+  await locator.dispatchEvent("click");
 }
 
 async function fillTextbox(page, label, value) {
