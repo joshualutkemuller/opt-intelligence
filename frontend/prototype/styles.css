@@ -4235,3 +4235,189 @@ tbody tr:hover {
     justify-content: flex-start;
   }
 }
+
+/* ── Constraint Negotiation Panel ──────────────────────────────────── */
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.status-warn {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.status-block {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
+.negotiation-panel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.negotiation-header {
+  margin-bottom: 14px;
+}
+
+.negotiation-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.negotiation-inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.negotiation-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.negotiation-input,
+.negotiation-select {
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  min-width: 90px;
+}
+
+.negotiation-error {
+  color: #b91c1c;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.negotiation-results {
+  display: grid;
+  gap: 14px;
+}
+
+.negotiation-recommendation {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--muted);
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+  margin: 0;
+}
+
+.negotiation-blocker {
+  font-size: 12px;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.proposal-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.proposal-card {
+  padding: 13px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  display: grid;
+  gap: 6px;
+}
+
+.proposal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proposal-parameter {
+  font-size: 14px;
+}
+
+.proposal-change {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.proposal-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.proposal-impact {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.proposal-rationale {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.proposal-governance-reason {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status-warn {
+    color: #fde68a;
+    background: rgba(146, 64, 14, 0.25);
+    border-color: rgba(253, 230, 138, 0.3);
+  }
+
+  .status-block {
+    color: #fca5a5;
+    background: rgba(127, 29, 29, 0.25);
+    border-color: rgba(252, 165, 165, 0.3);
+  }
+
+  .negotiation-blocker {
+    color: #fde68a;
+    background: rgba(146, 64, 14, 0.2);
+    border-color: rgba(253, 230, 138, 0.25);
+  }
+
+  .negotiation-input,
+  .negotiation-select {
+    background: var(--panel-strong);
+    border-color: var(--line);
+  }
+}

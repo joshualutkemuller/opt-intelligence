@@ -7091,10 +7091,82 @@ function Metric({
   );
 }
 
+type ConstraintRelaxationProposal = {
+  parameter: string;
+  proposed_change: string;
+  estimated_impact: number;
+  estimated_impact_units: string;
+  governance_tier: number;
+  governance_reason: string;
+  rationale: string;
+  source: string;
+  confidence: number;
+};
+
+type ConstraintNegotiationResult = {
+  domain: string;
+  target_improvement: number;
+  target_units: string;
+  proposals: ConstraintRelaxationProposal[];
+  recommendation: string;
+  blockers: string[];
+};
+
+function tierClass(tier: number): string {
+  if (tier <= 2) return "status-optimal";
+  if (tier <= 3) return "status-ready";
+  if (tier === 4) return "status-warn";
+  return "status-block";
+}
+
+function tierLabel(tier: number): string {
+  const labels: Record<number, string> = {
+    0: "Tier 0 – Explain",
+    1: "Tier 1 – Scenario",
+    2: "Tier 2 – Recommend",
+    3: "Tier 3 – Stage",
+    4: "Tier 4 – Execute",
+    5: "Tier 5 – Policy Change",
+  };
+  return labels[tier] ?? `Tier ${tier}`;
+}
+
 function ConstraintPanel({ result }: { result: OptimizationResult }) {
   const constraints = result.binding_constraints.length
     ? result.binding_constraints
     : ["prime_concentration", "single_fund_limit"];
+
+  const [negotiation, setNegotiation] = useState<ConstraintNegotiationResult | null>(null);
+  const [negotiating, setNegotiating] = useState(false);
+  const [negotiationError, setNegotiationError] = useState<string | null>(null);
+  const [targetImprovement, setTargetImprovement] = useState<string>("");
+  const [targetUnits, setTargetUnits] = useState<string>("bps");
+  const [showNegotiate, setShowNegotiate] = useState(false);
+
+  async function runNegotiation() {
+    setNegotiating(true);
+    setNegotiationError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: result as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 0,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!response.ok) throw new Error(`API error ${response.status}`);
+      const data = (await response.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiation(data.negotiation);
+    } catch (err) {
+      setNegotiationError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setNegotiating(false);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="section-header tight">
@@ -7102,7 +7174,19 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           <span className="eyebrow">Constraints</span>
           <h2>Binding checks</h2>
         </div>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setShowNegotiate((v) => !v);
+            setNegotiation(null);
+            setNegotiationError(null);
+          }}
+        >
+          What would need to change?
+        </button>
       </div>
+
       <div className="constraint-stack">
         {constraints.map((constraint) => (
           <div className="constraint-item" key={constraint}>
@@ -7111,6 +7195,105 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           </div>
         ))}
       </div>
+
+      {showNegotiate && (
+        <div className="negotiation-panel">
+          <div className="negotiation-header">
+            <span className="eyebrow">Constraint Negotiation</span>
+            <p className="negotiation-subtitle">
+              Rank constraint relaxations by estimated impact and governance tier required.
+            </p>
+          </div>
+
+          <div className="negotiation-inputs">
+            <label className="negotiation-label">
+              Target improvement
+              <input
+                type="number"
+                className="negotiation-input"
+                placeholder="e.g. 15"
+                value={targetImprovement}
+                onChange={(e) => setTargetImprovement(e.target.value)}
+                min={0}
+                step={1}
+              />
+            </label>
+            <label className="negotiation-label">
+              Units
+              <select
+                className="negotiation-select"
+                value={targetUnits}
+                onChange={(e) => setTargetUnits(e.target.value)}
+              >
+                <option value="bps">bps</option>
+                <option value="utility">utility</option>
+                <option value="cost_savings">cost savings</option>
+                <option value="objective">objective</option>
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={runNegotiation}
+              disabled={negotiating}
+            >
+              {negotiating ? "Analyzing…" : "Analyze"}
+            </button>
+          </div>
+
+          {negotiationError && (
+            <p className="negotiation-error">{negotiationError}</p>
+          )}
+
+          {negotiation && (
+            <div className="negotiation-results">
+              <p className="negotiation-recommendation">{negotiation.recommendation}</p>
+
+              {negotiation.blockers.length > 0 && (
+                <div className="negotiation-blockers">
+                  {negotiation.blockers.map((b, i) => (
+                    <p key={i} className="negotiation-blocker">{b}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="proposal-stack">
+                {negotiation.proposals.map((proposal, i) => (
+                  <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
+                    <div className="proposal-card-header">
+                      <strong className="proposal-parameter">
+                        {titleCase(proposal.parameter.replaceAll("_", " "))}
+                      </strong>
+                      <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+                        {tierLabel(proposal.governance_tier)}
+                      </span>
+                    </div>
+
+                    <p className="proposal-change">{proposal.proposed_change}</p>
+
+                    <div className="proposal-meta">
+                      {proposal.estimated_impact > 0 && (
+                        <span className="proposal-impact">
+                          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+                        </span>
+                      )}
+                      <span className="proposal-confidence">
+                        {Math.round(proposal.confidence * 100)}% confidence
+                      </span>
+                      <span className="proposal-source">
+                        {proposal.source === "sensitivity" ? "sensitivity analysis" : "binding constraint"}
+                      </span>
+                    </div>
+
+                    <p className="proposal-rationale">{proposal.rationale}</p>
+                    <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
