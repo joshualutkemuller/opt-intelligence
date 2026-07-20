@@ -91,31 +91,53 @@ alongside the funding, collateral, and money-market workflows.
 The **LLM Settings** panel (above the LLM Chat panel in the sidebar)
 controls every LLM call in the browser UI from a single location:
 
-| Feature | Uses LLM Settings |
+| Feature | Reads from LLM Settings |
 |---|---|
 | LLM Chat | ✓ |
 | IPS / collateral schedule ingestion (LLM-assisted mode) | ✓ |
 | Audit narrative polishing ("Polish with LLM" in Evidence Room) | ✓ |
 
-**Quick-start presets** let you switch provider in one click:
+The panel has four free-form fields:
 
-| Preset | Provider | Endpoint |
-|---|---|---|
-| Ollama (local) | `openai` compat | `http://localhost:11434/v1` |
-| Anthropic Claude | `anthropic` | hosted API |
-| OpenAI GPT-4o | `openai` | hosted API |
+| Field | What to put here |
+|---|---|
+| **Protocol** | `openai-compatible` for any OpenAI-API-speaking endpoint (Ollama, vLLM, Azure, most gateways); `anthropic` for the Anthropic SDK path |
+| **Model** | Any model string your endpoint accepts — the field is free-form and is passed through verbatim |
+| **Base URL** | Your gateway or local server URL (e.g. `https://llm-gateway.corp/v1`). Leave blank to use the protocol's default hosted endpoint |
+| **API Key** | Your gateway token. Leave blank to fall back to the environment variable (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) |
 
-Or fill in the four fields directly — Provider, Model, Base URL, API Key.
-Leave **Base URL** blank to use the provider's default hosted endpoint.
-Leave **API Key** blank to fall back to the environment variable
-(`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
+**Gateway example** — point at a corporate LLM gateway that routes to many
+models and requires a shared gateway token:
 
 ```
-# Example: run against hosted Claude without touching env vars
-# 1. Open the LLM Settings panel
-# 2. Click "Anthropic Claude"
-# 3. Paste your API key in the API Key field
-# 4. All LLM features — chat, ingestion, narrative polish — now use Claude
+Protocol : openai-compatible
+Model    : gpt-4o-corp   (or whatever string your gateway expects)
+Base URL : https://llm-gateway.corp/v1
+API Key  : <gateway-token>
+```
+
+Switch models at any time by editing the Model field — no restart needed.
+
+**Common configurations:**
+
+```
+# Local Ollama — any model pulled with `ollama pull`
+Protocol : openai-compatible
+Model    : llama3.1:8b          (or mistral, gemma2, phi3, …)
+Base URL : http://localhost:11434/v1
+API Key  : (blank)
+
+# Hosted Anthropic
+Protocol : anthropic
+Model    : claude-sonnet-5
+Base URL : (blank)
+API Key  : sk-ant-…  (or set ANTHROPIC_API_KEY in env)
+
+# Hosted OpenAI
+Protocol : openai-compatible
+Model    : gpt-4o
+Base URL : (blank)
+API Key  : sk-…  (or set OPENAI_API_KEY in env)
 ```
 
 For the original terminal demo:

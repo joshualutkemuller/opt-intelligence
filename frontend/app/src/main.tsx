@@ -5834,41 +5834,22 @@ function LLMSettingsPanel({
     onChange({ ...config, [key]: value });
   }
 
-  const presets: Array<{ label: string; provider: string; model: string; baseUrl: string }> = [
-    { label: "Ollama (local)", provider: "openai", model: "llama3.1:8b", baseUrl: "http://localhost:11434/v1" },
-    { label: "Anthropic Claude", provider: "anthropic", model: "claude-sonnet-5", baseUrl: "" },
-    { label: "OpenAI GPT-4o", provider: "openai", model: "gpt-4o", baseUrl: "" },
-  ];
-
   return (
     <section className="panel compact llm-settings-panel">
       <div className="panel-heading">
         <span className="eyebrow">LLM Settings</span>
-        <span className="model-badge">{config.provider} · {config.model}</span>
-      </div>
-
-      <div className="llm-settings-presets">
-        {presets.map((preset) => (
-          <button
-            key={preset.label}
-            className={`segmented-button${config.provider === preset.provider && config.model === preset.model ? " active" : ""}`}
-            type="button"
-            onClick={() => onChange({ ...config, provider: preset.provider, model: preset.model, baseUrl: preset.baseUrl })}
-          >
-            {preset.label}
-          </button>
-        ))}
+        <span className="model-badge">{config.provider} · {config.model || "no model"}</span>
       </div>
 
       <div className="llm-settings-fields">
         <label>
-          <span>Provider</span>
+          <span>Protocol</span>
           <select
             value={config.provider}
             onChange={(e) => set("provider", e.target.value)}
-            aria-label="LLM provider"
+            aria-label="LLM protocol"
           >
-            <option value="openai">openai (Ollama / OpenAI / compatible)</option>
+            <option value="openai">openai-compatible</option>
             <option value="anthropic">anthropic</option>
           </select>
         </label>
@@ -5877,16 +5858,16 @@ function LLMSettingsPanel({
           <input
             value={config.model}
             onChange={(e) => set("model", e.target.value)}
-            placeholder="e.g. llama3.1:8b, claude-sonnet-5, gpt-4o"
+            placeholder="Any model string your endpoint accepts"
             aria-label="LLM model"
           />
         </label>
-        <label>
+        <label className="llm-settings-wide">
           <span>Base URL</span>
           <input
             value={config.baseUrl}
             onChange={(e) => set("baseUrl", e.target.value)}
-            placeholder="Leave blank for hosted; http://localhost:11434/v1 for Ollama"
+            placeholder="https://your-gateway/v1  (blank = provider default)"
             aria-label="LLM base URL"
           />
         </label>
@@ -5896,11 +5877,14 @@ function LLMSettingsPanel({
             type="password"
             value={config.apiKey}
             onChange={(e) => set("apiKey", e.target.value)}
-            placeholder="Leave blank to use environment variable"
+            placeholder="Blank = use env var"
             aria-label="LLM API key"
           />
         </label>
       </div>
+      <p className="llm-settings-hint">
+        Any OpenAI-compatible gateway: set Protocol to <code>openai-compatible</code>, paste your gateway URL, and type whatever model string it accepts.
+      </p>
     </section>
   );
 }

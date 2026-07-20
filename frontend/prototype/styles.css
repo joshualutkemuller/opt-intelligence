@@ -2310,13 +2310,6 @@ h2 {
   flex-wrap: wrap;
 }
 
-.llm-settings-panel .llm-settings-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
 .llm-settings-panel .llm-settings-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2328,6 +2321,10 @@ h2 {
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
+}
+
+.llm-settings-panel .llm-settings-fields label.llm-settings-wide {
+  grid-column: 1 / -1;
 }
 
 .llm-settings-panel .llm-settings-fields label span {
@@ -2345,6 +2342,21 @@ h2 {
   border-radius: 5px;
   background: var(--panel-strong);
   color: var(--text);
+}
+
+.llm-settings-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.llm-settings-hint code {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--panel-strong);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 .model-badge {
