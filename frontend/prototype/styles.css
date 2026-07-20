@@ -4396,6 +4396,132 @@ tbody tr:hover {
   margin: 0;
 }
 
+/* ── Chat intake progress ── */
+.chat-intake-progress {
+  padding: 8px 12px;
+  background: var(--panel-strong, rgba(0,0,0,0.04));
+  border-bottom: 1px solid var(--line, rgba(0,0,0,0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.intake-progress-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.intake-field-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.intake-field-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.intake-field-icon {
+  font-size: 11px;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.intake-field--collected {
+  color: var(--muted);
+}
+
+.intake-field--collected .intake-field-icon {
+  color: #22c55e;
+}
+
+.intake-field--next {
+  font-weight: 600;
+}
+
+.intake-field--next .intake-field-icon {
+  color: #3b82f6;
+}
+
+.intake-field--pending {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.intake-field-value {
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+/* ── Streaming workflow progress ── */
+.streaming-progress {
+  padding: 8px 12px;
+  background: var(--panel-strong, rgba(0,0,0,0.04));
+  border-bottom: 1px solid var(--line, rgba(0,0,0,0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.streaming-progress-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.streaming-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.streaming-step-icon {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.streaming-step--running {
+  font-weight: 600;
+}
+
+.streaming-step--running .streaming-step-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+.streaming-step--complete .streaming-step-icon {
+  color: #22c55e;
+}
+
+.streaming-step--pending {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.streaming-step-improvement {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #22c55e;
+}
+
+@keyframes spin {
+  from { display: inline-block; transform: rotate(0deg); }
+  to { display: inline-block; transform: rotate(360deg); }
+}
+
 @media (prefers-color-scheme: dark) {
   .status-warn {
     color: #fde68a;
