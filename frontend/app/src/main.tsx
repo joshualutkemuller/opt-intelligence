@@ -3374,6 +3374,8 @@ function App() {
             selectedPreset={selectedPreset}
             selectedWorkflow={selectedWorkflow}
             selectedProductionOptimizer={selectedProductionOptimizer}
+            ollamaModel={ollamaModel}
+            latestWorkflowRunPayload={latestWorkflowRunPayload}
           />
 
           <ValidationPanel result={dashboard} />
@@ -5516,6 +5518,8 @@ function EvidenceRoomPanel({
   selectedPreset,
   selectedWorkflow,
   selectedProductionOptimizer,
+  ollamaModel,
+  latestWorkflowRunPayload,
 }: {
   workflowRun: WorkflowRunResult | null;
   result: OptimizationResult | null;
@@ -5524,6 +5528,8 @@ function EvidenceRoomPanel({
   selectedPreset: DemoPresetCatalogItem;
   selectedWorkflow: WorkflowCatalogItem;
   selectedProductionOptimizer: ProductionOptimizerCatalogItem | null;
+  ollamaModel: string;
+  latestWorkflowRunPayload: WorkflowRunPayload | null;
 }) {
   const steps = workflowRun?.step_results || [];
   const finalResult = result || steps.at(-1)?.result || null;
@@ -5538,6 +5544,9 @@ function EvidenceRoomPanel({
   const solver = finalResult?.solver_metadata || {};
 
   const [auditNarrative, setAuditNarrative] = useState<Record<string, unknown> | null>(null);
+  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishError, setPolishError] = useState<string | null>(null);
+
   useEffect(() => {
     const wfId = workflowRun?.workflow_id;
     if (!wfId) { setAuditNarrative(null); return; }
@@ -5546,6 +5555,36 @@ function EvidenceRoomPanel({
       .then((data) => setAuditNarrative(data?.narrative || null))
       .catch(() => setAuditNarrative(null));
   }, [workflowRun?.workflow_id]);
+
+  async function handlePolishNarrative() {
+    if (!workflowRun || !latestWorkflowRunPayload) return;
+    setIsPolishing(true);
+    setPolishError(null);
+    try {
+      const res = await fetch("/api/audit/narrative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          response: { result: workflowRun },
+          payload: latestWorkflowRunPayload,
+          llm_polish: true,
+          provider: "openai",
+          model: ollamaModel,
+          base_url: "http://localhost:11434/v1",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPolishError(data.detail || "Polish failed.");
+      } else {
+        setAuditNarrative(data.narrative || null);
+      }
+    } catch {
+      setPolishError("Could not reach the API.");
+    } finally {
+      setIsPolishing(false);
+    }
+  }
 
   return (
     <section className="panel evidence-room-panel">
@@ -5701,23 +5740,56 @@ function EvidenceRoomPanel({
           )}
         </EvidenceSection>
 
-        <EvidenceSection title="Audit Narrative" status={auditNarrative ? "Available" : workflowRun ? "Generating" : "Pending"}>
+        <EvidenceSection
+          title="Audit Narrative"
+          status={
+            auditNarrative
+              ? auditNarrative.llm_polished
+                ? `Polished · ${String(auditNarrative.llm_provider || "llm")}`
+                : "Deterministic"
+              : workflowRun
+                ? "Available"
+                : "Pending"
+          }
+        >
           {auditNarrative ? (
             <div className="audit-narrative-preview">
-              {String(auditNarrative.summary || auditNarrative.decision_summary || "Narrative generated. Included in evidence export.").slice(0, 400)}
-              {(auditNarrative.sections as unknown[])?.length ? (
-                <ul className="evidence-field-list" style={{ marginTop: "0.5rem" }}>
-                  {(auditNarrative.sections as Array<Record<string, unknown>>).slice(0, 4).map((section, i) => (
-                    <li key={i}>
-                      <strong>{String(section.title || section.heading || `Section ${i + 1}`)}</strong>
-                      <span>{String(section.summary || section.content || "").slice(0, 120)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <p>{String(auditNarrative.decision_summary || "Narrative generated.").slice(0, 360)}</p>
+              <div className="audit-narrative-actions">
+                {!auditNarrative.llm_polished ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handlePolishNarrative}
+                    disabled={isPolishing}
+                    title={`Polish via Ollama (${ollamaModel})`}
+                  >
+                    {isPolishing ? "Polishing…" : "Polish with LLM"}
+                  </button>
+                ) : (
+                  <span className="status-chip status-optimal">LLM polished</span>
+                )}
+                {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+              </div>
             </div>
           ) : (
-            <p>{workflowRun ? "Narrative is being persisted — run export to include it in the evidence bundle." : "Run a workflow to generate the audit narrative."}</p>
+            <div className="audit-narrative-preview">
+              <p>{workflowRun ? "Narrative persisted. Click below to polish with a local LLM." : "Run a workflow to generate the audit narrative."}</p>
+              {workflowRun ? (
+                <div className="audit-narrative-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handlePolishNarrative}
+                    disabled={isPolishing}
+                    title={`Polish via Ollama (${ollamaModel})`}
+                  >
+                    {isPolishing ? "Polishing…" : "Polish with LLM"}
+                  </button>
+                  {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+                </div>
+              ) : null}
+            </div>
           )}
         </EvidenceSection>
       </div>

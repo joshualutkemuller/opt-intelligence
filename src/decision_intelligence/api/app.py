@@ -34,6 +34,7 @@ from decision_intelligence.governance import (
     GovernanceController,
     GovernanceOrchestrator,
     build_workflow_audit_narrative,
+    polish_narrative,
 )
 from decision_intelligence.governance.audit import AuditLog
 from decision_intelligence.ingestion import IngestionError, ingest_policy_document
@@ -509,6 +510,26 @@ def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeRe
         preset=payload.preset,
         workflow=payload.workflow,
     )
+    if payload.llm_polish:
+        try:
+            provider = resolve_provider(
+                payload.provider,
+                model=payload.model,
+                base_url=payload.base_url,
+                api_key=payload.api_key,
+            )
+        except LLMConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if provider is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "llm_polish requires a configured LLM provider. "
+                    "Pass provider='openai' with base_url for Ollama, "
+                    "or provider='anthropic' with an API key."
+                ),
+            )
+        narrative = polish_narrative(narrative, provider)
     wf_id = (
         payload.response.get("result", {}).get("workflow_id")
         or payload.workflow.get("workflow_id") if payload.workflow else None

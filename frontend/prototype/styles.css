@@ -2302,6 +2302,14 @@ h2 {
   line-height: 1.5;
 }
 
+.audit-narrative-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
 .governance-factor-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -256,6 +256,11 @@ class AuditNarrativeRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     preset: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, Any] = Field(default_factory=dict)
+    llm_polish: bool = False
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class AuditNarrativeResponse(BaseModel):
