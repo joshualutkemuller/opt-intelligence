@@ -4634,3 +4634,96 @@ tbody tr:hover {
     border-color: var(--line);
   }
 }
+
+/* ── Drift alert banner ─────────────────────────────────────────────────── */
+.drift-alert-banner {
+  background: #fff8e6;
+  border: 1.5px solid #f59e0b;
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.drift-alert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.drift-alert-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.drift-dismiss-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #92400e;
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.drift-alert-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.drift-alert-item {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.drift-alert-item.drift-critical {
+  color: #991b1b;
+}
+
+.drift-alert-item.drift-warning {
+  color: #92400e;
+}
+
+.drift-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.drift-reoptimize-btn {
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.drift-reoptimize-btn:hover {
+  background: #d97706;
+}
+
+@media (prefers-color-scheme: dark) {
+  .drift-alert-banner {
+    background: rgba(146, 64, 14, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+  .drift-alert-title,
+  .drift-dismiss-btn {
+    color: #fde68a;
+  }
+  .drift-alert-item.drift-warning {
+    color: #fde68a;
+  }
+  .drift-alert-item.drift-critical {
+    color: #fca5a5;
+  }
+}

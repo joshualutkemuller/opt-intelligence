@@ -1689,6 +1689,12 @@ function App() {
     apiKey: "",
   });
   const [isOllamaRunning, setIsOllamaRunning] = useState(false);
+  const [driftAlerts, setDriftAlerts] = useState<Array<{
+    threshold_name: string; domain: string; metric_key: string;
+    current_value: number; baseline_value: number | null;
+    cap_value: number | null; severity: "warning" | "critical";
+    message: string; reoptimize_domain: string; detected_at: string;
+  }>>([]);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -2746,6 +2752,32 @@ function App() {
               }
               setLatestPayload(body);
               setLatestWorkflowRunPayload(payloadWithPolicy);
+              // Drift monitoring: check against baseline, then store new snapshot.
+              void (async () => {
+                try {
+                  const driftBody = { workflow_result: event.result };
+                  const hasBaselineRes = await fetch(`${API_BASE}/api/drift/thresholds`);
+                  const driftCheckRes = await fetch(`${API_BASE}/api/drift/check`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(driftBody),
+                  });
+                  if (driftCheckRes.ok) {
+                    const driftData = await driftCheckRes.json() as {
+                      alerts: typeof driftAlerts; has_baseline: boolean;
+                    };
+                    if (driftData.has_baseline && driftData.alerts.length > 0) {
+                      setDriftAlerts(driftData.alerts);
+                    }
+                  }
+                  void hasBaselineRes; // consumed above; snapshot comes after check
+                  await fetch(`${API_BASE}/api/drift/snapshot`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(driftBody),
+                  });
+                } catch { /* ignore drift errors */ }
+              })();
               if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
                 setScriptModeEnabled(true);
                 setScriptStepIndex((current) => Math.max(current, 3));
@@ -3337,6 +3369,17 @@ function App() {
             selectedWorkflow={selectedWorkflow}
             selectedPreset={selectedPreset}
           />
+
+          {driftAlerts.length > 0 && (
+            <DriftAlertBanner
+              alerts={driftAlerts}
+              onDismiss={() => setDriftAlerts([])}
+              onReoptimize={(domain) => {
+                setDriftAlerts([]);
+                void runSequentialWorkflow();
+              }}
+            />
+          )}
 
           <GovernanceReviewPanel
             workflowRun={workflowRun}
@@ -6565,6 +6608,47 @@ function WorkflowTimelinePanel({
           {`Run the workflow action to execute ${selectedPreset.name} using the ${selectedWorkflow.name} template.`}
         </p>
       )}
+    </section>
+  );
+}
+
+function DriftAlertBanner({
+  alerts,
+  onDismiss,
+  onReoptimize,
+}: {
+  alerts: Array<{
+    severity: "warning" | "critical"; message: string; reoptimize_domain: string;
+    threshold_name: string; domain: string;
+  }>;
+  onDismiss: () => void;
+  onReoptimize: (domain: string) => void;
+}) {
+  const domains = [...new Set(alerts.map((a) => a.reoptimize_domain))];
+  return (
+    <section className="drift-alert-banner">
+      <div className="drift-alert-header">
+        <span className="drift-alert-title">⚠️ Portfolio Drift Detected</span>
+        <button className="drift-dismiss-btn" onClick={onDismiss} title="Dismiss">✕</button>
+      </div>
+      <ul className="drift-alert-list">
+        {alerts.map((alert, i) => (
+          <li key={i} className={`drift-alert-item drift-${alert.severity}`}>
+            {alert.severity === "critical" ? "🔴" : "🟡"} {alert.message}
+          </li>
+        ))}
+      </ul>
+      <div className="drift-alert-actions">
+        {domains.map((domain) => (
+          <button
+            key={domain}
+            className="drift-reoptimize-btn"
+            onClick={() => onReoptimize(domain)}
+          >
+            Re-optimize {domain.replace(/_/g, " ")}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
