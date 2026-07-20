@@ -3372,6 +3372,8 @@ function App() {
 
           <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} />
 
+          <CrossDomainOptimizationPanel workflowRun={workflowRun} />
+
           {driftAlerts.length > 0 && (
             <DriftAlertBanner
               alerts={driftAlerts}
@@ -7838,6 +7840,205 @@ function tierLabel(tier: number): string {
     5: "Tier 5 – Policy Change",
   };
   return labels[tier] ?? `Tier ${tier}`;
+}
+
+// --------------------------------------------------------------------------- //
+// Cross-domain optimization view
+// --------------------------------------------------------------------------- //
+
+type DomainPnL = {
+  domain: string;
+  objectiveValue: number;
+  baselineValue: number;
+  improvement: number;
+  improvementPct: number;
+  unit: string;
+  improvementLabel: string;
+  bindingConstraints: string[];
+  topSensitivity: Sensitivity | null;
+};
+
+type CrossDomainOpportunity = {
+  domain: string;
+  parameter: string;
+  shadowPrice: number;
+  unit: string;
+  interpretation: string;
+  downstreamDomains: string[];
+};
+
+function buildCrossDomainData(workflowRun: WorkflowRunResult): {
+  pnl: DomainPnL[];
+  cascade: DependencyEffect[];
+  opportunities: CrossDomainOpportunity[];
+  aggregateImprovementSummary: string;
+} {
+  const steps = workflowRun.step_results;
+
+  // Unit and improvement labeling per domain
+  function domainMeta(domain: string, obj: number, baseline: number) {
+    const improvement = Math.abs(baseline - obj);
+    const improvementPct = baseline !== 0 ? (improvement / Math.abs(baseline)) * 100 : 0;
+    if (domain === "money_market" || domain === "asset_allocation") {
+      const bpsImp = (obj - baseline) * 100;
+      return { unit: "%", improvementLabel: `+${bpsImp.toFixed(1)} bps`, improvement, improvementPct };
+    }
+    const sign = obj < baseline ? "–" : "+";
+    const fmt = improvement >= 1e6 ? `${sign}$${(improvement / 1e6).toFixed(2)}M` : `${sign}$${improvement.toFixed(0)}`;
+    return { unit: "USD", improvementLabel: fmt, improvement, improvementPct };
+  }
+
+  const pnl: DomainPnL[] = steps.map((step) => {
+    const r = step.result;
+    const obj = r.objective_value ?? 0;
+    const baseline = r.baseline_value ?? 0;
+    const meta = domainMeta(step.domain, obj, baseline);
+    const sensitivities = r.sensitivities ?? [];
+    const topSens = [...sensitivities].sort((a, b) => Math.abs(b.shadow_price) - Math.abs(a.shadow_price))[0] ?? null;
+    return {
+      domain: step.domain,
+      objectiveValue: obj,
+      baselineValue: baseline,
+      improvement: meta.improvement,
+      improvementPct: meta.improvementPct,
+      unit: meta.unit,
+      improvementLabel: meta.improvementLabel,
+      bindingConstraints: r.binding_constraints ?? [],
+      topSensitivity: topSens,
+    };
+  });
+
+  // All dependency effects across all steps
+  const cascade = steps.flatMap((s) => s.dependency_effects ?? []);
+
+  // Which domains are downstream of each source
+  const downstreamMap: Record<string, Set<string>> = {};
+  for (const effect of cascade) {
+    const src = effect.source_step_id.replace(/_\d+$/, "");
+    const tgt = effect.target_step_id.replace(/_\d+$/, "");
+    if (!downstreamMap[src]) downstreamMap[src] = new Set();
+    downstreamMap[src].add(tgt);
+  }
+
+  // Top opportunities: sensitivities with positive shadow price, deduped by parameter
+  const seen = new Set<string>();
+  const opportunities: CrossDomainOpportunity[] = [];
+  for (const step of steps) {
+    const sensitivities = step.result.sensitivities ?? [];
+    for (const sens of sensitivities) {
+      if (sens.shadow_price <= 0) continue;
+      const key = `${step.domain}:${sens.parameter}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const downstream = Array.from(downstreamMap[step.domain] ?? []);
+      const unit = step.domain === "money_market" ? "bps" : "USD";
+      opportunities.push({
+        domain: step.domain,
+        parameter: sens.parameter,
+        shadowPrice: sens.shadow_price,
+        unit,
+        interpretation: sens.interpretation,
+        downstreamDomains: downstream,
+      });
+    }
+  }
+  opportunities.sort((a, b) => b.shadowPrice - a.shadowPrice);
+
+  const improvingSides = pnl.filter((p) => p.improvementPct > 0);
+  const aggregateImprovementSummary = improvingSides.length > 0
+    ? `All ${improvingSides.length} domain${improvingSides.length > 1 ? "s" : ""} improved vs baseline: ${improvingSides.map((p) => `${titleCase(p.domain.replace("_", " "))} ${p.improvementLabel}`).join(", ")}.`
+    : "Run a multi-domain workflow to see cross-domain optimization impact.";
+
+  return { pnl, cascade, opportunities, aggregateImprovementSummary };
+}
+
+function CrossDomainOptimizationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+  const steps = workflowRun?.step_results ?? [];
+  const multiDomain = steps.length >= 2;
+  if (!workflowRun || !multiDomain) return null;
+
+  const { pnl, cascade, opportunities, aggregateImprovementSummary } = buildCrossDomainData(workflowRun);
+
+  return (
+    <section className="panel cross-domain-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Cross-Domain View</span>
+          <h2>Aggregate optimization impact</h2>
+        </div>
+        <span className="status-chip status-optimal">{steps.length} domains</span>
+      </div>
+
+      <p className="cross-domain-summary">{aggregateImprovementSummary}</p>
+
+      {/* Per-domain P&L row */}
+      <div className="cross-domain-pnl-row">
+        {pnl.map((d) => (
+          <div key={d.domain} className="cross-domain-pnl-card">
+            <span className="cross-domain-domain-label">{titleCase(d.domain.replace(/_/g, " "))}</span>
+            <span className="cross-domain-improvement">{d.improvementLabel}</span>
+            <span className="cross-domain-pct">{d.improvementPct.toFixed(1)}% vs baseline</span>
+            {d.bindingConstraints.length > 0 && (
+              <span className="cross-domain-binding">
+                {d.bindingConstraints.length} binding constraint{d.bindingConstraints.length > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Dependency cascade */}
+      {cascade.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Constraint cascade</span>
+          <div className="cascade-list">
+            {cascade.map((effect, i) => {
+              const src = titleCase(effect.source_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const tgt = titleCase(effect.target_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const key = effect.target_context_key.replace(/_/g, " ");
+              const sign = effect.delta >= 0 ? "+" : "";
+              const pct = (effect.delta * 100).toFixed(1);
+              return (
+                <div key={i} className="cascade-item">
+                  <span className="cascade-arrow">{src} → {tgt}</span>
+                  <span className="cascade-effect">
+                    {key} {sign}{pct}pp
+                  </span>
+                  <span className="cascade-reason">{effect.reason}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Top opportunities */}
+      {opportunities.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Highest-value relaxation opportunities</span>
+          <div className="opportunity-list">
+            {opportunities.slice(0, 4).map((opp, i) => (
+              <div key={i} className="opportunity-item">
+                <div className="opportunity-item-header">
+                  <strong>{opp.parameter.replace(/_/g, " ")}</strong>
+                  <span className="opportunity-domain-chip">{titleCase(opp.domain.replace(/_/g, " "))}</span>
+                  {opp.downstreamDomains.length > 0 && (
+                    <span className="opportunity-downstream">
+                      → affects {opp.downstreamDomains.map((d) => titleCase(d.replace(/_/g, " "))).join(", ")}
+                    </span>
+                  )}
+                </div>
+                <p className="opportunity-interpretation">{opp.interpretation}</p>
+                <span className="opportunity-shadow">
+                  Shadow price: {opp.shadowPrice.toFixed(2)} {opp.unit}/M
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {

@@ -5027,3 +5027,150 @@ tbody tr:hover {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Cross-domain optimization panel */
+.cross-domain-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.cross-domain-summary {
+  font-size: 0.92rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+.cross-domain-pnl-row {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.cross-domain-pnl-card {
+  flex: 1;
+  min-width: 160px;
+  background: var(--surface-2, #f9fafb);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.cross-domain-domain-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.cross-domain-improvement {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--success, #16a34a);
+}
+
+.cross-domain-pct {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-left: 0.3rem;
+}
+
+.cross-domain-binding {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
+.cross-domain-section {
+  margin-top: 1.1rem;
+}
+
+.cross-domain-section-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+.cascade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cascade-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.cascade-arrow {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.cascade-effect {
+  font-weight: 600;
+}
+
+.cascade-reason {
+  color: var(--muted);
+}
+
+.opportunity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.opportunity-item {
+  background: var(--surface-2, #f9fafb);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.75rem 1rem;
+}
+
+.opportunity-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.opportunity-domain-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--primary-light, #dbeafe);
+  color: var(--primary, #2563eb);
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.opportunity-shadow {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--success, #16a34a);
+  margin-left: auto;
+}
+
+.opportunity-interpretation {
+  font-size: 0.85rem;
+  margin-bottom: 0.2rem;
+}
+
+.opportunity-downstream {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
