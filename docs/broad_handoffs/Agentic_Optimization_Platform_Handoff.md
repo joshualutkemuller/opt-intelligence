@@ -875,6 +875,75 @@ PDF/package exports.
 
 ------------------------------------------------------------------------
 
+# 15c. Differentiation Opportunities
+
+Three areas where this framework can stand out from comparable internal
+tooling. These are not incremental features — each one addresses a
+structural gap that most institutions have not solved.
+
+---
+
+## 1. Compliance-Grade Audit Trail
+
+**The gap:** Most internal optimization tools produce structured data for
+engineers. What actually matters to a compliance officer or risk committee
+is a plain-English account of every decision: what was recommended, which
+constraints were binding, why a specific asset was excluded, and who
+approved it.
+
+**The opportunity:** The audit narrative and evidence room infrastructure
+is already built. The next step is making the output readable by a
+non-technical audience — structured PDF narratives that answer "why did
+the system do that?" for any optimization run, surfaced on demand with
+full provenance. This is hard to replicate quickly because it requires the
+data lineage, constraint tracing, and governance layers to already be
+connected — which they are here.
+
+**Priority:** Highest. Fastest path to making the framework impressive to
+a risk or compliance stakeholder who controls adoption decisions.
+
+---
+
+## 2. Constraint Negotiation That Is Actually Usable
+
+**The gap:** Every optimizer tells users "infeasible" or "here is the
+constrained optimum." What portfolio managers and treasurers actually need
+is: "I need $50M more against counterparty X — which specific constraints
+are binding, and what does it cost to relax each one?"
+
+**The opportunity:** The shadow prices (dual values) are already computed
+by the LP solver. The constraint negotiation endpoint exists. The missing
+piece is surfacing this in the browser as a first-class workflow: a
+trader sees the binding constraints ranked by their cost, picks one to
+relax, and the system shows the estimated improvement and the governance
+tier required to action it.
+
+**Priority:** High. Directly changes trader behavior around the tool
+because it answers the question they actually ask, not the question the
+optimizer was designed to answer.
+
+---
+
+## 3. Cross-Domain Optimization
+
+**The gap:** Each optimizer (collateral, money market, financing) runs
+independently. In practice they compete for the same assets. The real
+value is the cross-domain view: lending an asset earns 45 bps in
+securities lending but costs 30 bps in collateral efficiency — which desk
+should hold it? Almost no internal tool answers this because the
+organizational silos prevent it.
+
+**The opportunity:** The sequential workflow engine already chains these
+optimizers. The missing piece is a unified objective that spans domains —
+an allocation recommendation that explicitly shows the cross-desk
+opportunity cost of each decision, not just the within-domain optimum.
+
+**Priority:** Hardest to build, highest long-term value. Requires
+organizational alignment across desks in addition to the technical work,
+but the framework is the only pre-condition on the engineering side.
+
+------------------------------------------------------------------------
+
 # 16. Initial Backlog
 
 1.  OptimizationRequest schema
