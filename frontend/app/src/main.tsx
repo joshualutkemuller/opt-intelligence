@@ -3370,6 +3370,8 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
+          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} />
+
           {driftAlerts.length > 0 && (
             <DriftAlertBanner
               alerts={driftAlerts}
@@ -5933,54 +5935,142 @@ function EvidenceRoomPanel({
             auditNarrative
               ? auditNarrative.llm_polished
                 ? `Polished · ${String(auditNarrative.llm_provider || "llm")}`
-                : "Deterministic"
+                : "Generated"
               : workflowRun
-                ? "Available"
+                ? "Generating…"
                 : "Pending"
           }
         >
           {auditNarrative ? (
-            <div className="audit-narrative-preview">
-              <p>{String(auditNarrative.decision_summary || "Narrative generated.").slice(0, 360)}</p>
-              <div className="audit-narrative-actions">
-                {!auditNarrative.llm_polished ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={handlePolishNarrative}
-                    disabled={isPolishing}
-                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
-                  >
-                    {isPolishing ? "Polishing…" : "Polish with LLM"}
-                  </button>
-                ) : (
-                  <span className="status-chip status-optimal">LLM polished</span>
-                )}
-                {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
-              </div>
-            </div>
+            <AuditNarrativeDisplay
+              narrative={auditNarrative}
+              isPolishing={isPolishing}
+              polishError={polishError}
+              onPolish={handlePolishNarrative}
+              llmConfig={llmConfig}
+            />
           ) : (
-            <div className="audit-narrative-preview">
-              <p>{workflowRun ? "Narrative persisted. Click below to polish with a local LLM." : "Run a workflow to generate the audit narrative."}</p>
-              {workflowRun ? (
-                <div className="audit-narrative-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={handlePolishNarrative}
-                    disabled={isPolishing}
-                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
-                  >
-                    {isPolishing ? "Polishing…" : "Polish with LLM"}
-                  </button>
-                  {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
-                </div>
-              ) : null}
-            </div>
+            <p className="evidence-pending">
+              {workflowRun ? "Narrative is being generated…" : "Run a workflow to generate the compliance audit narrative."}
+            </p>
           )}
         </EvidenceSection>
       </div>
     </section>
+  );
+}
+
+function AuditNarrativeDisplay({
+  narrative,
+  isPolishing,
+  polishError,
+  onPolish,
+  llmConfig,
+}: {
+  narrative: Record<string, unknown>;
+  isPolishing: boolean;
+  polishError: string | null;
+  onPolish: () => void;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const constraintContext = Array.isArray(narrative.constraint_context)
+    ? (narrative.constraint_context as string[])
+    : [];
+  const approvalChain = Array.isArray(narrative.approval_chain)
+    ? (narrative.approval_chain as string[])
+    : [];
+  const riskFlags = Array.isArray(narrative.risk_flags)
+    ? (narrative.risk_flags as string[])
+    : [];
+  const timeline = Array.isArray(narrative.timeline)
+    ? (narrative.timeline as string[])
+    : [];
+  const markdown = String(narrative.markdown || "").trim();
+
+  return (
+    <div className="audit-narrative-full">
+      <div className="audit-narrative-section">
+        <span className="audit-narrative-label">Decision summary</span>
+        <p className="audit-narrative-body">{String(narrative.decision_summary || "")}</p>
+      </div>
+
+      {Boolean(narrative.outcome) && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Outcome</span>
+          <p className="audit-narrative-body">{String(narrative.outcome)}</p>
+        </div>
+      )}
+
+      {constraintContext.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Constraint context</span>
+          <ul className="audit-narrative-list">
+            {constraintContext.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {approvalChain.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Approval chain</span>
+          <ul className="audit-narrative-list">
+            {approvalChain.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {riskFlags.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Risk flags</span>
+          <ul className="audit-narrative-list audit-narrative-risks">
+            {riskFlags.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Timeline</span>
+          <ol className="audit-narrative-list">
+            {timeline.map((item, i) => <li key={i}>{item}</li>)}
+          </ol>
+        </div>
+      )}
+
+      {markdown && (
+        <div className="audit-narrative-section">
+          <button
+            className="audit-narrative-expand-btn"
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "▾ Hide full narrative" : "▸ View full narrative"}
+          </button>
+          {expanded && (
+            <pre className="audit-narrative-markdown">{markdown}</pre>
+          )}
+        </div>
+      )}
+
+      <div className="audit-narrative-actions">
+        {!narrative.llm_polished ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onPolish}
+            disabled={isPolishing}
+            title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
+          >
+            {isPolishing ? "Polishing…" : "Polish with LLM"}
+          </button>
+        ) : (
+          <span className="status-chip status-optimal">LLM polished</span>
+        )}
+        {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+      </div>
+    </div>
   );
 }
 
@@ -7748,6 +7838,160 @@ function tierLabel(tier: number): string {
     5: "Tier 5 – Policy Change",
   };
   return labels[tier] ?? `Tier ${tier}`;
+}
+
+function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+  const [activeStep, setActiveStep] = React.useState<number | null>(null);
+  const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
+  const [negotiating, setNegotiating] = React.useState<number | null>(null);
+  const [targetImprovement, setTargetImprovement] = React.useState("15");
+  const [targetUnits, setTargetUnits] = React.useState("bps");
+
+  const steps = workflowRun?.step_results ?? [];
+  const stepsWithConstraints = steps.filter(
+    (s) => s.result.binding_constraints && s.result.binding_constraints.length > 0
+  );
+
+  if (!workflowRun || stepsWithConstraints.length === 0) return null;
+
+  async function negotiate(stepIndex: number, stepResult: OptimizationResult) {
+    setNegotiating(stepIndex);
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: stepResult as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 15,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = (await res.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiations((prev) => ({ ...prev, [stepIndex]: data.negotiation }));
+      setActiveStep(stepIndex);
+    } catch {
+      /* silent — show nothing rather than blocking */
+    } finally {
+      setNegotiating(null);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Constraint Negotiation</span>
+          <h2>What would need to change?</h2>
+        </div>
+        <div className="negotiation-inputs" style={{ marginTop: 0 }}>
+          <label className="negotiation-label">
+            Target
+            <input
+              type="number"
+              className="negotiation-input"
+              value={targetImprovement}
+              onChange={(e) => setTargetImprovement(e.target.value)}
+              min={0}
+              step={1}
+            />
+          </label>
+          <label className="negotiation-label">
+            Units
+            <select
+              className="negotiation-select"
+              value={targetUnits}
+              onChange={(e) => setTargetUnits(e.target.value)}
+            >
+              <option value="bps">bps</option>
+              <option value="utility">utility</option>
+              <option value="cost_savings">cost savings</option>
+              <option value="objective">objective</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="wf-negotiate-steps">
+        {stepsWithConstraints.map((step, idx) => {
+          const stepIndex = steps.indexOf(step);
+          const neg = negotiations[stepIndex];
+          const isNegotiating = negotiating === stepIndex;
+          const isActive = activeStep === stepIndex;
+          const validProposals = neg?.proposals.filter((p) => p.estimated_impact > 0) ?? [];
+
+          return (
+            <div key={stepIndex} className="wf-negotiate-step">
+              <div className="wf-negotiate-step-header">
+                <div>
+                  <strong>{titleCase(step.domain)} optimizer</strong>
+                  <span className="wf-negotiate-constraints">
+                    {step.result.binding_constraints.slice(0, 3).join(" · ")}
+                    {step.result.binding_constraints.length > 3 ? ` +${step.result.binding_constraints.length - 3} more` : ""}
+                  </span>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    if (isActive && neg) {
+                      setActiveStep(null);
+                    } else {
+                      void negotiate(stepIndex, step.result);
+                    }
+                  }}
+                  disabled={isNegotiating}
+                >
+                  {isNegotiating ? "Analyzing…" : isActive ? "Hide" : "Analyze"}
+                </button>
+              </div>
+
+              {isActive && neg && (
+                <div className="negotiation-results">
+                  <p className="negotiation-recommendation">{neg.recommendation}</p>
+                  {neg.blockers.length > 0 && (
+                    <div className="negotiation-blockers">
+                      {neg.blockers.map((b, i) => <p key={i} className="negotiation-blocker">{b}</p>)}
+                    </div>
+                  )}
+                  {validProposals.length > 0 ? (
+                    <div className="proposal-stack">
+                      {validProposals.map((proposal, i) => (
+                        <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
+                          <div className="proposal-card-header">
+                            <strong className="proposal-parameter">
+                              {titleCase(proposal.parameter.replaceAll("_", " "))}
+                            </strong>
+                            <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+                              {tierLabel(proposal.governance_tier)}
+                            </span>
+                          </div>
+                          <p className="proposal-change">{proposal.proposed_change}</p>
+                          <div className="proposal-meta">
+                            <span className="proposal-impact">
+                              ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+                            </span>
+                            <span className="proposal-confidence">
+                              {Math.round(proposal.confidence * 100)}% confidence
+                            </span>
+                          </div>
+                          <p className="proposal-rationale">{proposal.rationale}</p>
+                          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="negotiation-blocker">No proposals with estimated improvement available for this target.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ConstraintPanel({ result }: { result: OptimizationResult }) {

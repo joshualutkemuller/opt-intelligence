@@ -4927,3 +4927,103 @@ tbody tr:hover {
   color: #f59e0b;
   line-height: 1.5;
 }
+
+/* ---------- Audit Narrative Full Display ---------- */
+.audit-narrative-full {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.audit-narrative-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.audit-narrative-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.audit-narrative-body {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+}
+
+.audit-narrative-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.audit-narrative-risks li {
+  color: var(--amber);
+}
+
+.audit-narrative-expand-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--blue);
+  cursor: pointer;
+  text-align: left;
+}
+
+.audit-narrative-markdown {
+  margin-top: 0.5rem;
+  background: var(--ink-soft);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.evidence-pending {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- Workflow Constraint Negotiation ---------- */
+.wf-negotiate-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.wf-negotiate-step {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+
+.wf-negotiate-step-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wf-negotiate-step-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.wf-negotiate-constraints {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
