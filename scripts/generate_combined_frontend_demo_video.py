@@ -11,12 +11,23 @@ import shutil
 import subprocess
 from pathlib import Path
 
+
+def _codec_args() -> tuple[list[str], str]:
+    """Return (ffmpeg codec flags, file extension) based on available encoders."""
+    ffmpeg = _ffmpeg()
+    try:
+        out = subprocess.check_output([ffmpeg, "-encoders"], stderr=subprocess.DEVNULL).decode()
+        if "libx264" in out:
+            return ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"], ".mp4"
+    except Exception:
+        pass
+    return ["-c:v", "libvpx", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
+
 from PIL import Image, ImageDraw, ImageFont
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TMP_DIR = REPO_ROOT / "tmp" / "video" / "combined_frontend_demo"
 OUT_DIR = REPO_ROOT / "video_examples" / "combined"
-OUTPUT = OUT_DIR / "collateral-and-money-market-frontend-demo.mp4"
 COLLATERAL_VIDEO = next(
     (
         REPO_ROOT / "video_examples" / "collateral" / name
@@ -53,6 +64,8 @@ COLORS = {
 
 def main() -> None:
     _require_inputs()
+    codec_flags, ext = _codec_args()
+    output = OUT_DIR / f"collateral-and-money-market-frontend-demo{ext}"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if TMP_DIR.exists():
         shutil.rmtree(TMP_DIR)
@@ -66,6 +79,8 @@ def main() -> None:
             "Schedule ingestion, LLM-assisted explanation, "
             "HQLA liquidity orchestration, and governance evidence"
         ),
+        codec_flags,
+        ext,
     )
     title_two = _render_title_clip(
         "example_2",
@@ -75,10 +90,12 @@ def main() -> None:
             "PDF policy upload, structured ingestion, optimizer execution, "
             "before/after analytics, and evidence review"
         ),
+        codec_flags,
+        ext,
     )
 
-    _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], OUTPUT)
-    print(OUTPUT.relative_to(REPO_ROOT))
+    _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], output, codec_flags, ext)
+    print(output.relative_to(REPO_ROOT))
 
 
 def _require_inputs() -> None:
@@ -88,7 +105,9 @@ def _require_inputs() -> None:
         raise FileNotFoundError(f"Missing source video(s): {names}")
 
 
-def _render_title_clip(key: str, eyebrow: str, title: str, subtitle: str) -> Path:
+def _render_title_clip(
+    key: str, eyebrow: str, title: str, subtitle: str, codec_flags: list[str], ext: str
+) -> Path:
     frames_dir = TMP_DIR / key
     frames_dir.mkdir(parents=True)
     fonts = _fonts()
@@ -99,24 +118,15 @@ def _render_title_clip(key: str, eyebrow: str, title: str, subtitle: str) -> Pat
         frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
         frame.save(frames_dir / f"frame_{index:04d}.png")
 
-    output = TMP_DIR / f"{key}.mp4"
+    output = TMP_DIR / f"{key}{ext}"
     ffmpeg = _ffmpeg()
     subprocess.run(
         [
-            ffmpeg,
-            "-y",
-            "-framerate",
-            str(FPS),
-            "-i",
-            str(frames_dir / "frame_%04d.png"),
-            "-r",
-            str(FPS),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
+            ffmpeg, "-y",
+            "-framerate", str(FPS),
+            "-i", str(frames_dir / "frame_%04d.png"),
+            "-r", str(FPS),
+            *codec_flags,
             str(output),
         ],
         check=True,
@@ -179,28 +189,14 @@ def _draw_title_frame(
     return image
 
 
-def _compose(inputs: list[Path], output: Path) -> None:
+def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str) -> None:
     ffmpeg = _ffmpeg()
     args = [ffmpeg, "-y"]
     for path in inputs:
         args.extend(["-i", str(path)])
-    args.extend(
-        [
-            "-filter_complex",
-            "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
-            "-map",
-            "[v]",
-            "-r",
-            str(FPS),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            str(output),
-        ]
-    )
+    n = len(inputs)
+    concat = "".join(f"[{i}:v]" for i in range(n)) + f"concat=n={n}:v=1:a=0[v]"
+    args.extend(["-filter_complex", concat, "-map", "[v]", "-r", str(FPS), *codec_flags, str(output)])
     subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
