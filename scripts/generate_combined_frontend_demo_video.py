@@ -227,7 +227,6 @@ def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str)
         for raw_frame in in_container.decode(in_stream):
             frame = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p")
             frame.pts = frame_index
-            frame.time_base = out_stream.codec_context.time_base
             for packet in out_stream.encode(frame):
                 out_container.mux(packet)
             frame_index += 1
