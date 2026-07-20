@@ -86,6 +86,38 @@ React/Vite UI at `http://127.0.0.1:5173/`. Stop both with `Ctrl+C`.
 The browser workflow selector includes the **Portfolio Rebalance MVO** demo
 alongside the funding, collateral, and money-market workflows.
 
+### LLM Settings — one place to configure every LLM feature
+
+The **LLM Settings** panel (above the LLM Chat panel in the sidebar)
+controls every LLM call in the browser UI from a single location:
+
+| Feature | Uses LLM Settings |
+|---|---|
+| LLM Chat | ✓ |
+| IPS / collateral schedule ingestion (LLM-assisted mode) | ✓ |
+| Audit narrative polishing ("Polish with LLM" in Evidence Room) | ✓ |
+
+**Quick-start presets** let you switch provider in one click:
+
+| Preset | Provider | Endpoint |
+|---|---|---|
+| Ollama (local) | `openai` compat | `http://localhost:11434/v1` |
+| Anthropic Claude | `anthropic` | hosted API |
+| OpenAI GPT-4o | `openai` | hosted API |
+
+Or fill in the four fields directly — Provider, Model, Base URL, API Key.
+Leave **Base URL** blank to use the provider's default hosted endpoint.
+Leave **API Key** blank to fall back to the environment variable
+(`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
+
+```
+# Example: run against hosted Claude without touching env vars
+# 1. Open the LLM Settings panel
+# 2. Click "Anthropic Claude"
+# 3. Paste your API key in the API Key field
+# 4. All LLM features — chat, ingestion, narrative polish — now use Claude
+```
+
 For the original terminal demo:
 
 ```bash
