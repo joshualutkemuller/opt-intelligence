@@ -48,7 +48,10 @@ async function main() {
       await waitForUrl(uiUrl, 30000);
     }
 
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    });
     const context = await browser.newContext({
       viewport: { width: 1600, height: 900 },
       deviceScaleFactor: 1,
