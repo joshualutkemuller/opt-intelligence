@@ -14,6 +14,8 @@ class CreateChatSessionRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
 
 
 class ChatSessionResponse(BaseModel):
@@ -254,6 +256,11 @@ class AuditNarrativeRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     preset: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, Any] = Field(default_factory=dict)
+    llm_polish: bool = False
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class AuditNarrativeResponse(BaseModel):

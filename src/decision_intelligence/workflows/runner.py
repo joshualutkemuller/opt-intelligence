@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
 from decision_intelligence.contracts import OptimizationRequest, OptimizationResult
 from decision_intelligence.contracts.results import SolveStatus
@@ -159,6 +159,163 @@ class SequentialWorkflowRunner:
             explanation_report=explanation_report,
             trace=trace,
         )
+
+    def run_streaming(self, plan: WorkflowPlan) -> Iterator[dict[str, Any]]:
+        """Yield SSE-ready progress dicts for each step, then the final WorkflowResult dict."""
+        yield {
+            "event": "workflow_started",
+            "workflow_id": plan.workflow_id,
+            "step_count": len(plan.steps),
+        }
+
+        trace: list[WorkflowTraceEvent] = [
+            WorkflowTraceEvent(
+                event="workflow_started",
+                message=f"Started workflow '{plan.name}'.",
+                details={"workflow_id": plan.workflow_id, "steps": len(plan.steps)},
+            )
+        ]
+        completed: dict[str, WorkflowStepResult] = {}
+        step_results: list[WorkflowStepResult] = []
+
+        for i, step in enumerate(plan.steps):
+            missing = [dep for dep in step.depends_on if dep not in completed]
+            if missing:
+                trace.append(
+                    WorkflowTraceEvent(
+                        event="step_blocked",
+                        message=f"Blocked step '{step.name}' because dependencies are missing.",
+                        step_id=step.step_id,
+                        domain=step.domain,
+                        details={"missing_dependencies": missing},
+                    )
+                )
+                break
+
+            yield {
+                "event": "step_started",
+                "step_id": step.step_id,
+                "domain": step.domain,
+                "name": step.name,
+                "step_index": i,
+                "step_count": len(plan.steps),
+            }
+
+            request, dependency_effects = self._prepare_request(step, completed)
+            if dependency_effects:
+                trace.append(
+                    WorkflowTraceEvent(
+                        event="dependencies_applied",
+                        message=(
+                            f"Applied {len(dependency_effects)} cross-step dependency "
+                            f"effect{'s' if len(dependency_effects) != 1 else ''}."
+                        ),
+                        step_id=step.step_id,
+                        domain=step.domain,
+                        details={
+                            "effects": [
+                                effect.model_dump(mode="json")
+                                for effect in dependency_effects
+                            ]
+                        },
+                    )
+                )
+            trace.append(
+                WorkflowTraceEvent(
+                    event="step_started",
+                    message=f"Running {step.domain} optimizer.",
+                    step_id=step.step_id,
+                    domain=step.domain,
+                    details={"request_id": request.request_id},
+                )
+            )
+
+            result = self.orchestrator.run(request)
+            step_result = WorkflowStepResult(
+                step_id=step.step_id,
+                domain=step.domain,
+                name=step.name,
+                status=result.status.value,
+                request=request,
+                result=result,
+                inputs_from=list(step.depends_on),
+                dependency_effects=dependency_effects,
+                summary=self._summarize_result(result),
+            )
+            completed[step.step_id] = step_result
+            step_results.append(step_result)
+
+            trace.append(
+                WorkflowTraceEvent(
+                    event="step_completed",
+                    message=f"Completed {step.domain} optimizer with status {result.status.value}.",
+                    step_id=step.step_id,
+                    domain=step.domain,
+                    details=step_result.summary,
+                )
+            )
+
+            yield {
+                "event": "step_completed",
+                "step_id": step.step_id,
+                "domain": step.domain,
+                "status": result.status.value,
+                "objective_value": result.objective_value,
+                "improvement_pct": result.improvement_pct,
+            }
+
+            if result.status != SolveStatus.OPTIMAL:
+                trace.append(
+                    WorkflowTraceEvent(
+                        event="workflow_stopped",
+                        message=f"Stopped workflow after non-optimal step '{step.name}'.",
+                        step_id=step.step_id,
+                        domain=step.domain,
+                    )
+                )
+                break
+
+        status = self._workflow_status(plan, step_results)
+        trace.append(
+            WorkflowTraceEvent(
+                event="workflow_completed",
+                message=f"Workflow finished with status {status}.",
+                details={"completed_steps": len(step_results), "planned_steps": len(plan.steps)},
+            )
+        )
+
+        validation_summary = self._aggregate_validation(step_results)
+        dependency_summary = self._aggregate_dependencies(step_results)
+        visual_summary = self._build_visual_summary(
+            step_results,
+            dependency_summary=dependency_summary,
+        )
+        explanation_report = build_workflow_explanation_report(
+            plan=plan,
+            step_results=step_results,
+            status=status,
+            validation_summary=validation_summary,
+            dependency_summary=dependency_summary,
+        )
+
+        workflow_result = WorkflowResult(
+            workflow_id=plan.workflow_id,
+            name=plan.name,
+            status=status,
+            step_results=step_results,
+            validation_summary=validation_summary,
+            dependency_summary=dependency_summary,
+            visual_summary=visual_summary,
+            explanation=explanation_report.summary,
+            explanation_report=explanation_report,
+            trace=trace,
+        )
+
+        yield {
+            "event": "workflow_completed",
+            "status": status,
+            "result": workflow_result.model_dump(mode="json"),
+        }
 
     def _prepare_request(
         self,

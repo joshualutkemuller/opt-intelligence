@@ -1677,7 +1677,17 @@ function App() {
   const [ollamaInput, setOllamaInput] = useState(
     "Explain the MVO asset allocation demo in plain English.",
   );
-  const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
+  const [llmConfig, setLlmConfig] = useState<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+  }>({
+    provider: "openai",
+    model: "llama3.1:8b",
+    baseUrl: "http://localhost:11434/v1",
+    apiKey: "",
+  });
   const [isOllamaRunning, setIsOllamaRunning] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
@@ -1704,7 +1714,7 @@ function App() {
   const [policyPdfPreviewUrl, setPolicyPdfPreviewUrl] = useState<string | null>(null);
   const [policyBackend, setPolicyBackend] =
     useState<"deterministic" | "llm" | "auto">("deterministic");
-  const [policyModel, setPolicyModel] = useState("llama3.1:8b");
+  // policyModel is now sourced from llmConfig.model
   const [policyResult, setPolicyResult] = useState<PolicyIngestionResponse | null>(null);
   const [policyApplied, setPolicyApplied] = useState(false);
   const [isPolicyIngesting, setIsPolicyIngesting] = useState(false);
@@ -1724,6 +1734,17 @@ function App() {
   const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [isWorkflowStreaming, setIsWorkflowStreaming] = useState(false);
+  const [streamSteps, setStreamSteps] = useState<
+    Array<{
+      step_id: string;
+      domain: string;
+      name: string;
+      status: "running" | "complete" | "pending";
+      objective_value?: number | null;
+      improvement_pct?: number | null;
+    }>
+  >([]);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [isExportingEvidence, setIsExportingEvidence] = useState(false);
   const [scriptModeEnabled, setScriptModeEnabled] = useState(true);
@@ -2130,7 +2151,11 @@ function App() {
       const response = await fetchWithTimeout(`${API_BASE}/api/chat/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          optimizer_runtime: optimizerRuntime,
+          production_optimizer_id: selectedProductionOptimizerId || undefined,
+        }),
       });
       if (!response.ok) throw new Error(String(response.status));
       const body = (await response.json()) as ChatApiResponse;
@@ -2190,7 +2215,7 @@ function App() {
     setIsOllamaRunning(true);
     setOllamaMessages((items) => [
       ...items,
-      { role: "assistant", content: "Thinking locally with Ollama...", pending: true },
+      { role: "assistant", content: `Thinking with ${llmConfig.provider} / ${llmConfig.model}…`, pending: true },
     ]);
 
     try {
@@ -2201,9 +2226,10 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
-            provider: "openai",
-            model: ollamaModel,
-            base_url: "http://localhost:11434/v1",
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            base_url: llmConfig.baseUrl || undefined,
+            api_key: llmConfig.apiKey || undefined,
             max_tokens: 512,
             system:
               "You are a concise portfolio optimization assistant. Explain concepts plainly for a nontechnical market stakeholder.",
@@ -2224,7 +2250,7 @@ function App() {
       setOllamaMessages((items) =>
         replacePendingMessage(
           items,
-          `Ollama chat did not complete (${detail}). Confirm Ollama is running on http://localhost:11434 and that the model exists.`,
+          `LLM chat did not complete (${detail}). Check that ${llmConfig.provider} is reachable at ${llmConfig.baseUrl || "default endpoint"} and the model "${llmConfig.model}" is available.`,
         ),
       );
     } finally {
@@ -2356,10 +2382,10 @@ function App() {
             pdf_base64: policyPdfBase64 || undefined,
             filename: policyFilename || undefined,
             backend: policyBackend,
-            provider: policyBackend === "deterministic" ? undefined : "openai",
-            model: policyBackend === "deterministic" ? undefined : policyModel,
-            base_url:
-              policyBackend === "deterministic" ? undefined : "http://localhost:11434/v1",
+            provider: policyBackend === "deterministic" ? undefined : llmConfig.provider,
+            model: policyBackend === "deterministic" ? undefined : llmConfig.model,
+            base_url: policyBackend === "deterministic" ? undefined : (llmConfig.baseUrl || undefined),
+            api_key: policyBackend === "deterministic" ? undefined : (llmConfig.apiKey || undefined),
           }),
         },
         policyBackend === "deterministic" ? 15000 : 60000,
@@ -2642,46 +2668,110 @@ function App() {
       },
     ]);
 
+    setIsWorkflowStreaming(true);
+    setStreamSteps([]);
     try {
-      const response = await fetchWithTimeout(
-        `${API_BASE}/api/workflows/run`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadWithPolicy),
-        },
-        20000,
-      );
+      const response = await fetch(`${API_BASE}/api/workflows/run-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadWithPolicy),
+      });
       if (!response.ok) throw new Error(String(response.status));
-      const body = (await response.json()) as WorkflowRunApiResponse;
-      const finalStep = [...body.result.step_results].reverse()[0];
-      setPresenterReviewOpen(false);
-      setWorkflowRun(body.result);
-      if (finalStep?.result) {
-        setResult(finalStep.result);
+      if (!response.body) throw new Error("No response body for streaming");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as {
+              event: string;
+              step_id?: string;
+              domain?: string;
+              name?: string;
+              step_index?: number;
+              step_count?: number;
+              status?: string;
+              objective_value?: number | null;
+              improvement_pct?: number | null;
+              result?: WorkflowRunResult;
+            };
+            if (event.event === "step_started" && event.step_id) {
+              setStreamSteps((prev) => [
+                ...prev.filter((s) => s.step_id !== event.step_id),
+                {
+                  step_id: event.step_id!,
+                  domain: event.domain ?? "",
+                  name: event.name ?? "",
+                  status: "running",
+                },
+              ]);
+            } else if (event.event === "step_completed" && event.step_id) {
+              setStreamSteps((prev) =>
+                prev.map((s) =>
+                  s.step_id === event.step_id
+                    ? {
+                        ...s,
+                        status: "complete",
+                        objective_value: event.objective_value,
+                        improvement_pct: event.improvement_pct,
+                      }
+                    : s,
+                ),
+              );
+            } else if (event.event === "workflow_completed" && event.result) {
+              const body: WorkflowRunApiResponse = {
+                plan: {
+                  workflow_id: event.result.workflow_id,
+                  name: event.result.name,
+                  description: "",
+                  steps: [],
+                },
+                result: event.result,
+              };
+              const finalStep = [...event.result.step_results].reverse()[0];
+              setPresenterReviewOpen(false);
+              setWorkflowRun(event.result);
+              if (finalStep?.result) {
+                setResult(finalStep.result);
+              }
+              setLatestPayload(body);
+              setLatestWorkflowRunPayload(payloadWithPolicy);
+              if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
+                setScriptModeEnabled(true);
+                setScriptStepIndex((current) => Math.max(current, 3));
+              }
+              addRunHistoryEntry(
+                createRunHistoryEntry({
+                  preset: selectedPreset,
+                  workflow: selectedWorkflow,
+                  solverKey: solver,
+                  inputValues: workflowInputValues,
+                  payload: payloadWithPolicy,
+                  response: body,
+                }),
+              );
+              setMessages((items) =>
+                replacePendingMessage(
+                  items,
+                  `Sequential workflow complete. ${event.result!.step_results.length} optimizer steps ran with aggregate validation ${event.result!.validation_summary.passed ? "passing" : "requiring review"}.`,
+                ),
+              );
+            }
+          } catch {
+            // ignore parse errors for malformed SSE lines
+          }
+        }
       }
-      setLatestPayload(body);
-      setLatestWorkflowRunPayload(payloadWithPolicy);
-      if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
-        setScriptModeEnabled(true);
-        setScriptStepIndex((current) => Math.max(current, 3));
-      }
-      addRunHistoryEntry(
-        createRunHistoryEntry({
-          preset: selectedPreset,
-          workflow: selectedWorkflow,
-          solverKey: solver,
-          inputValues: workflowInputValues,
-          payload: payloadWithPolicy,
-          response: body,
-        }),
-      );
-      setMessages((items) =>
-        replacePendingMessage(
-          items,
-          `Sequential workflow complete. ${body.result.step_results.length} optimizer steps ran with aggregate validation ${body.result.validation_summary.passed ? "passing" : "requiring review"}.`,
-        ),
-      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "unknown error";
       setMessages((items) =>
@@ -2692,6 +2782,7 @@ function App() {
       );
     } finally {
       setIsWorkflowRunning(false);
+      setIsWorkflowStreaming(false);
     }
   }
 
@@ -2977,7 +3068,7 @@ function App() {
             text={policyText}
             filename={policyFilename}
             backend={policyBackend}
-            model={policyModel}
+            llmModel={llmConfig.model}
             result={policyResult}
             applied={policyApplied}
             isIngesting={isPolicyIngesting}
@@ -2996,7 +3087,6 @@ function App() {
             pdfPreviewUrl={policyPdfPreviewUrl}
             onFileChange={handlePolicyFileChange}
             onBackendChange={setPolicyBackend}
-            onModelChange={setPolicyModel}
             onIngest={ingestPolicyDocument}
             onApply={applyPolicyInputs}
             onLoadSample={isCollateralHqlaSelected ? selectCollateralHqlaPath : undefined}
@@ -3128,6 +3218,9 @@ function App() {
               </div>
             </div>
 
+            <ChatIntakeProgress workflow={workflow} />
+            {isWorkflowStreaming && <StreamingWorkflowProgress steps={streamSteps} />}
+
             <div className="messages" aria-live="polite" ref={messagesRef}>
               {messages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
@@ -3157,27 +3250,22 @@ function App() {
             </form>
           </section>
 
-          <section className="ollama-panel panel" aria-label="Local Ollama chat">
+          <LLMSettingsPanel config={llmConfig} onChange={setLlmConfig} />
+
+          <section className="ollama-panel panel" aria-label="Local LLM chat">
             <div className="section-header">
               <div>
                 <span className="eyebrow">Local LLM</span>
-                <h2>Ollama Chat</h2>
+                <h2>LLM Chat</h2>
               </div>
-              <label className="model-control">
-                <span>Model</span>
-                <input
-                  value={ollamaModel}
-                  onChange={(event) => setOllamaModel(event.target.value)}
-                  aria-label="Ollama model"
-                />
-              </label>
+              <span className="model-badge">{llmConfig.provider} · {llmConfig.model}</span>
             </div>
 
             <div className="messages ollama-messages" aria-live="polite">
               {ollamaMessages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
                   <span className="message-label">
-                    {message.role === "user" ? "User" : "Ollama"}
+                    {message.role === "user" ? "User" : llmConfig.provider}
                   </span>
                   <p>{message.content}</p>
                 </article>
@@ -3192,7 +3280,7 @@ function App() {
                 aria-label="Ollama chat input"
               />
               <button className="primary-button" type="submit" disabled={isOllamaRunning}>
-                {isOllamaRunning ? "Thinking" : "Ask Ollama"}
+                {isOllamaRunning ? "Thinking" : "Ask LLM"}
               </button>
             </form>
           </section>
@@ -3291,6 +3379,8 @@ function App() {
             selectedPreset={selectedPreset}
             selectedWorkflow={selectedWorkflow}
             selectedProductionOptimizer={selectedProductionOptimizer}
+            llmConfig={llmConfig}
+            latestWorkflowRunPayload={latestWorkflowRunPayload}
           />
 
           <ValidationPanel result={dashboard} />
@@ -5433,6 +5523,8 @@ function EvidenceRoomPanel({
   selectedPreset,
   selectedWorkflow,
   selectedProductionOptimizer,
+  llmConfig,
+  latestWorkflowRunPayload,
 }: {
   workflowRun: WorkflowRunResult | null;
   result: OptimizationResult | null;
@@ -5441,6 +5533,8 @@ function EvidenceRoomPanel({
   selectedPreset: DemoPresetCatalogItem;
   selectedWorkflow: WorkflowCatalogItem;
   selectedProductionOptimizer: ProductionOptimizerCatalogItem | null;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
+  latestWorkflowRunPayload: WorkflowRunPayload | null;
 }) {
   const steps = workflowRun?.step_results || [];
   const finalResult = result || steps.at(-1)?.result || null;
@@ -5453,6 +5547,50 @@ function EvidenceRoomPanel({
   const checks = finalResult?.validation_report?.checks || [];
   const trace = workflowRun?.trace || finalResult?.agent_trace || [];
   const solver = finalResult?.solver_metadata || {};
+
+  const [auditNarrative, setAuditNarrative] = useState<Record<string, unknown> | null>(null);
+  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishError, setPolishError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const wfId = workflowRun?.workflow_id;
+    if (!wfId) { setAuditNarrative(null); return; }
+    fetch(`/api/audit/narrative/${encodeURIComponent(wfId)}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setAuditNarrative(data?.narrative || null))
+      .catch(() => setAuditNarrative(null));
+  }, [workflowRun?.workflow_id]);
+
+  async function handlePolishNarrative() {
+    if (!workflowRun || !latestWorkflowRunPayload) return;
+    setIsPolishing(true);
+    setPolishError(null);
+    try {
+      const res = await fetch("/api/audit/narrative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          response: { result: workflowRun },
+          payload: latestWorkflowRunPayload,
+          llm_polish: true,
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          base_url: llmConfig.baseUrl || undefined,
+          api_key: llmConfig.apiKey || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPolishError(data.detail || "Polish failed.");
+      } else {
+        setAuditNarrative(data.narrative || null);
+      }
+    } catch {
+      setPolishError("Could not reach the API.");
+    } finally {
+      setIsPolishing(false);
+    }
+  }
 
   return (
     <section className="panel evidence-room-panel">
@@ -5607,6 +5745,59 @@ function EvidenceRoomPanel({
             <p>Trace events appear after planning or workflow execution.</p>
           )}
         </EvidenceSection>
+
+        <EvidenceSection
+          title="Audit Narrative"
+          status={
+            auditNarrative
+              ? auditNarrative.llm_polished
+                ? `Polished · ${String(auditNarrative.llm_provider || "llm")}`
+                : "Deterministic"
+              : workflowRun
+                ? "Available"
+                : "Pending"
+          }
+        >
+          {auditNarrative ? (
+            <div className="audit-narrative-preview">
+              <p>{String(auditNarrative.decision_summary || "Narrative generated.").slice(0, 360)}</p>
+              <div className="audit-narrative-actions">
+                {!auditNarrative.llm_polished ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handlePolishNarrative}
+                    disabled={isPolishing}
+                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
+                  >
+                    {isPolishing ? "Polishing…" : "Polish with LLM"}
+                  </button>
+                ) : (
+                  <span className="status-chip status-optimal">LLM polished</span>
+                )}
+                {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+              </div>
+            </div>
+          ) : (
+            <div className="audit-narrative-preview">
+              <p>{workflowRun ? "Narrative persisted. Click below to polish with a local LLM." : "Run a workflow to generate the audit narrative."}</p>
+              {workflowRun ? (
+                <div className="audit-narrative-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handlePolishNarrative}
+                    disabled={isPolishing}
+                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
+                  >
+                    {isPolishing ? "Polishing…" : "Polish with LLM"}
+                  </button>
+                  {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </EvidenceSection>
       </div>
     </section>
   );
@@ -5632,12 +5823,78 @@ function EvidenceSection({
   );
 }
 
+function LLMSettingsPanel({
+  config,
+  onChange,
+}: {
+  config: { provider: string; model: string; baseUrl: string; apiKey: string };
+  onChange: (config: { provider: string; model: string; baseUrl: string; apiKey: string }) => void;
+}) {
+  function set(key: string, value: string) {
+    onChange({ ...config, [key]: value });
+  }
+
+  return (
+    <section className="panel compact llm-settings-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">LLM Settings</span>
+        <span className="model-badge">{config.provider} · {config.model || "no model"}</span>
+      </div>
+
+      <div className="llm-settings-fields">
+        <label>
+          <span>Protocol</span>
+          <select
+            value={config.provider}
+            onChange={(e) => set("provider", e.target.value)}
+            aria-label="LLM protocol"
+          >
+            <option value="openai">openai-compatible</option>
+            <option value="anthropic">anthropic</option>
+          </select>
+        </label>
+        <label>
+          <span>Model</span>
+          <input
+            value={config.model}
+            onChange={(e) => set("model", e.target.value)}
+            placeholder="Any model string your endpoint accepts"
+            aria-label="LLM model"
+          />
+        </label>
+        <label className="llm-settings-wide">
+          <span>Base URL</span>
+          <input
+            value={config.baseUrl}
+            onChange={(e) => set("baseUrl", e.target.value)}
+            placeholder="https://your-gateway/v1  (blank = provider default)"
+            aria-label="LLM base URL"
+          />
+        </label>
+        <label>
+          <span>API Key</span>
+          <input
+            type="password"
+            value={config.apiKey}
+            onChange={(e) => set("apiKey", e.target.value)}
+            placeholder="Blank = use env var"
+            aria-label="LLM API key"
+          />
+        </label>
+      </div>
+      <p className="llm-settings-hint">
+        Any OpenAI-compatible gateway: set Protocol to <code>openai-compatible</code>, paste your gateway URL, and type whatever model string it accepts.
+      </p>
+    </section>
+  );
+}
+
 function PolicyIngestionPanel({
   selectedWorkflow,
   text,
   filename,
   backend,
-  model,
+  llmModel,
   result,
   applied,
   isIngesting,
@@ -5647,7 +5904,6 @@ function PolicyIngestionPanel({
   onTextChange,
   onFileChange,
   onBackendChange,
-  onModelChange,
   onIngest,
   onApply,
   onLoadSample,
@@ -5656,7 +5912,7 @@ function PolicyIngestionPanel({
   text: string;
   filename: string;
   backend: "deterministic" | "llm" | "auto";
-  model: string;
+  llmModel: string;
   result: PolicyIngestionResponse | null;
   applied: boolean;
   isIngesting: boolean;
@@ -5666,7 +5922,6 @@ function PolicyIngestionPanel({
   onTextChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
-  onModelChange: (value: string) => void;
   onIngest: () => void;
   onApply: () => void;
   onLoadSample?: () => void;
@@ -5749,17 +6004,18 @@ function PolicyIngestionPanel({
             aria-label="IPS ingestion backend"
           >
             <option value="deterministic">Deterministic</option>
-            <option value="llm">Ollama assisted</option>
+            <option value="llm">LLM assisted</option>
             <option value="auto">Auto</option>
           </select>
         </label>
         <label>
           <span>Model</span>
           <input
-            value={model}
-            onChange={(event) => onModelChange(event.target.value)}
-            disabled={disabled || isIngesting || backend === "deterministic"}
-            aria-label="IPS ingestion model"
+            value={llmModel}
+            readOnly
+            disabled={backend === "deterministic"}
+            aria-label="IPS ingestion model (set in LLM Settings)"
+            title="Configure model in the LLM Settings panel"
           />
         </label>
       </div>
@@ -6061,6 +6317,78 @@ function presenterStatusClass(status: PresenterStatus): string {
   return "status-ready";
 }
 
+function ChatIntakeProgress({ workflow }: { workflow: WorkflowState | null }) {
+  if (!workflow || !workflow.domain || workflow.awaiting_confirmation) return null;
+  const requiredFields = workflow.plan?.required_fields ?? [];
+  if (requiredFields.length === 0) return null;
+  const collected = workflow.collected ?? {};
+  const nextField = workflow.next_field;
+  return (
+    <div className="chat-intake-progress">
+      <span className="intake-progress-label">Intake Progress</span>
+      <div className="intake-field-rows">
+        {requiredFields.map((field) => {
+          const isCollected = field.key in collected;
+          const isNext = !isCollected && field.key === nextField;
+          const cls = isCollected
+            ? "intake-field-row intake-field--collected"
+            : isNext
+              ? "intake-field-row intake-field--next"
+              : "intake-field-row intake-field--pending";
+          const icon = isCollected ? "✓" : isNext ? "→" : "·";
+          return (
+            <div key={field.key} className={cls}>
+              <span className="intake-field-icon">{icon}</span>
+              <span className="intake-field-label">{field.label}</span>
+              {isCollected && (
+                <span className="intake-field-value">
+                  {String(collected[field.key])}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StreamingWorkflowProgress({
+  steps,
+}: {
+  steps: Array<{
+    step_id: string;
+    domain: string;
+    name: string;
+    status: "running" | "complete" | "pending";
+    objective_value?: number | null;
+    improvement_pct?: number | null;
+  }>;
+}) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="streaming-progress">
+      <span className="streaming-progress-label">Running workflow…</span>
+      {steps.map((step) => (
+        <div
+          key={step.step_id}
+          className={`streaming-step streaming-step--${step.status}`}
+        >
+          <span className="streaming-step-icon">
+            {step.status === "complete" ? "✓" : step.status === "running" ? "⟳" : "·"}
+          </span>
+          <span className="streaming-step-name">{step.name || step.domain}</span>
+          {step.status === "complete" && step.improvement_pct != null && (
+            <span className="streaming-step-improvement">
+              +{step.improvement_pct.toFixed(1)} bps
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
   const plan = workflow?.plan;
   const missingFields = plan?.missing_fields || [];
@@ -6263,6 +6591,9 @@ function GovernanceReviewPanel({
 }) {
   const [approver, setApprover] = useState("demo.approver");
   const [reason, setReason] = useState("Reviewed materiality and controls.");
+  const [orchRouting, setOrchRouting] = useState<Record<string, unknown> | null>(null);
+  const [orchAdvancing, setOrchAdvancing] = useState(false);
+
   const governance = highestGovernanceRecord(workflowRun);
   const pendingRecords = pendingGovernanceRecords(workflowRun);
   const pendingApprovalIds = pendingRecords.flatMap((record) =>
@@ -6273,6 +6604,35 @@ function GovernanceReviewPanel({
   const pnlImpact = inputValues["governance.estimated_pnl_impact"] || "";
   const productionChange = inputValues["governance.production_constraint_change"] === "true";
   const status = governance?.status || (productionChange ? "review" : "not_required");
+
+  useEffect(() => {
+    if (!workflowRun) { setOrchRouting(null); return; }
+    fetch("/api/governance/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: workflowRun }),
+    })
+      .then((res) => res.json())
+      .then((data) => setOrchRouting(data))
+      .catch(() => setOrchRouting(null));
+  }, [workflowRun]);
+
+  async function handleOrchAdvance(granted: boolean) {
+    const approvalId = String(orchRouting?.approval_id || "");
+    if (!approvalId || !approver.trim()) return;
+    setOrchAdvancing(true);
+    try {
+      const res = await fetch("/api/governance/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approval_id: approvalId, approver, granted, reason }),
+      });
+      const data = await res.json();
+      setOrchRouting((prev) => prev ? { ...prev, status: data.status, action_performed: data.action_performed } : prev);
+    } finally {
+      setOrchAdvancing(false);
+    }
+  }
 
   return (
     <section className="panel governance-review-panel">
@@ -6346,6 +6706,43 @@ function GovernanceReviewPanel({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {orchRouting ? (
+        <div className="governance-orchestrator-card">
+          <div className="card-heading">
+            <strong>Auto-Routed Tier (Orchestrator)</strong>
+            <span className={orchRouting.status === "auto_allowed" ? "status-chip status-optimal" : orchRouting.status === "approved" ? "status-chip status-optimal" : orchRouting.status === "rejected" ? "status-chip status-block" : "status-chip status-warn"}>
+              {String(orchRouting.status).replaceAll("_", " ")}
+            </span>
+          </div>
+          <dl className="evidence-kv-list">
+            <StateRow label="Tier" value={String(orchRouting.tier ?? "—")} />
+            <StateRow label="Base tier" value={String(orchRouting.base_tier ?? "—")} />
+            <StateRow label="Action" value={String(orchRouting.action ?? "—")} />
+            <StateRow label="Escalated" value={orchRouting.escalated ? "Yes" : "No"} />
+            {orchRouting.escalation_reason ? <StateRow label="Escalation reason" value={String(orchRouting.escalation_reason)} /> : null}
+            {orchRouting.approval_id ? <StateRow label="Approval ID" value={String(orchRouting.approval_id)} /> : null}
+          </dl>
+          {orchRouting.required && orchRouting.status === "pending" ? (
+            <div className="approval-decision-box" style={{ marginTop: "0.75rem" }}>
+              <div className="approval-decision-fields">
+                <label>
+                  <span>Approver</span>
+                  <input value={approver} onChange={(e) => setApprover(e.target.value)} disabled={orchAdvancing} aria-label="Approver name" />
+                </label>
+                <label>
+                  <span>Reason</span>
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={orchAdvancing} aria-label="Approval reason" />
+                </label>
+              </div>
+              <div className="approval-actions">
+                <button className="primary-button" type="button" onClick={() => handleOrchAdvance(true)} disabled={orchAdvancing || !approver.trim()}>Approve</button>
+                <button className="secondary-button" type="button" onClick={() => handleOrchAdvance(false)} disabled={orchAdvancing || !approver.trim()}>Reject</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {governance?.required ? (
@@ -7091,10 +7488,82 @@ function Metric({
   );
 }
 
+type ConstraintRelaxationProposal = {
+  parameter: string;
+  proposed_change: string;
+  estimated_impact: number;
+  estimated_impact_units: string;
+  governance_tier: number;
+  governance_reason: string;
+  rationale: string;
+  source: string;
+  confidence: number;
+};
+
+type ConstraintNegotiationResult = {
+  domain: string;
+  target_improvement: number;
+  target_units: string;
+  proposals: ConstraintRelaxationProposal[];
+  recommendation: string;
+  blockers: string[];
+};
+
+function tierClass(tier: number): string {
+  if (tier <= 2) return "status-optimal";
+  if (tier <= 3) return "status-ready";
+  if (tier === 4) return "status-warn";
+  return "status-block";
+}
+
+function tierLabel(tier: number): string {
+  const labels: Record<number, string> = {
+    0: "Tier 0 – Explain",
+    1: "Tier 1 – Scenario",
+    2: "Tier 2 – Recommend",
+    3: "Tier 3 – Stage",
+    4: "Tier 4 – Execute",
+    5: "Tier 5 – Policy Change",
+  };
+  return labels[tier] ?? `Tier ${tier}`;
+}
+
 function ConstraintPanel({ result }: { result: OptimizationResult }) {
   const constraints = result.binding_constraints.length
     ? result.binding_constraints
     : ["prime_concentration", "single_fund_limit"];
+
+  const [negotiation, setNegotiation] = useState<ConstraintNegotiationResult | null>(null);
+  const [negotiating, setNegotiating] = useState(false);
+  const [negotiationError, setNegotiationError] = useState<string | null>(null);
+  const [targetImprovement, setTargetImprovement] = useState<string>("");
+  const [targetUnits, setTargetUnits] = useState<string>("bps");
+  const [showNegotiate, setShowNegotiate] = useState(false);
+
+  async function runNegotiation() {
+    setNegotiating(true);
+    setNegotiationError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: result as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 0,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!response.ok) throw new Error(`API error ${response.status}`);
+      const data = (await response.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiation(data.negotiation);
+    } catch (err) {
+      setNegotiationError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setNegotiating(false);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="section-header tight">
@@ -7102,7 +7571,19 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           <span className="eyebrow">Constraints</span>
           <h2>Binding checks</h2>
         </div>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setShowNegotiate((v) => !v);
+            setNegotiation(null);
+            setNegotiationError(null);
+          }}
+        >
+          What would need to change?
+        </button>
       </div>
+
       <div className="constraint-stack">
         {constraints.map((constraint) => (
           <div className="constraint-item" key={constraint}>
@@ -7111,6 +7592,105 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           </div>
         ))}
       </div>
+
+      {showNegotiate && (
+        <div className="negotiation-panel">
+          <div className="negotiation-header">
+            <span className="eyebrow">Constraint Negotiation</span>
+            <p className="negotiation-subtitle">
+              Rank constraint relaxations by estimated impact and governance tier required.
+            </p>
+          </div>
+
+          <div className="negotiation-inputs">
+            <label className="negotiation-label">
+              Target improvement
+              <input
+                type="number"
+                className="negotiation-input"
+                placeholder="e.g. 15"
+                value={targetImprovement}
+                onChange={(e) => setTargetImprovement(e.target.value)}
+                min={0}
+                step={1}
+              />
+            </label>
+            <label className="negotiation-label">
+              Units
+              <select
+                className="negotiation-select"
+                value={targetUnits}
+                onChange={(e) => setTargetUnits(e.target.value)}
+              >
+                <option value="bps">bps</option>
+                <option value="utility">utility</option>
+                <option value="cost_savings">cost savings</option>
+                <option value="objective">objective</option>
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={runNegotiation}
+              disabled={negotiating}
+            >
+              {negotiating ? "Analyzing…" : "Analyze"}
+            </button>
+          </div>
+
+          {negotiationError && (
+            <p className="negotiation-error">{negotiationError}</p>
+          )}
+
+          {negotiation && (
+            <div className="negotiation-results">
+              <p className="negotiation-recommendation">{negotiation.recommendation}</p>
+
+              {negotiation.blockers.length > 0 && (
+                <div className="negotiation-blockers">
+                  {negotiation.blockers.map((b, i) => (
+                    <p key={i} className="negotiation-blocker">{b}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="proposal-stack">
+                {negotiation.proposals.map((proposal, i) => (
+                  <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
+                    <div className="proposal-card-header">
+                      <strong className="proposal-parameter">
+                        {titleCase(proposal.parameter.replaceAll("_", " "))}
+                      </strong>
+                      <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+                        {tierLabel(proposal.governance_tier)}
+                      </span>
+                    </div>
+
+                    <p className="proposal-change">{proposal.proposed_change}</p>
+
+                    <div className="proposal-meta">
+                      {proposal.estimated_impact > 0 && (
+                        <span className="proposal-impact">
+                          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+                        </span>
+                      )}
+                      <span className="proposal-confidence">
+                        {Math.round(proposal.confidence * 100)}% confidence
+                      </span>
+                      <span className="proposal-source">
+                        {proposal.source === "sensitivity" ? "sensitivity analysis" : "binding constraint"}
+                      </span>
+                    </div>
+
+                    <p className="proposal-rationale">{proposal.rationale}</p>
+                    <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
