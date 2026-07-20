@@ -194,7 +194,8 @@ def _compose(inputs: list[Path], output: Path) -> None:
         in_stream = next(s for s in in_container.streams if s.type == "video")
         in_stream.thread_type = "AUTO"
         for raw_frame in in_container.decode(in_stream):
-            frame = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p")
+            arr = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p").to_ndarray()
+            frame = av.VideoFrame.from_ndarray(arr, format="yuv420p")
             frame.pts = frame_index
             for packet in out_stream.encode(frame):
                 out_container.mux(packet)
