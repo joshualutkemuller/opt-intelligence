@@ -14,6 +14,8 @@ class CreateChatSessionRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
 
 
 class ChatSessionResponse(BaseModel):

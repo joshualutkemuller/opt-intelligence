@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -144,8 +146,19 @@ def send_chat_message(
 
     if reply.workflow_plan is not None:
         workflow_plan = _json(reply.workflow_plan)
+        # Apply production optimizer settings from the request payload
+        patched_steps = []
+        for step in reply.workflow_plan.steps:
+            ctx = dict(step.request.context)
+            if payload.optimizer_runtime != "phase1":
+                ctx["optimizer_runtime"] = payload.optimizer_runtime
+            if payload.production_optimizer_id:
+                ctx["production_optimizer_id"] = payload.production_optimizer_id
+            patched_request = step.request.model_copy(update={"context": ctx})
+            patched_steps.append(step.model_copy(update={"request": patched_request}))
+        patched_plan = reply.workflow_plan.model_copy(update={"steps": patched_steps})
         orchestrator, _audit = _build_orchestrator()
-        workflow_run = SequentialWorkflowRunner(orchestrator).run(reply.workflow_plan)
+        workflow_run = SequentialWorkflowRunner(orchestrator).run(patched_plan)
         workflow_result = _json(workflow_run)
         final_step = workflow_run.step_results[-1] if workflow_run.step_results else None
         if final_step is not None:
@@ -319,6 +332,38 @@ def run_workflow(payload: WorkflowRunRequest) -> WorkflowRunResponse:
     orchestrator, _audit = _build_orchestrator()
     result = SequentialWorkflowRunner(orchestrator).run(plan)
     return WorkflowRunResponse(plan=_json(plan), result=_json(result))
+
+
+@app.post("/api/workflows/run-stream")
+def run_workflow_stream(payload: WorkflowRunRequest) -> StreamingResponse:
+    context = dict(payload.context)
+    if payload.execution_mode:
+        context["execution_mode"] = payload.execution_mode
+    if payload.optimizer_runtime != "phase1":
+        context["optimizer_runtime"] = payload.optimizer_runtime
+    if payload.production_optimizer_id:
+        context["production_optimizer_id"] = payload.production_optimizer_id
+    try:
+        plan = DEFAULT_WORKFLOW_REGISTRY.build(
+            payload.workflow,
+            portfolio_id=payload.portfolio_id,
+            seed=payload.seed,
+            context=context,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    orchestrator, _audit = _build_orchestrator()
+
+    def generate():
+        for event in SequentialWorkflowRunner(orchestrator).run_streaming(plan):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/workflows/compare", response_model=WorkflowScenarioCompareResponse)

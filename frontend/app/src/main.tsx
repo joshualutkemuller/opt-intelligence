@@ -1724,6 +1724,17 @@ function App() {
   const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [isWorkflowStreaming, setIsWorkflowStreaming] = useState(false);
+  const [streamSteps, setStreamSteps] = useState<
+    Array<{
+      step_id: string;
+      domain: string;
+      name: string;
+      status: "running" | "complete" | "pending";
+      objective_value?: number | null;
+      improvement_pct?: number | null;
+    }>
+  >([]);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [isExportingEvidence, setIsExportingEvidence] = useState(false);
   const [scriptModeEnabled, setScriptModeEnabled] = useState(true);
@@ -2130,7 +2141,11 @@ function App() {
       const response = await fetchWithTimeout(`${API_BASE}/api/chat/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          optimizer_runtime: optimizerRuntime,
+          production_optimizer_id: selectedProductionOptimizerId || undefined,
+        }),
       });
       if (!response.ok) throw new Error(String(response.status));
       const body = (await response.json()) as ChatApiResponse;
@@ -2642,46 +2657,110 @@ function App() {
       },
     ]);
 
+    setIsWorkflowStreaming(true);
+    setStreamSteps([]);
     try {
-      const response = await fetchWithTimeout(
-        `${API_BASE}/api/workflows/run`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadWithPolicy),
-        },
-        20000,
-      );
+      const response = await fetch(`${API_BASE}/api/workflows/run-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadWithPolicy),
+      });
       if (!response.ok) throw new Error(String(response.status));
-      const body = (await response.json()) as WorkflowRunApiResponse;
-      const finalStep = [...body.result.step_results].reverse()[0];
-      setPresenterReviewOpen(false);
-      setWorkflowRun(body.result);
-      if (finalStep?.result) {
-        setResult(finalStep.result);
+      if (!response.body) throw new Error("No response body for streaming");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as {
+              event: string;
+              step_id?: string;
+              domain?: string;
+              name?: string;
+              step_index?: number;
+              step_count?: number;
+              status?: string;
+              objective_value?: number | null;
+              improvement_pct?: number | null;
+              result?: WorkflowRunResult;
+            };
+            if (event.event === "step_started" && event.step_id) {
+              setStreamSteps((prev) => [
+                ...prev.filter((s) => s.step_id !== event.step_id),
+                {
+                  step_id: event.step_id!,
+                  domain: event.domain ?? "",
+                  name: event.name ?? "",
+                  status: "running",
+                },
+              ]);
+            } else if (event.event === "step_completed" && event.step_id) {
+              setStreamSteps((prev) =>
+                prev.map((s) =>
+                  s.step_id === event.step_id
+                    ? {
+                        ...s,
+                        status: "complete",
+                        objective_value: event.objective_value,
+                        improvement_pct: event.improvement_pct,
+                      }
+                    : s,
+                ),
+              );
+            } else if (event.event === "workflow_completed" && event.result) {
+              const body: WorkflowRunApiResponse = {
+                plan: {
+                  workflow_id: event.result.workflow_id,
+                  name: event.result.name,
+                  description: "",
+                  steps: [],
+                },
+                result: event.result,
+              };
+              const finalStep = [...event.result.step_results].reverse()[0];
+              setPresenterReviewOpen(false);
+              setWorkflowRun(event.result);
+              if (finalStep?.result) {
+                setResult(finalStep.result);
+              }
+              setLatestPayload(body);
+              setLatestWorkflowRunPayload(payloadWithPolicy);
+              if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
+                setScriptModeEnabled(true);
+                setScriptStepIndex((current) => Math.max(current, 3));
+              }
+              addRunHistoryEntry(
+                createRunHistoryEntry({
+                  preset: selectedPreset,
+                  workflow: selectedWorkflow,
+                  solverKey: solver,
+                  inputValues: workflowInputValues,
+                  payload: payloadWithPolicy,
+                  response: body,
+                }),
+              );
+              setMessages((items) =>
+                replacePendingMessage(
+                  items,
+                  `Sequential workflow complete. ${event.result!.step_results.length} optimizer steps ran with aggregate validation ${event.result!.validation_summary.passed ? "passing" : "requiring review"}.`,
+                ),
+              );
+            }
+          } catch {
+            // ignore parse errors for malformed SSE lines
+          }
+        }
       }
-      setLatestPayload(body);
-      setLatestWorkflowRunPayload(payloadWithPolicy);
-      if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
-        setScriptModeEnabled(true);
-        setScriptStepIndex((current) => Math.max(current, 3));
-      }
-      addRunHistoryEntry(
-        createRunHistoryEntry({
-          preset: selectedPreset,
-          workflow: selectedWorkflow,
-          solverKey: solver,
-          inputValues: workflowInputValues,
-          payload: payloadWithPolicy,
-          response: body,
-        }),
-      );
-      setMessages((items) =>
-        replacePendingMessage(
-          items,
-          `Sequential workflow complete. ${body.result.step_results.length} optimizer steps ran with aggregate validation ${body.result.validation_summary.passed ? "passing" : "requiring review"}.`,
-        ),
-      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "unknown error";
       setMessages((items) =>
@@ -2692,6 +2771,7 @@ function App() {
       );
     } finally {
       setIsWorkflowRunning(false);
+      setIsWorkflowStreaming(false);
     }
   }
 
@@ -3127,6 +3207,9 @@ function App() {
                 </button>
               </div>
             </div>
+
+            <ChatIntakeProgress workflow={workflow} />
+            {isWorkflowStreaming && <StreamingWorkflowProgress steps={streamSteps} />}
 
             <div className="messages" aria-live="polite" ref={messagesRef}>
               {messages.map((message, index) => (
@@ -6059,6 +6142,78 @@ function presenterStatusClass(status: PresenterStatus): string {
   if (status === "ready") return "status-optimal";
   if (status === "blocked") return "status-error";
   return "status-ready";
+}
+
+function ChatIntakeProgress({ workflow }: { workflow: WorkflowState | null }) {
+  if (!workflow || !workflow.domain || workflow.awaiting_confirmation) return null;
+  const requiredFields = workflow.plan?.required_fields ?? [];
+  if (requiredFields.length === 0) return null;
+  const collected = workflow.collected ?? {};
+  const nextField = workflow.next_field;
+  return (
+    <div className="chat-intake-progress">
+      <span className="intake-progress-label">Intake Progress</span>
+      <div className="intake-field-rows">
+        {requiredFields.map((field) => {
+          const isCollected = field.key in collected;
+          const isNext = !isCollected && field.key === nextField;
+          const cls = isCollected
+            ? "intake-field-row intake-field--collected"
+            : isNext
+              ? "intake-field-row intake-field--next"
+              : "intake-field-row intake-field--pending";
+          const icon = isCollected ? "✓" : isNext ? "→" : "·";
+          return (
+            <div key={field.key} className={cls}>
+              <span className="intake-field-icon">{icon}</span>
+              <span className="intake-field-label">{field.label}</span>
+              {isCollected && (
+                <span className="intake-field-value">
+                  {String(collected[field.key])}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StreamingWorkflowProgress({
+  steps,
+}: {
+  steps: Array<{
+    step_id: string;
+    domain: string;
+    name: string;
+    status: "running" | "complete" | "pending";
+    objective_value?: number | null;
+    improvement_pct?: number | null;
+  }>;
+}) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="streaming-progress">
+      <span className="streaming-progress-label">Running workflow…</span>
+      {steps.map((step) => (
+        <div
+          key={step.step_id}
+          className={`streaming-step streaming-step--${step.status}`}
+        >
+          <span className="streaming-step-icon">
+            {step.status === "complete" ? "✓" : step.status === "running" ? "⟳" : "·"}
+          </span>
+          <span className="streaming-step-name">{step.name || step.domain}</span>
+          {step.status === "complete" && step.improvement_pct != null && (
+            <span className="streaming-step-improvement">
+              +{step.improvement_pct.toFixed(1)} bps
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
