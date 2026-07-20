@@ -96,8 +96,17 @@ def main() -> None:
         ext,
     )
 
-    _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], output, codec_flags, ext)
-    print(output.relative_to(REPO_ROOT))
+    try:
+        _compose([title_one, COLLATERAL_VIDEO, title_two, MONEY_MARKET_VIDEO], output, codec_flags, ext)
+        print(output.relative_to(REPO_ROOT))
+    except subprocess.CalledProcessError:
+        print(
+            "[warn] Combined video compose failed — likely the source MP4 uses a codec "
+            "not supported by the available ffmpeg build (no H.264 decoder).\n"
+            f"  Title clips saved in: {TMP_DIR.relative_to(REPO_ROOT)}\n"
+            f"  Collateral recording: {COLLATERAL_VIDEO.relative_to(REPO_ROOT)}\n"
+            "  Install a full ffmpeg (libx264 + libvpx) to regenerate the combined video."
+        )
 
 
 def _require_inputs() -> None:
@@ -196,14 +205,43 @@ def _draw_title_frame(
 
 
 def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str) -> None:
-    ffmpeg = _ffmpeg()
-    args = [ffmpeg, "-y"]
-    for path in inputs:
-        args.extend(["-i", str(path)])
-    n = len(inputs)
-    concat = "".join(f"[{i}:v]" for i in range(n)) + f"concat=n={n}:v=1:a=0[v]"
-    args.extend(["-filter_complex", concat, "-map", "[v]", "-r", str(FPS), *codec_flags, str(output)])
-    subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Concatenate video files using PyAV (supports H.264 + VP8 without system ffmpeg)."""
+    import av  # type: ignore[import]
+
+    use_h264 = "-c:v" in codec_flags and "libx264" in codec_flags
+    codec_name = "h264" if use_h264 else "libvpx"
+    out_container = av.open(str(output), "w")
+    out_stream: av.VideoStream | None = None
+    pts_offset = 0
+
+    for src_path in inputs:
+        in_container = av.open(str(src_path))
+        in_stream = next(s for s in in_container.streams if s.type == "video")
+        in_stream.thread_type = "AUTO"
+
+        if out_stream is None:
+            out_stream = out_container.add_stream(codec_name, rate=FPS)
+            out_stream.width = WIDTH
+            out_stream.height = HEIGHT
+            out_stream.pix_fmt = "yuv420p"
+            if not use_h264:
+                out_stream.options = {"b": "2M"}
+
+        last_pts = 0
+        for frame in in_container.decode(in_stream):
+            frame = frame.reformat(WIDTH, HEIGHT, "yuv420p")
+            frame.pts = pts_offset + (frame.pts or 0)
+            last_pts = frame.pts
+            for packet in out_stream.encode(frame):
+                out_container.mux(packet)
+
+        pts_offset = last_pts + 1
+        in_container.close()
+
+    if out_stream is not None:
+        for packet in out_stream.encode():
+            out_container.mux(packet)
+    out_container.close()
 
 
 def _fonts() -> dict[str, ImageFont.ImageFont]:
