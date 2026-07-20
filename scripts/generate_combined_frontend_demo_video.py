@@ -17,8 +17,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TMP_DIR = REPO_ROOT / "tmp" / "video" / "combined_frontend_demo"
 OUT_DIR = REPO_ROOT / "video_examples" / "combined"
 OUTPUT = OUT_DIR / "collateral-and-money-market-frontend-demo.mp4"
-COLLATERAL_VIDEO = (
-    REPO_ROOT / "video_examples" / "collateral" / "collateral-hqla-frontend-orchestration-demo.mp4"
+COLLATERAL_VIDEO = next(
+    (
+        REPO_ROOT / "video_examples" / "collateral" / name
+        for name in (
+            "collateral-hqla-frontend-orchestration-demo.mp4",
+            "collateral-hqla-frontend-orchestration-demo.webm",
+        )
+        if (REPO_ROOT / "video_examples" / "collateral" / name).exists()
+    ),
+    REPO_ROOT / "video_examples" / "collateral" / "collateral-hqla-frontend-orchestration-demo.mp4",
 )
 MONEY_MARKET_VIDEO = (
     REPO_ROOT / "video_examples" / "money_market" / "money-market-pdf-policy-optimization-demo.mp4"
@@ -244,6 +252,10 @@ def _ffmpeg() -> str:
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
+    # Playwright ships its own ffmpeg (stripped build, VP8 only).
+    pw_ffmpeg = Path("/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux")
+    if pw_ffmpeg.exists():
+        return str(pw_ffmpeg)
     binary = shutil.which("ffmpeg")
     if binary:
         return binary
