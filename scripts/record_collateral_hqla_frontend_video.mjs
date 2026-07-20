@@ -131,7 +131,7 @@ async function main() {
     await page
       .locator(".production-runtime-toggle")
       .getByRole("button", { name: /^Production$/ })
-      .click();
+      .dispatchEvent("click");
     await caption(
       page,
       stage(
