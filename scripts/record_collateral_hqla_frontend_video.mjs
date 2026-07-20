@@ -404,6 +404,12 @@ async function installRecordingOverlays(page) {
         outline-offset: 4px !important;
         box-shadow: 0 0 0 9999px rgba(3, 7, 12, 0.14), 0 0 30px rgba(0, 200, 240, 0.26) !important;
       }
+      .sidebar {
+        display: none !important;
+      }
+      .workspace {
+        grid-template-columns: 1fr !important;
+      }
     `,
   });
   await page.evaluate(() => {

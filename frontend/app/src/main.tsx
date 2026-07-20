@@ -4800,6 +4800,9 @@ function CollateralHqlaAnalyticsPanel({
     collateralStep?.result.solver_metadata.domain_attachments,
   );
   const venueCounts = toRecord(collateralAttachments.obligation_venue_counts);
+  const lendingOpportunities = Array.isArray(collateralAttachments.lending_opportunities)
+    ? (collateralAttachments.lending_opportunities as Array<Record<string, unknown>>)
+    : [];
   const extractedFields = policyResult?.extracted_fields || [];
   const appliedCount = extractedFields.filter((field) => field.applied).length;
   const context = toRecord(selectedPreset.context);
@@ -4977,6 +4980,52 @@ function CollateralHqlaAnalyticsPanel({
             />
           </div>
         </div>
+
+        {(lendingOpportunities.length > 0 || afterRun) && (
+          <div className="lending-opportunity-card">
+            <div className="card-heading">
+              <strong>⚡ Lending opportunity alerts</strong>
+              <span className={lendingOpportunities.length > 0 ? "lending-badge-warn" : "lending-badge-ok"}>
+                {lendingOpportunities.length > 0
+                  ? `${lendingOpportunities.length} flagged`
+                  : afterRun ? "None detected" : "Pending run"}
+              </span>
+            </div>
+            {lendingOpportunities.length > 0 ? (
+              <>
+                <p className="lending-opportunity-intro">
+                  The optimizer detected high-demand securities-lending candidates being posted as
+                  collateral. Consider sourcing substitute collateral and lending these assets instead
+                  to capture the foregone revenue.
+                </p>
+                <div className="lending-opportunity-list">
+                  {lendingOpportunities.map((opp, idx) => (
+                    <div key={idx} className={`lending-opp-item lending-opp-${String(opp.severity)}`}>
+                      <div className="lending-opp-header">
+                        <span className="lending-opp-label">{String(opp.label)}</span>
+                        <span className="lending-opp-rate">{String(opp.lending_rate_bps)} bps lending rate</span>
+                      </div>
+                      <div className="lending-opp-stats">
+                        <span>Pledged: {formatCurrency(Number(opp.allocated_as_collateral_value))}</span>
+                        <span>Foregone: {formatCurrency(Number(opp.annual_revenue_foregone))}/yr</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : afterRun ? (
+              <p className="lending-opportunity-intro lending-ok-note">
+                No high-demand lending assets are being posted as collateral in this run. Optimal
+                allocation preserved high-rebate inventory for lending.
+              </p>
+            ) : (
+              <p className="lending-opportunity-intro">
+                Run the workflow to identify high-demand securities-lending candidates in your
+                collateral inventory.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
