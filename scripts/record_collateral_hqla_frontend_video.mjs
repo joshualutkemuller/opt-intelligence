@@ -482,14 +482,19 @@ async function panelFocus(page, headingText) {
 }
 
 async function ensureCollateralPathLoaded(page) {
+  // Click the Collateral button via DOM (sidebar may be hidden in recording mode).
   try {
-    await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 6000 });
-    return;
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll("button")).find(
+        (b) => /^Collateral$/i.test(b.textContent?.trim() ?? ""),
+      );
+      if (btn) btn.click();
+    });
   } catch {
-    // The video path button can be off-screen or covered in some browser captures.
+    // ignore if not present
   }
-  await clickByRoleMatch(page, "button", /^Collateral$/);
-  await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 12000 });
+  // Wait for the Schedule Intake element to exist in DOM regardless of visibility.
+  await page.waitForSelector("text=Schedule Intake", { timeout: 12000 });
 }
 
 async function clickByRole(page, role, name) {
