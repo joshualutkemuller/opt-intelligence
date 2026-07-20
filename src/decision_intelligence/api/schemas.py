@@ -276,3 +276,23 @@ class ConstraintNegotiationRequest(BaseModel):
 
 class ConstraintNegotiationResponse(BaseModel):
     negotiation: dict[str, Any]
+
+
+class SubstituteReoptimizeRequest(BaseModel):
+    workflow: str = "collateral_liquidity_review"
+    portfolio_id: str = "PORT_001"
+    seed: int = 42
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
+    excluded_asset_ids: list[str] = Field(default_factory=list)
+
+
+class SubstituteReoptimizeResponse(BaseModel):
+    original_objective: float
+    substitute_objective: float
+    objective_delta: float
+    original_lending_opportunities: list[dict[str, Any]]
+    remaining_lending_opportunities: list[dict[str, Any]]
+    substitute_result: dict[str, Any]
+    summary: str

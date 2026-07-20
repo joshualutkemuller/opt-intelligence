@@ -4792,6 +4792,10 @@ function CollateralHqlaAnalyticsPanel({
   policyApplied: boolean;
   selectedPreset: DemoPresetCatalogItem;
 }) {
+  const [substituteResult, setSubstituteResult] = React.useState<Record<string, unknown> | null>(null);
+  const [substituteLoading, setSubstituteLoading] = React.useState(false);
+  const [substituteError, setSubstituteError] = React.useState<string | null>(null);
+
   const collateralStep = workflowRun?.step_results.find((step) => step.domain === "collateral");
   const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
   const afterRun = Boolean(workflowRun);
@@ -5012,6 +5016,91 @@ function CollateralHqlaAnalyticsPanel({
                     </div>
                   ))}
                 </div>
+                <div className="lending-reoptimize-row">
+                  <button
+                    className="lending-reoptimize-btn"
+                    disabled={substituteLoading}
+                    onClick={() => {
+                      setSubstituteLoading(true);
+                      setSubstituteError(null);
+                      setSubstituteResult(null);
+                      const excludeIds = lendingOpportunities.map((o) => String(o.asset_id));
+                      const ctx = toRecord(selectedPreset.context);
+                      const collateralCtx = toRecord(ctx.collateral);
+                      fetch("/api/collateral/reoptimize-with-substitutes", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          workflow: selectedPreset.workflow_id ?? "collateral_liquidity_review",
+                          portfolio_id: selectedPreset.portfolio_id ?? "PORT_001",
+                          seed: selectedPreset.seed ?? 42,
+                          optimizer_runtime: "phase1",
+                          context: collateralCtx,
+                          excluded_asset_ids: excludeIds,
+                        }),
+                      })
+                        .then((r) => r.ok ? r.json() : r.json().then((e: unknown) => Promise.reject(e)))
+                        .then((data: unknown) => {
+                          setSubstituteResult(data as Record<string, unknown>);
+                        })
+                        .catch((err: unknown) => {
+                          const msg = err && typeof err === "object" && "detail" in err
+                            ? String((err as Record<string, unknown>).detail)
+                            : "Re-optimization failed.";
+                          setSubstituteError(msg);
+                        })
+                        .finally(() => setSubstituteLoading(false));
+                    }}
+                  >
+                    {substituteLoading ? "Re-optimizing…" : "⟳ Re-optimize with substitutes"}
+                  </button>
+                  <span className="lending-reoptimize-hint">
+                    Excludes {lendingOpportunities.length} flagged asset{lendingOpportunities.length !== 1 ? "s" : ""} — forces LP to find cheaper substitute collateral
+                  </span>
+                </div>
+                {substituteError && (
+                  <p className="lending-substitute-error">{substituteError}</p>
+                )}
+                {substituteResult && (
+                  <div className="lending-substitute-result">
+                    <div className="lending-substitute-summary">
+                      {String(substituteResult.summary)}
+                    </div>
+                    <div className="lending-substitute-metrics">
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Original cost</span>
+                        <span className="lending-sub-value">{formatCurrency(Number(substituteResult.original_objective))}</span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Substitute cost</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {formatCurrency(Number(substituteResult.substitute_objective))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Delta</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {Number(substituteResult.objective_delta) <= 0 ? "−" : "+"}
+                          {formatCurrency(Math.abs(Number(substituteResult.objective_delta)))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Conflicts resolved</span>
+                        <span className="lending-sub-value lending-sub-better">
+                          {(substituteResult.original_lending_opportunities as unknown[]).length - (substituteResult.remaining_lending_opportunities as unknown[]).length}
+                          {" "}of{" "}
+                          {(substituteResult.original_lending_opportunities as unknown[]).length}
+                        </span>
+                      </div>
+                    </div>
+                    {(substituteResult.remaining_lending_opportunities as unknown[]).length > 0 && (
+                      <p className="lending-substitute-remaining">
+                        {(substituteResult.remaining_lending_opportunities as unknown[]).length} conflict(s) remain — substitute assets also carry high lending rates.
+                        Consider running constraint negotiation or broadening eligible asset classes.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
             ) : afterRun ? (
               <p className="lending-opportunity-intro lending-ok-note">
