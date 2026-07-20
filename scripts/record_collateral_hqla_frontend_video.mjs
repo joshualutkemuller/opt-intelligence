@@ -494,7 +494,7 @@ async function ensureCollateralPathLoaded(page) {
     // ignore if not present
   }
   // Wait for the Schedule Intake element to exist in DOM regardless of visibility.
-  await page.waitForSelector("text=Schedule Intake", { timeout: 12000 });
+  await page.waitForSelector("text=Schedule Intake", { state: "attached", timeout: 12000 });
 }
 
 async function clickByRole(page, role, name) {
