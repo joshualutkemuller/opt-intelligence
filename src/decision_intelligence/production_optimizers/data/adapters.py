@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
 
+from decision_intelligence.data.quality import run_quality_checks
+
 from .contracts import DataSourceContract, DataSourceReport
 
 
@@ -66,6 +68,12 @@ class LocalCsvDataAdapter(ProductionDataAdapter):
             )
         if row_count == 0:
             blocking_issues.append(f"{contract.dataset} contained no data rows.")
+
+        if contract.quality_checks and has_header:
+            with path.open(newline="") as handle:
+                quality_rows = list(csv.DictReader(handle))
+            quality_report = run_quality_checks(quality_rows, contract.quality_checks, contract.dataset)
+            blocking_issues.extend(quality_report.blocking_issues)
 
         stale = _is_stale(path, contract)
         if stale:

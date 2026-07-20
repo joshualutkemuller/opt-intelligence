@@ -19,6 +19,7 @@ class DataSourceContract(BaseModel):
     owner: str = ""
     freshness_sla_hours: float | None = None
     snapshot_required: bool = True
+    quality_checks: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
