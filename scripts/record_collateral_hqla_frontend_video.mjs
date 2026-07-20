@@ -408,7 +408,11 @@ async function installRecordingOverlays(page) {
         box-shadow: 0 0 0 9999px rgba(3, 7, 12, 0.14), 0 0 30px rgba(0, 200, 240, 0.26) !important;
       }
       .sidebar {
-        display: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+        width: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
       }
       .workspace {
         grid-template-columns: 1fr !important;
@@ -499,28 +503,19 @@ async function ensureCollateralPathLoaded(page) {
 
 async function clickByRole(page, role, name) {
   const locator = page.getByRole(role, { name, exact: true }).first();
-  await locator.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
-  await locator.click();
+  await locator.click({ force: true });
 }
 
 async function clickByRoleMatch(page, role, name) {
   const locator = page.getByRole(role, { name }).first();
-  await locator.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
-  await locator.click();
+  await locator.click({ force: true });
 }
 
 async function clickButtonText(page, name) {
-  await page.evaluate((buttonName) => {
-    const button = Array.from(document.querySelectorAll("button")).find(
-      (node) => node.textContent?.trim() === buttonName,
-    );
-    if (!(button instanceof HTMLButtonElement)) {
-      throw new Error(`Button not found: ${buttonName}`);
-    }
-    button.click();
-  }, name);
+  const locator = page.getByRole("button", { name, exact: true }).first();
+  await locator.click({ force: true });
 }
 
 async function fillTextbox(page, label, value) {
