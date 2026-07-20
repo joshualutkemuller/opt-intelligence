@@ -105,7 +105,7 @@ def _render_title_clip(key: str, eyebrow: str, title: str, subtitle: str) -> Pat
     out_stream.width = WIDTH
     out_stream.height = HEIGHT
     out_stream.pix_fmt = "yuv420p"
-    out_stream.options = {"crf": "18", "preset": "fast"}
+    out_stream.options = {"crf": "18", "preset": "fast", "bf": "0"}
 
     for index in range(frame_count):
         progress = index / max(1, frame_count - 1)
@@ -186,7 +186,7 @@ def _compose(inputs: list[Path], output: Path) -> None:
     out_stream.width = WIDTH
     out_stream.height = HEIGHT
     out_stream.pix_fmt = "yuv420p"
-    out_stream.options = {"crf": "18", "preset": "fast"}
+    out_stream.options = {"crf": "18", "preset": "fast", "bf": "0"}
 
     frame_index = 0
     for src_path in inputs:
