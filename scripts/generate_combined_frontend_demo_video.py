@@ -22,8 +22,8 @@ def _codec_args() -> tuple[list[str], str]:
             return ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"], ".mp4"
     except Exception:
         pass
-    # Playwright's stripped ffmpeg supports libvpx_vp8 (not bare 'libvpx').
-    return ["-c:v", "libvpx_vp8", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
+    # Playwright's stripped ffmpeg registers the VP8 encoder as 'libvpx'.
+    return ["-c:v", "libvpx", "-b:v", "2M", "-pix_fmt", "yuv420p"], ".webm"
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -115,30 +115,30 @@ def _render_title_clip(
     output = TMP_DIR / f"{key}{ext}"
     ffmpeg = _ffmpeg()
     # Use image2pipe so we don't need the image2 file demuxer (absent in stripped builds).
-    proc = subprocess.Popen(
+    # Collect all frames as JPEG bytes (MJPEG, readable by stripped ffmpeg builds).
+    all_frame_bytes = bytearray()
+    for index in range(frame_count):
+        progress = index / max(1, frame_count - 1)
+        frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
+        buf = io.BytesIO()
+        frame.save(buf, format="JPEG", quality=92)
+        all_frame_bytes.extend(buf.getvalue())
+
+    result = subprocess.run(
         [
             ffmpeg, "-y",
-            "-f", "image2pipe", "-vcodec", "png", "-framerate", str(FPS),
+            "-f", "image2pipe", "-vcodec", "mjpeg", "-framerate", str(FPS),
             "-i", "pipe:0",
             "-r", str(FPS),
             *codec_flags,
             str(output),
         ],
-        stdin=subprocess.PIPE,
+        input=bytes(all_frame_bytes),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    assert proc.stdin is not None
-    for index in range(frame_count):
-        progress = index / max(1, frame_count - 1)
-        frame = _draw_title_frame(eyebrow, title, subtitle, progress, fonts)
-        buf = io.BytesIO()
-        frame.save(buf, format="PNG")
-        proc.stdin.write(buf.getvalue())
-    proc.stdin.close()
-    ret = proc.wait()
-    if ret != 0:
-        raise subprocess.CalledProcessError(ret, "ffmpeg (title clip)")
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, "ffmpeg (title clip)")
     return output
 
 
