@@ -16,7 +16,7 @@ const tmpDir = path.join(repoRoot, "tmp", "video", "frontend-collateral-hqla");
 const apiUrl = "http://127.0.0.1:8000";
 const uiUrl = "http://127.0.0.1:5173";
 const outputPath = path.join(outDir, "collateral-hqla-frontend-orchestration-demo.mp4");
-const targetSeconds = 102;
+const targetSeconds = 115;
 
 const sleeps = {
   opening: 4000,
@@ -26,7 +26,7 @@ const sleeps = {
   run: 8000,
 };
 
-const totalStages = 11;
+const totalStages = 12;
 
 function stage(number, title, body, action) {
   return { number, total: totalStages, title, body, action };
@@ -236,11 +236,23 @@ async function main() {
     );
     await page.waitForTimeout(sleeps.long);
 
-    await panelFocus(page, "Document-To-Constraint Traceability");
+    await panelFocus(page, "Collateral HQLA Analytics");
     await caption(
       page,
       stage(
         11,
+        "Lending Opportunity Detection",
+        "Assets allocated as collateral with a funding cost ≥ 60 bps are flagged as foregone securities-lending revenue. High-severity items (≥ 90 bps) appear in red — substitute cheaper collateral and lend these assets instead.",
+        "Review flagged assets stripped from collateral and identified as lending candidates",
+      ),
+    );
+    await page.waitForTimeout(sleeps.long);
+
+    await panelFocus(page, "Document-To-Constraint Traceability");
+    await caption(
+      page,
+      stage(
+        12,
         "Trace Document Text To Constraints",
         "Each applied schedule field is mapped to a validated input, constraint family, and optimizer step for audit review.",
         "Connect evidence snippets to optimizer controls",
@@ -252,7 +264,7 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
+        12,
         "Close With Evidence",
         "The evidence room brings together document extraction, model versions, solver metadata, validation, governance, and workflow trace.",
         "Prepare the run for stakeholder review",
@@ -264,7 +276,7 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
+        12,
         "Governance Stays In The Loop",
         "The demo remains a recommendation unless approval tiers, materiality thresholds, and policy-change controls allow further action.",
         "Review approval tier and materiality settings",
@@ -278,9 +290,9 @@ async function main() {
       await caption(
         page,
         stage(
-          11,
+          12,
           "Presentation-Ready Proof",
-          "The clip shows schedule ingestion, LLM-assisted explanation, deterministic optimization, HQLA analytics, and governance evidence in one flow.",
+          "The clip shows schedule ingestion, LLM-assisted explanation, deterministic optimization, HQLA analytics, lending opportunity detection, and governance evidence in one flow.",
           "End of collateral HQLA orchestration demo",
         ),
       );

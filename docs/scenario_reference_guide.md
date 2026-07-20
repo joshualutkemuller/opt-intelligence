@@ -29,7 +29,7 @@ workflow and summarises the steps the audience is about to see.
 | Segment | Duration | Content |
 |---|---|---|
 | Title card — Example #1 | 2 s | "Collateral Management" |
-| Example #1: Collateral HQLA | ~102 s | Live browser recording |
+| Example #1: Collateral HQLA | ~115 s | Live browser recording — 12 stages including lending opportunity detection |
 | Title card — Example #2 | 2 s | "Money Market Optimization" |
 | Example #2: Money Market PDF | ~104 s | Live browser recording |
 
@@ -85,13 +85,27 @@ demonstrates the following stages in sequence.
    stats; and binding constraint summary. A second scenario can be loaded for
    side-by-side comparison.
 
-7. **Lending Opportunity Detection**
-   Assets allocated as collateral that carry a funding cost of ≥ 60 bps are
-   flagged as foregone securities-lending opportunities. The panel shows each
-   flagged asset with its lending rate, estimated annual revenue foregone, and
-   severity (high ≥ 90 bps, medium 60–89 bps). The intent is to surface cases
-   where posting an asset as collateral costs more than the margin obligation it
-   satisfies — prompting the operator to consider a cheaper substitute.
+7. **Lending Opportunity Detection** *(live in video)*
+   Immediately after the HQLA analytics, the platform surfaces a
+   **"⚡ Lending opportunity alerts"** card within the Collateral HQLA Analytics
+   panel. The optimizer has already solved for the optimal collateral allocation;
+   this step then inspects the allocated assets and flags any with a funding cost
+   of ≥ 60 bps as candidates that would generate more value as securities-lending
+   inventory than as posted collateral.
+
+   Each flagged asset is displayed with:
+   - Asset label and class
+   - Lending rate in basis points
+   - Estimated annual revenue foregone by posting it as collateral
+   - Severity badge — **high** (≥ 90 bps, shown in red) or **medium** (60–89 bps,
+     shown in amber)
+
+   The card prompts the operator to source a cheaper substitute asset and free
+   these high-rebate positions for lending. If the optimizer detects no such
+   conflict, the card shows a green "none detected" confirmation instead.
+
+   This stage is the direct result of adding lending opportunity detection to the
+   collateral optimizer (`collateral_001`) and surfacing it in the analytics panel.
 
 8. **Traceability and Governance**
    A traceability panel links every recommendation to the source constraint,
