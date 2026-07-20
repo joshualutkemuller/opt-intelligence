@@ -209,38 +209,32 @@ def _compose(inputs: list[Path], output: Path, codec_flags: list[str], ext: str)
     import av  # type: ignore[import]
 
     use_h264 = "-c:v" in codec_flags and "libx264" in codec_flags
-    codec_name = "h264" if use_h264 else "libvpx"
+    codec_name = "libx264" if use_h264 else "libvpx"
     out_container = av.open(str(output), "w")
-    out_stream: av.VideoStream | None = None
-    pts_offset = 0
+    out_stream = out_container.add_stream(codec_name, rate=FPS)
+    assert isinstance(out_stream, av.VideoStream)
+    out_stream.width = WIDTH
+    out_stream.height = HEIGHT
+    out_stream.pix_fmt = "yuv420p"
+    if not use_h264:
+        out_stream.options = {"b": "2M"}
 
+    frame_index = 0
     for src_path in inputs:
         in_container = av.open(str(src_path))
         in_stream = next(s for s in in_container.streams if s.type == "video")
         in_stream.thread_type = "AUTO"
-
-        if out_stream is None:
-            out_stream = out_container.add_stream(codec_name, rate=FPS)
-            out_stream.width = WIDTH
-            out_stream.height = HEIGHT
-            out_stream.pix_fmt = "yuv420p"
-            if not use_h264:
-                out_stream.options = {"b": "2M"}
-
-        last_pts = 0
-        for frame in in_container.decode(in_stream):
-            frame = frame.reformat(WIDTH, HEIGHT, "yuv420p")
-            frame.pts = pts_offset + (frame.pts or 0)
-            last_pts = frame.pts
+        for raw_frame in in_container.decode(in_stream):
+            frame = raw_frame.reformat(WIDTH, HEIGHT, "yuv420p")
+            frame.pts = frame_index
+            frame.time_base = out_stream.codec_context.time_base
             for packet in out_stream.encode(frame):
                 out_container.mux(packet)
-
-        pts_offset = last_pts + 1
+            frame_index += 1
         in_container.close()
 
-    if out_stream is not None:
-        for packet in out_stream.encode():
-            out_container.mux(packet)
+    for packet in out_stream.encode():
+        out_container.mux(packet)
     out_container.close()
 
 
