@@ -63,6 +63,8 @@ from .schemas import (
     AuditNarrativeResponse,
     ChatMessageRequest,
     ChatSessionResponse,
+    ConstraintApprovalRequest,
+    ConstraintApprovalResponse,
     ConstraintNegotiationRequest,
     ConstraintNegotiationResponse,
     CreateChatSessionRequest,
@@ -732,6 +734,64 @@ def negotiate_result_constraints(
         max_proposals=payload.max_proposals,
     )
     return ConstraintNegotiationResponse(negotiation=_json(negotiation))
+
+
+_TIER_APPROVER_ROLES: dict[int, str] = {
+    0: "No approval required",
+    1: "No approval required",
+    2: "No approval required (recommendation tier)",
+    3: "Domain Head or Risk Analyst",
+    4: "Senior Funding MD or equivalent",
+    5: "CRO / CCO (production constraint change)",
+}
+
+
+@app.post("/api/constraints/negotiate/approve", response_model=ConstraintApprovalResponse)
+def initiate_constraint_approval(
+    payload: ConstraintApprovalRequest,
+) -> ConstraintApprovalResponse:
+    """Register a constraint relaxation proposal as a pending approval request."""
+    import hashlib
+
+    tier = payload.governance_tier
+    required_role = _TIER_APPROVER_ROLES.get(tier, f"Tier {tier} approver")
+
+    fingerprint_parts = "|".join([
+        payload.domain,
+        payload.portfolio_id,
+        payload.parameter,
+        payload.proposed_change,
+        str(tier),
+    ])
+    fingerprint = hashlib.sha256(fingerprint_parts.encode()).hexdigest()[:16]
+    approval_id = _APPROVAL_STORE.approval_id(fingerprint)
+
+    _APPROVAL_AUDIT.record(
+        "constraint_relaxation_approval_initiated",
+        f"constraint-{fingerprint}",
+        {
+            "domain": payload.domain,
+            "parameter": payload.parameter,
+            "proposed_change": payload.proposed_change,
+            "governance_tier": tier,
+            "estimated_impact": payload.estimated_impact,
+            "estimated_impact_units": payload.estimated_impact_units,
+            "requestor": payload.requestor,
+            "approval_id": approval_id,
+        },
+    )
+
+    return ConstraintApprovalResponse(
+        approval_id=approval_id,
+        governance_tier=tier,
+        required_approver_role=required_role,
+        status="pending",
+        message=(
+            f"Approval request registered as {approval_id}. "
+            f"This change requires {required_role} sign-off. "
+            f"Submit a decision via POST /api/approvals/decisions with this approval_id."
+        ),
+    )
 
 
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:

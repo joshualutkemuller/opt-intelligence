@@ -8041,6 +8041,191 @@ function CrossDomainOptimizationPanel({ workflowRun }: { workflowRun: WorkflowRu
   );
 }
 
+type ConstraintApprovalState =
+  | { phase: "idle" }
+  | { phase: "submitting" }
+  | { phase: "pending"; approvalId: string; requiredRole: string; message: string }
+  | { phase: "approving" }
+  | { phase: "decided"; granted: boolean; approver: string }
+  | { phase: "error"; message: string };
+
+const TIER_APPROVER_ROLES: Record<number, string> = {
+  0: "No approval required",
+  1: "No approval required",
+  2: "No approval required",
+  3: "Domain Head or Risk Analyst",
+  4: "Senior Funding MD",
+  5: "CRO / CCO",
+};
+
+function ProposalCard({
+  proposal,
+  domain,
+  portfolioId,
+}: {
+  proposal: ConstraintRelaxationProposal;
+  domain: string;
+  portfolioId: string;
+}) {
+  const [approval, setApproval] = React.useState<ConstraintApprovalState>({ phase: "idle" });
+  const [approver, setApprover] = React.useState("demo.approver");
+  const needsApproval = proposal.governance_tier >= 3;
+
+  async function initiateApproval() {
+    setApproval({ phase: "submitting" });
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain,
+          parameter: proposal.parameter,
+          proposed_change: proposal.proposed_change,
+          governance_tier: proposal.governance_tier,
+          governance_reason: proposal.governance_reason,
+          estimated_impact: proposal.estimated_impact,
+          estimated_impact_units: proposal.estimated_impact_units,
+          portfolio_id: portfolioId,
+          requestor: "demo.trader",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = (await res.json()) as {
+        approval_id: string;
+        required_approver_role: string;
+        message: string;
+      };
+      setApproval({
+        phase: "pending",
+        approvalId: data.approval_id,
+        requiredRole: data.required_approver_role,
+        message: data.message,
+      });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  async function submitDecision(granted: boolean) {
+    if (approval.phase !== "pending") return;
+    const { approvalId } = approval;
+    setApproval({ phase: "approving" });
+    try {
+      const res = await fetch(`${API_BASE}/api/approvals/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approval_id: approvalId,
+          approver,
+          granted,
+          reason: granted
+            ? `Approved: ${proposal.proposed_change}`
+            : "Rejected by approver.",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setApproval({ phase: "decided", granted, approver });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  return (
+    <div className={`proposal-card ${approval.phase === "decided" && approval.granted ? "proposal-card--approved" : approval.phase === "decided" ? "proposal-card--rejected" : ""}`}>
+      <div className="proposal-card-header">
+        <strong className="proposal-parameter">
+          {titleCase(proposal.parameter.replaceAll("_", " "))}
+        </strong>
+        <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+          {tierLabel(proposal.governance_tier)}
+        </span>
+      </div>
+      <p className="proposal-change">{proposal.proposed_change}</p>
+      <div className="proposal-meta">
+        <span className="proposal-impact">
+          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+        </span>
+        <span className="proposal-confidence">
+          {Math.round(proposal.confidence * 100)}% confidence
+        </span>
+      </div>
+      <p className="proposal-rationale">{proposal.rationale}</p>
+
+      {needsApproval && (
+        <div className="proposal-governance">
+          <div className="proposal-governance-header">
+            <span className="proposal-governance-role">
+              Required: {TIER_APPROVER_ROLES[proposal.governance_tier] ?? `Tier ${proposal.governance_tier} approver`}
+            </span>
+            {approval.phase === "idle" && (
+              <button className="secondary-button proposal-approve-btn" type="button" onClick={() => void initiateApproval()}>
+                Request approval
+              </button>
+            )}
+            {approval.phase === "decided" && (
+              <span className={`status-chip ${approval.granted ? "status-optimal" : "status-block"}`}>
+                {approval.granted ? `Approved by ${approval.approver}` : `Rejected by ${approval.approver}`}
+              </span>
+            )}
+          </div>
+          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+
+          {approval.phase === "submitting" && (
+            <p className="proposal-approval-status">Registering approval request…</p>
+          )}
+          {approval.phase === "approving" && (
+            <p className="proposal-approval-status">Submitting decision…</p>
+          )}
+          {approval.phase === "error" && (
+            <p className="proposal-approval-error">Error: {approval.message}</p>
+          )}
+          {approval.phase === "pending" && (
+            <div className="proposal-approval-flow">
+              <div className="proposal-approval-id">
+                <span className="proposal-approval-id-label">Approval ID</span>
+                <code className="proposal-approval-id-value">{approval.approvalId}</code>
+              </div>
+              <p className="proposal-approval-role-note">
+                Required approver: <strong>{approval.requiredRole}</strong>
+              </p>
+              <div className="proposal-approval-actions">
+                <input
+                  className="negotiation-input proposal-approver-input"
+                  value={approver}
+                  onChange={(e) => setApprover(e.target.value)}
+                  placeholder="Approver name"
+                  aria-label="Approver name"
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void submitDecision(true)}
+                  disabled={!approver.trim()}
+                >
+                  Approve
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void submitDecision(false)}
+                  disabled={!approver.trim()}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!needsApproval && (
+        <p className="proposal-governance-reason proposal-no-gate">
+          {proposal.governance_reason} — no formal gate required at this tier.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
   const [activeStep, setActiveStep] = React.useState<number | null>(null);
   const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
@@ -8159,27 +8344,12 @@ function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: Work
                   {validProposals.length > 0 ? (
                     <div className="proposal-stack">
                       {validProposals.map((proposal, i) => (
-                        <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
-                          <div className="proposal-card-header">
-                            <strong className="proposal-parameter">
-                              {titleCase(proposal.parameter.replaceAll("_", " "))}
-                            </strong>
-                            <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
-                              {tierLabel(proposal.governance_tier)}
-                            </span>
-                          </div>
-                          <p className="proposal-change">{proposal.proposed_change}</p>
-                          <div className="proposal-meta">
-                            <span className="proposal-impact">
-                              ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
-                            </span>
-                            <span className="proposal-confidence">
-                              {Math.round(proposal.confidence * 100)}% confidence
-                            </span>
-                          </div>
-                          <p className="proposal-rationale">{proposal.rationale}</p>
-                          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
-                        </div>
+                        <ProposalCard
+                          key={`${proposal.parameter}-${i}`}
+                          proposal={proposal}
+                          domain={step.domain}
+                          portfolioId="PORT_001"
+                        />
                       ))}
                     </div>
                   ) : (
