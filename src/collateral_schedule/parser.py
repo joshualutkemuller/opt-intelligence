@@ -8,7 +8,7 @@ import io
 import re
 from typing import Any
 
-from .models import COLUMN_ALIASES, normalize_asset_class, normalize_eligible
+from .models import COLUMN_ALIASES, normalize_asset_class, normalize_eligible, normalize_rating
 
 
 def _resolve_header(raw: str) -> str | None:
@@ -61,6 +61,10 @@ def _rows_to_entries(
                     entry[canonical] = val
             elif canonical == "eligible":
                 entry["eligible"] = _parse_bool_eligible(raw)
+            elif canonical == "rating_floor":
+                stripped = str(raw).strip() if raw is not None else None
+                if stripped:
+                    entry["rating_floor"] = normalize_rating(stripped)
             else:
                 stripped = str(raw).strip() if raw is not None else None
                 if stripped:
