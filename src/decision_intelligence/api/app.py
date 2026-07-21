@@ -105,15 +105,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import pathlib as _pathlib
+
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
-_NARRATIVE_STORE: dict[str, dict[str, Any]] = {}  # workflow_id → AuditNarrative dict
 _DRIFT_MONITOR = DriftMonitor()
 _GOVERNANCE_ORCHESTRATOR = GovernanceOrchestrator(
     store=_APPROVAL_STORE,
     audit=_APPROVAL_AUDIT,
 )
+
+# Narrative store — in-memory with disk backing so exports survive API restarts.
+_NARRATIVE_DIR = _pathlib.Path.home() / ".decision_intelligence" / "narratives"
+_NARRATIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_narrative_store() -> dict[str, dict[str, Any]]:
+    store: dict[str, dict[str, Any]] = {}
+    for path in _NARRATIVE_DIR.glob("*.json"):
+        try:
+            store[path.stem] = json.loads(path.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    return store
+
+
+_NARRATIVE_STORE: dict[str, dict[str, Any]] = _load_narrative_store()
 
 
 @app.get("/api/health")
@@ -564,6 +582,14 @@ def export_workflow_evidence(
         or payload.payload.get("workflow")
     )
     audit_narrative = _NARRATIVE_STORE.get(wf_id) if wf_id else None
+    if audit_narrative is None:
+        # Generate on-the-fly so a cold export still produces a complete PDF.
+        _persist_narrative(
+            workflow_id=wf_id or "export",
+            response=payload.response,
+            payload=payload.payload,
+        )
+        audit_narrative = _NARRATIVE_STORE.get(wf_id or "export")
     packet = build_workflow_evidence_packet(
         response=payload.response,
         payload=payload.payload,
@@ -917,7 +943,11 @@ def _persist_narrative(
             response=response,
             payload=payload,
         )
-        _NARRATIVE_STORE[workflow_id] = _json(narrative)
+        narrative_dict = _json(narrative)
+        _NARRATIVE_STORE[workflow_id] = narrative_dict
+        (_NARRATIVE_DIR / f"{workflow_id}.json").write_text(
+            json.dumps(narrative_dict, indent=2)
+        )
     except Exception:  # noqa: BLE001 — narrative is best-effort; never block the run
         pass
 
