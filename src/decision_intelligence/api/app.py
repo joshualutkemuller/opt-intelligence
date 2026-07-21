@@ -191,6 +191,10 @@ def send_chat_message(
         orchestrator, _audit = _build_orchestrator()
         workflow_run = SequentialWorkflowRunner(orchestrator).run(patched_plan)
         workflow_result = _json(workflow_run)
+        _persist_narrative(
+            workflow_id=patched_plan.workflow_id,
+            response={"plan": _json(patched_plan), "result": workflow_result},
+        )
         final_step = workflow_run.step_results[-1] if workflow_run.step_results else None
         if final_step is not None:
             result = _json(final_step.result)
@@ -653,7 +657,14 @@ def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeRe
         or payload.payload.get("workflow") if payload.payload else None
     )
     if wf_id:
+        _persist_narrative(
+            workflow_id=str(wf_id),
+            response=payload.response,
+            payload=payload.payload,
+        )
+        # Use the (possibly LLM-polished) narrative rather than re-generating.
         _NARRATIVE_STORE[str(wf_id)] = _json(narrative)
+        (_NARRATIVE_DIR / f"{wf_id}.json").write_text(json.dumps(_json(narrative), indent=2))
     return AuditNarrativeResponse(narrative=_json(narrative))
 
 
