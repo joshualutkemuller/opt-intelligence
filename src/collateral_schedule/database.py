@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS collateral_entries (
     source_row             INTEGER,
     created_at             TEXT NOT NULL,
     schedule_version       INTEGER NOT NULL DEFAULT 1,
-    superseded_at          TEXT
+    superseded_at          TEXT,
+    isin_invalid           TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_entries_agreement ON collateral_entries(agreement_id);
@@ -66,6 +67,7 @@ _MIGRATIONS = [
     "ALTER TABLE collateral_entries ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE collateral_entries ADD COLUMN superseded_at TEXT",
     "CREATE INDEX IF NOT EXISTS idx_entries_live ON collateral_entries(agreement_id, superseded_at)",
+    "ALTER TABLE collateral_entries ADD COLUMN isin_invalid TEXT",
 ]
 
 
@@ -259,8 +261,8 @@ class CollateralDatabase:
                     "INSERT INTO collateral_entries "
                     "(id, agreement_id, asset_class, isin, currency, rating_floor, "
                     " max_maturity_years, haircut_pct, concentration_limit_pct, "
-                    " eligible, notes, source_row, created_at, schedule_version) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " eligible, notes, source_row, created_at, schedule_version, isin_invalid) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         f"ce_{uuid.uuid4().hex[:12]}",
                         agreement_id,
@@ -276,6 +278,7 @@ class CollateralDatabase:
                         entry.get("source_row", i + 1),
                         now,
                         version,
+                        entry.get("isin_invalid"),
                     ),
                 )
         return len(entries)

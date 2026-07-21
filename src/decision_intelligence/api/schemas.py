@@ -360,6 +360,7 @@ class CollateralScheduleIngestResponse(BaseModel):
     entries_inserted: int
     replaced: bool
     summary: dict[str, Any]
+    isin_warnings: list[dict[str, Any]] = []
 
 
 class CollateralEntryResponse(BaseModel):

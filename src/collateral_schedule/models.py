@@ -179,6 +179,53 @@ def normalize_rating(raw: str) -> str:
     return raw.strip().upper()
 
 
+def validate_isin(isin: str) -> tuple[bool, str]:
+    """Validate an ISIN using the ISO 6166 Luhn-mod-10 checksum.
+
+    Returns ``(True, "")`` for a valid ISIN, or ``(False, reason)`` for an
+    invalid one.  CUSIPs (9-char) are accepted and treated as valid identifiers
+    even though they don't follow ISIN structure.
+    """
+    if not isin or not isinstance(isin, str):
+        return False, "empty"
+    raw = isin.strip().upper()
+
+    # CUSIP: 9 alphanumeric characters — no ISIN checksum, accept as-is
+    if len(raw) == 9 and raw.isalnum():
+        return True, ""
+
+    if len(raw) != 12:
+        return False, f"wrong length ({len(raw)}, expected 12)"
+
+    if not raw[:2].isalpha():
+        return False, "first two characters must be alphabetic country code"
+
+    if not raw[2:].isalnum():
+        return False, "characters 3-12 must be alphanumeric"
+
+    # Convert each character to digits: A=10, B=11, …, Z=35
+    digits: list[int] = []
+    for ch in raw:
+        if ch.isdigit():
+            digits.append(int(ch))
+        else:
+            val = ord(ch) - ord("A") + 10
+            digits.extend(divmod(val, 10))
+
+    # Luhn mod-10 over the expanded digit string
+    total = 0
+    for i, d in enumerate(reversed(digits)):
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+
+    if total % 10 != 0:
+        return False, "checksum failed"
+    return True, ""
+
+
 def normalize_eligible(raw: Any) -> bool:
     if isinstance(raw, bool):
         return raw

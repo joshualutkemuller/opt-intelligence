@@ -575,6 +575,12 @@ def ingest_collateral_schedule(
             ),
         )
 
+    isin_warnings = [
+        {"source_row": e.get("source_row"), "isin": e["isin"], "reason": e["isin_invalid"]}
+        for e in entries
+        if e.get("isin_invalid")
+    ]
+
     count = _COLLATERAL_DB.insert_entries(
         agreement_id=agreement_id,
         entries=entries,
@@ -586,6 +592,7 @@ def ingest_collateral_schedule(
         entries_inserted=count,
         replaced=payload.replace,
         summary=summary,
+        isin_warnings=isin_warnings,
     )
 
 
