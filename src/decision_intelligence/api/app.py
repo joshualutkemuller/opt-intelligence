@@ -12,7 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
 from decision_intelligence.agents import negotiate_constraints
-from decision_intelligence.collateral import CollateralDatabase, parse_schedule
+from collateral_schedule import CollateralDatabase, parse_schedule
 from decision_intelligence.chat import ChatSession
 from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
