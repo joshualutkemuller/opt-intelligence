@@ -1700,6 +1700,9 @@ function App() {
     objective_value?: number;
     error?: string;
   }>>({});
+  const [approverRegistry, setApproverRegistry] = useState<Array<{
+    id: string; name: string; role: string; max_tier: number;
+  }>>([]);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -1778,6 +1781,7 @@ function App() {
     void loadDemoPresets();
     void loadDemoDataPackets();
     void loadProductionOptimizers();
+    void loadApproverRegistry();
   }, []);
 
   useEffect(() => {
@@ -1862,6 +1866,15 @@ function App() {
         },
       ]);
     }
+  }
+
+  async function loadApproverRegistry() {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/api/approvers`, { method: "GET" }, 5000);
+      if (!res.ok) return;
+      const data = await res.json() as { approvers: Array<{ id: string; name: string; role: string; max_tier: number }> };
+      if (data.approvers?.length) setApproverRegistry(data.approvers);
+    } catch { /* non-critical */ }
   }
 
   async function loadWorkflowCatalog() {
@@ -3408,7 +3421,7 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
-          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} />
+          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} approverRegistry={approverRegistry} />
 
           <CrossDomainOptimizationPanel workflowRun={workflowRun} />
 
@@ -3429,6 +3442,7 @@ function App() {
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
             inputValues={workflowInputValues}
+            approverRegistry={approverRegistry}
             onDecision={submitApprovalDecisions}
             onRerun={runSequentialWorkflow}
             disabled={isWorkflowRunning}
@@ -6973,10 +6987,57 @@ function DriftAlertBanner({
   );
 }
 
+function ApproverSelect({
+  value,
+  onChange,
+  registry,
+  requiredTier,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  registry: Array<{ id: string; name: string; role: string; max_tier: number }>;
+  requiredTier: number;
+  disabled?: boolean;
+}) {
+  if (!registry.length) {
+    // Fallback to plain text while registry loads
+    return (
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Approver ID"
+        disabled={disabled}
+        aria-label="Approver"
+      />
+    );
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      aria-label="Approver"
+      className="approver-select"
+    >
+      <option value="">— Select approver —</option>
+      {registry.map((a) => {
+        const eligible = a.max_tier >= requiredTier;
+        return (
+          <option key={a.id} value={a.id} disabled={!eligible}>
+            {a.name} ({a.role}){!eligible ? ` — insufficient authority (tier ${a.max_tier} < ${requiredTier})` : ""}
+          </option>
+        );
+      })}
+    </select>
+  );
+}
+
 function GovernanceReviewPanel({
   workflowRun,
   selectedWorkflow,
   inputValues,
+  approverRegistry,
   onDecision,
   onRerun,
   disabled,
@@ -6984,6 +7045,7 @@ function GovernanceReviewPanel({
   workflowRun: WorkflowRunResult | null;
   selectedWorkflow: WorkflowCatalogItem;
   inputValues: Record<string, string>;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
   onDecision: (
     approvalIds: string[],
     granted: boolean,
@@ -6993,12 +7055,13 @@ function GovernanceReviewPanel({
   onRerun: () => void;
   disabled: boolean;
 }) {
-  const [approver, setApprover] = useState("demo.approver");
+  const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("Reviewed materiality and controls.");
   const [orchRouting, setOrchRouting] = useState<Record<string, unknown> | null>(null);
   const [orchAdvancing, setOrchAdvancing] = useState(false);
 
   const governance = highestGovernanceRecord(workflowRun);
+  const requiredTier = governance?.tier ?? (inputValues["governance.production_constraint_change"] === "true" ? 5 : 0);
   const pendingRecords = pendingGovernanceRecords(workflowRun);
   const pendingApprovalIds = pendingRecords.flatMap((record) =>
     record.approval_id ? [record.approval_id] : [],
@@ -7133,7 +7196,13 @@ function GovernanceReviewPanel({
               <div className="approval-decision-fields">
                 <label>
                   <span>Approver</span>
-                  <input value={approver} onChange={(e) => setApprover(e.target.value)} disabled={orchAdvancing} aria-label="Approver name" />
+                  <ApproverSelect
+                    value={approver}
+                    onChange={setApprover}
+                    registry={approverRegistry}
+                    requiredTier={Number(orchRouting.tier ?? requiredTier)}
+                    disabled={orchAdvancing}
+                  />
                 </label>
                 <label>
                   <span>Reason</span>
@@ -7154,11 +7223,12 @@ function GovernanceReviewPanel({
           <div className="approval-decision-fields">
             <label>
               <span>Approver</span>
-              <input
+              <ApproverSelect
                 value={approver}
-                onChange={(event) => setApprover(event.target.value)}
+                onChange={setApprover}
+                registry={approverRegistry}
+                requiredTier={requiredTier}
                 disabled={disabled || pendingApprovalIds.length === 0}
-                aria-label="Approver name"
               />
             </label>
             <label>
@@ -8152,13 +8222,15 @@ function ProposalCard({
   proposal,
   domain,
   portfolioId,
+  approverRegistry,
 }: {
   proposal: ConstraintRelaxationProposal;
   domain: string;
   portfolioId: string;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
 }) {
   const [approval, setApproval] = React.useState<ConstraintApprovalState>({ phase: "idle" });
-  const [approver, setApprover] = React.useState("demo.approver");
+  const [approver, setApprover] = React.useState("");
   const needsApproval = proposal.governance_tier >= 3;
 
   async function initiateApproval() {
@@ -8279,12 +8351,11 @@ function ProposalCard({
                 Required approver: <strong>{approval.requiredRole}</strong>
               </p>
               <div className="proposal-approval-actions">
-                <input
-                  className="negotiation-input proposal-approver-input"
+                <ApproverSelect
                   value={approver}
-                  onChange={(e) => setApprover(e.target.value)}
-                  placeholder="Approver name"
-                  aria-label="Approver name"
+                  onChange={setApprover}
+                  registry={approverRegistry}
+                  requiredTier={proposal.governance_tier}
                 />
                 <button
                   className="primary-button"
@@ -8316,7 +8387,7 @@ function ProposalCard({
   );
 }
 
-function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+function WorkflowConstraintNegotiationPanel({ workflowRun, approverRegistry }: { workflowRun: WorkflowRunResult | null; approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }> }) {
   const [activeStep, setActiveStep] = React.useState<number | null>(null);
   const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
   const [negotiating, setNegotiating] = React.useState<number | null>(null);
@@ -8439,6 +8510,7 @@ function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: Work
                           proposal={proposal}
                           domain={step.domain}
                           portfolioId="PORT_001"
+                          approverRegistry={approverRegistry}
                         />
                       ))}
                     </div>

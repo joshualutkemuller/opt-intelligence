@@ -110,6 +110,45 @@ import pathlib as _pathlib
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
+
+# Approver registry: maps approver_id → {name, role, max_tier}.
+# max_tier is the highest governance tier this approver is authorized to approve.
+_APPROVER_REGISTRY: dict[str, dict[str, Any]] = {
+    "analyst.risk": {
+        "id": "analyst.risk",
+        "name": "Alex Chen",
+        "role": "Risk Analyst",
+        "max_tier": 3,
+    },
+    "head.domain": {
+        "id": "head.domain",
+        "name": "Morgan Davis",
+        "role": "Domain Head",
+        "max_tier": 3,
+    },
+    "md.funding": {
+        "id": "md.funding",
+        "name": "Jordan Lee",
+        "role": "Senior Funding MD",
+        "max_tier": 4,
+    },
+    "cro": {
+        "id": "cro",
+        "name": "Sam Rivera",
+        "role": "Chief Risk Officer",
+        "max_tier": 5,
+    },
+    "cco": {
+        "id": "cco",
+        "name": "Taylor Kim",
+        "role": "Chief Compliance Officer",
+        "max_tier": 5,
+    },
+}
+
+# approval_id → governance tier, populated when an approval is registered
+# so that submit_approval_decision can validate tier authority.
+_APPROVAL_TIER_MAP: dict[str, int] = {}
 _DRIFT_MONITOR = DriftMonitor()
 _GOVERNANCE_ORCHESTRATOR = GovernanceOrchestrator(
     store=_APPROVAL_STORE,
@@ -510,6 +549,12 @@ def reoptimize_with_substitutes(payload: SubstituteReoptimizeRequest) -> Substit
     )
 
 
+@app.get("/api/approvers")
+def list_approvers() -> dict[str, Any]:
+    """Return the registered approver roster with their tier authority."""
+    return {"approvers": list(_APPROVER_REGISTRY.values())}
+
+
 @app.get("/api/approvals/pending", response_model=PendingApprovalsResponse)
 def list_pending_approvals() -> PendingApprovalsResponse:
     return PendingApprovalsResponse(approvals=_pending_approval_items())
@@ -519,8 +564,33 @@ def list_pending_approvals() -> PendingApprovalsResponse:
 def submit_approval_decision(
     payload: ApprovalDecisionRequest,
 ) -> ApprovalDecisionResponse:
-    if not payload.approver.strip():
+    approver_id = payload.approver.strip()
+    if not approver_id:
         raise HTTPException(status_code=400, detail="Approver is required.")
+
+    approver_rec = _APPROVER_REGISTRY.get(approver_id)
+    if approver_rec is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Approver '{approver_id}' is not in the registered approver list. "
+                "Use GET /api/approvers to see valid approver IDs."
+            ),
+        )
+
+    # Validate tier authority when granting (rejections are always allowed).
+    if payload.granted:
+        required_tier = _APPROVAL_TIER_MAP.get(payload.approval_id, 0)
+        if required_tier > approver_rec["max_tier"]:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Approver '{approver_id}' ({approver_rec['role']}) is authorized "
+                    f"up to tier {approver_rec['max_tier']}, but this approval requires "
+                    f"tier {required_tier}. "
+                    f"Required role: {_TIER_APPROVER_ROLES.get(required_tier, f'Tier {required_tier} approver')}."
+                ),
+            )
 
     decision = ApprovalDecision(
         approver=payload.approver.strip(),
@@ -685,6 +755,8 @@ def route_governance(payload: dict[str, Any]) -> dict[str, Any]:
     from decision_intelligence.governance.orchestrator import _synthetic_request_from_workflow
     request = _synthetic_request_from_workflow(payload, payload.get("context") or {})
     decision = _GOVERNANCE_ORCHESTRATOR.route(request)
+    if decision.approval_id:
+        _APPROVAL_TIER_MAP[decision.approval_id] = decision.tier
     return decision.as_dict()
 
 
@@ -699,6 +771,29 @@ def advance_governance(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="approval_id is required.")
     if not approver:
         raise HTTPException(status_code=400, detail="approver is required.")
+
+    approver_rec = _APPROVER_REGISTRY.get(approver)
+    if approver_rec is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Approver '{approver}' is not in the registered approver list. "
+                "Use GET /api/approvers to see valid approver IDs."
+            ),
+        )
+    if granted:
+        required_tier = _APPROVAL_TIER_MAP.get(approval_id, 0)
+        if required_tier > approver_rec["max_tier"]:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Approver '{approver}' ({approver_rec['role']}) is authorized "
+                    f"up to tier {approver_rec['max_tier']}, but this approval requires "
+                    f"tier {required_tier}. "
+                    f"Required role: {_TIER_APPROVER_ROLES.get(required_tier, f'Tier {required_tier} approver')}."
+                ),
+            )
+
     try:
         result = _GOVERNANCE_ORCHESTRATOR.advance(
             approval_id,
@@ -885,6 +980,7 @@ def initiate_constraint_approval(
     ])
     fingerprint = hashlib.sha256(fingerprint_parts.encode()).hexdigest()[:16]
     approval_id = _APPROVAL_STORE.approval_id(fingerprint)
+    _APPROVAL_TIER_MAP[approval_id] = tier
 
     _APPROVAL_AUDIT.record(
         "constraint_relaxation_approval_initiated",
