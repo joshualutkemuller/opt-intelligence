@@ -1695,6 +1695,11 @@ function App() {
     cap_value: number | null; severity: "warning" | "critical";
     message: string; reoptimize_domain: string; detected_at: string;
   }>>([]);
+  const [driftAutoResults, setDriftAutoResults] = useState<Record<string, {
+    status: "running" | "done" | "error";
+    objective_value?: number;
+    error?: string;
+  }>>({});
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -2768,6 +2773,39 @@ function App() {
                     };
                     if (driftData.has_baseline && driftData.alerts.length > 0) {
                       setDriftAlerts(driftData.alerts);
+                      // Auto-reoptimize each affected domain
+                      const affectedDomains = [...new Set(driftData.alerts.map((a: { reoptimize_domain: string }) => a.reoptimize_domain))];
+                      const initialAutoResults: Record<string, { status: "running" | "done" | "error" }> = {};
+                      for (const d of affectedDomains) initialAutoResults[d] = { status: "running" };
+                      setDriftAutoResults(initialAutoResults);
+                      for (const domain of affectedDomains) {
+                        void (async () => {
+                          try {
+                            const reoptRes = await fetch(`${API_BASE}/api/drift/reoptimize`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ domain, portfolio_id: "PORT_001", seed: 42 }),
+                            });
+                            if (reoptRes.ok) {
+                              const reoptData = await reoptRes.json() as { status: string; objective_value?: number };
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "done", objective_value: reoptData.objective_value },
+                              }));
+                            } else {
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "error", error: `HTTP ${reoptRes.status}` },
+                              }));
+                            }
+                          } catch (err) {
+                            setDriftAutoResults((prev) => ({
+                              ...prev,
+                              [domain]: { status: "error", error: String(err) },
+                            }));
+                          }
+                        })();
+                      }
                     }
                   }
                   void hasBaselineRes; // consumed above; snapshot comes after check
@@ -3377,9 +3415,11 @@ function App() {
           {driftAlerts.length > 0 && (
             <DriftAlertBanner
               alerts={driftAlerts}
-              onDismiss={() => setDriftAlerts([])}
+              autoResults={driftAutoResults}
+              onDismiss={() => { setDriftAlerts([]); setDriftAutoResults({}); }}
               onReoptimize={(domain) => {
                 setDriftAlerts([]);
+                setDriftAutoResults({});
                 void runSequentialWorkflow();
               }}
             />
@@ -6844,6 +6884,7 @@ function WorkflowTimelinePanel({
 
 function DriftAlertBanner({
   alerts,
+  autoResults,
   onDismiss,
   onReoptimize,
 }: {
@@ -6851,10 +6892,14 @@ function DriftAlertBanner({
     severity: "warning" | "critical"; message: string; reoptimize_domain: string;
     threshold_name: string; domain: string;
   }>;
+  autoResults: Record<string, { status: "running" | "done" | "error"; objective_value?: number; error?: string }>;
   onDismiss: () => void;
   onReoptimize: (domain: string) => void;
 }) {
   const domains = [...new Set(alerts.map((a) => a.reoptimize_domain))];
+  const allDone = domains.length > 0 && domains.every((d) => autoResults[d]?.status === "done");
+  const anyRunning = domains.some((d) => autoResults[d]?.status === "running");
+
   return (
     <section className="drift-alert-banner">
       <div className="drift-alert-header">
@@ -6868,17 +6913,62 @@ function DriftAlertBanner({
           </li>
         ))}
       </ul>
-      <div className="drift-alert-actions">
-        {domains.map((domain) => (
-          <button
-            key={domain}
-            className="drift-reoptimize-btn"
-            onClick={() => onReoptimize(domain)}
-          >
-            Re-optimize {domain.replace(/_/g, " ")}
-          </button>
-        ))}
-      </div>
+      {/* Auto-reoptimize status per domain */}
+      {domains.length > 0 && (
+        <div className="drift-auto-results">
+          {domains.map((domain) => {
+            const ar = autoResults[domain];
+            if (!ar) return null;
+            const label = domain.replace(/_/g, " ");
+            if (ar.status === "running") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-running">
+                  <span className="drift-auto-spinner">⟳</span> Auto-reoptimizing {label}…
+                </div>
+              );
+            }
+            if (ar.status === "done") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-done">
+                  ✓ {label} reoptimized
+                  {ar.objective_value != null && (
+                    <span className="drift-auto-obj"> — new objective: {ar.objective_value.toFixed(4)}</span>
+                  )}
+                  <button
+                    className="drift-reoptimize-btn drift-reoptimize-btn--secondary"
+                    onClick={() => onReoptimize(domain)}
+                    title="Run full workflow for this domain"
+                  >
+                    Run full workflow
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div key={domain} className="drift-auto-result drift-auto-error">
+                ✗ Auto-reoptimize failed for {label}: {ar.error}
+                <button className="drift-reoptimize-btn" onClick={() => onReoptimize(domain)}>
+                  Retry (full workflow)
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Manual fallback buttons when auto-run hasn't started or all done */}
+      {!anyRunning && !allDone && (
+        <div className="drift-alert-actions">
+          {domains.map((domain) => (
+            <button
+              key={domain}
+              className="drift-reoptimize-btn"
+              onClick={() => onReoptimize(domain)}
+            >
+              Re-optimize {domain.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

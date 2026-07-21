@@ -760,6 +760,89 @@ def drift_list_thresholds() -> dict[str, Any]:
     return {"thresholds": _DRIFT_MONITOR.list_thresholds()}
 
 
+@app.post("/api/drift/reoptimize")
+def drift_reoptimize(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Re-run the optimizer for a single domain flagged by a drift alert.
+
+    Accepts ``domain``, ``workflow_id`` (optional), ``portfolio_id``, ``seed``,
+    ``context``, ``optimizer_runtime``, and ``production_optimizer_id``.
+    After the run the drift baseline is updated so the next check starts fresh.
+    Returns the domain step result and updated objective value.
+    """
+    from decision_intelligence.contracts.objectives import ObjectiveDirection
+    from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY
+
+    domain = str(payload.get("domain", ""))
+    portfolio_id = str(payload.get("portfolio_id", "PORT_001"))
+    seed = int(payload.get("seed", 42))
+    context: dict[str, Any] = dict(payload.get("context") or {})
+    optimizer_runtime = str(payload.get("optimizer_runtime", "phase1"))
+    production_optimizer_id = payload.get("production_optimizer_id")
+    workflow_id = str(payload.get("workflow_id", "")) or None
+
+    _DOMAIN_OPTIMIZER_MAP: dict[str, Any] = {
+        "asset_allocation": AssetAllocationMVOOptimizer,
+        "collateral": CollateralOptimizer,
+        "money_market": MoneyMarketOptimizer,
+        "financing": FinancingOptimizer,
+    }
+    optimizer_cls = _DOMAIN_OPTIMIZER_MAP.get(domain)
+    if optimizer_cls is None:
+        raise HTTPException(status_code=400, detail=f"Unknown domain for drift reoptimize: {domain!r}")
+
+    _DOMAIN_OBJECTIVE: dict[str, tuple[str, str]] = {
+        "asset_allocation": ("maximize_return", "portfolio_return"),
+        "collateral": ("minimize_funding_cost", "funding_cost"),
+        "money_market": ("maximize_yield", "yield"),
+        "financing": ("minimize_financing_cost", "financing_cost"),
+    }
+    obj_name, obj_metric = _DOMAIN_OBJECTIVE.get(domain, ("optimize", "objective_value"))
+    direction = (
+        ObjectiveDirection.MAXIMIZE
+        if obj_name.startswith("maximize")
+        else ObjectiveDirection.MINIMIZE
+    )
+
+    if optimizer_runtime != "phase1":
+        context["optimizer_runtime"] = optimizer_runtime
+    if production_optimizer_id:
+        context["production_optimizer_id"] = production_optimizer_id
+
+    request = OptimizationRequest(
+        domain=domain,
+        portfolio_id=portfolio_id,
+        objective=Objective(name=obj_name, direction=direction, metric=obj_metric),
+        context=context,
+        seed=seed,
+    )
+
+    optimizer = optimizer_cls()
+    problem = optimizer.prepare_problem(request)
+    solution = optimizer.solve(problem)
+
+    # Update drift baseline with a synthetic per-domain result so the monitor
+    # stops firing for this domain after the auto-reoptimize completes.
+    synthetic_result: dict[str, Any] = {
+        "step_results": [
+            {
+                "domain": domain,
+                "result": solution,
+                "objective_value": solution.get("objective_value"),
+                "status": solution.get("status"),
+            }
+        ]
+    }
+    _DRIFT_MONITOR.snapshot(synthetic_result)
+
+    return {
+        "domain": domain,
+        "status": solution.get("status", "unknown"),
+        "objective_value": solution.get("objective_value"),
+        "result": solution,
+        "reoptimized_at": _DRIFT_MONITOR.baseline_time(),
+    }
+
+
 @app.post("/api/constraints/negotiate", response_model=ConstraintNegotiationResponse)
 def negotiate_result_constraints(
     payload: ConstraintNegotiationRequest,

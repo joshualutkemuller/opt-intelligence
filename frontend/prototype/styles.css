@@ -5275,3 +5275,62 @@ tbody tr:hover {
   min-width: 0;
   font-size: 0.85rem;
 }
+
+/* ── Drift auto-reoptimize status ────────────────────────────────────────── */
+.drift-auto-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.drift-auto-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+}
+
+.drift-auto-running {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.drift-auto-spinner {
+  display: inline-block;
+  animation: drift-spin 1s linear infinite;
+}
+
+@keyframes drift-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.drift-auto-done {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.drift-auto-obj {
+  color: #166534;
+  font-weight: 600;
+}
+
+.drift-auto-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.drift-reoptimize-btn--secondary {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: auto;
+}
