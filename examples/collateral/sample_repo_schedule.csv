@@ -1,0 +1,12 @@
+Asset Class,Currency,Rating Floor,Max Maturity (yr),Haircut (%),Concentration Limit (%),Eligible,Notes
+CASH,USD,,,0.0,,Yes,Cash collateral
+GOVT,USD,A-,30,2.0,50,Yes,UST general collateral
+GOVT,USD,A-,2,1.0,50,Yes,UST T-Bills (short-end premium)
+AGENCY,USD,A,10,4.0,30,Yes,Agency MBS pass-through
+CORP,USD,BBB,5,10.0,20,Yes,IG corporate repo eligible
+CORP,USD,BB,3,20.0,5,No,Sub-IG excluded from GC
+EQUITY,USD,,,15.0,10,No,Equity not GC eligible
+MMF,USD,AAA,,0.5,15,Yes,Government MMF shares
+ABS,USD,AA,7,12.0,10,Yes,AAA/AA ABS with CUSIP
+MBS,USD,AA,30,10.0,15,Yes,Agency MBS backed
+HY_CORP,USD,,5,25.0,0,No,HY bonds not eligible

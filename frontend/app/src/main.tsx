@@ -3448,6 +3448,8 @@ function App() {
             disabled={isWorkflowRunning}
           />
 
+          <CollateralSchedulePanel />
+
           <WorkflowComparisonPanel
             workflowRun={workflowRun}
             scenarioComparison={scenarioComparison}
@@ -7269,6 +7271,356 @@ function GovernanceReviewPanel({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+// ── Collateral Schedule Panel ─────────────────────────────────────────────
+
+type Counterparty = { id: string; name: string; lei?: string; jurisdiction?: string; created_at: string };
+type MarginAgreement = {
+  id: string; counterparty_id: string; margin_type: string; agreement_ref?: string;
+  base_currency: string; threshold_amount: number; mta_amount: number;
+  governing_law?: string; effective_date?: string; created_at: string;
+};
+type CollateralEntry = {
+  id: string; asset_class: string; isin?: string; currency?: string;
+  rating_floor?: string; max_maturity_years?: number; haircut_pct: number;
+  concentration_limit_pct?: number; eligible: boolean; notes?: string;
+};
+type ScheduleSummary = {
+  total_entries: number; eligible_count: number;
+  min_haircut_pct?: number; max_haircut_pct?: number; avg_haircut_pct?: number;
+  eligible_asset_classes: string[];
+};
+
+const MARGIN_TYPES = ["IM", "VM", "REPO", "SBL", "CCP_IM", "HOUSE", "OTHER"];
+
+function CollateralSchedulePanel() {
+  const [counterparties, setCounterparties] = React.useState<Counterparty[]>([]);
+  const [agreements, setAgreements] = React.useState<MarginAgreement[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = React.useState<string | null>(null);
+  const [entries, setEntries] = React.useState<CollateralEntry[]>([]);
+  const [summary, setSummary] = React.useState<ScheduleSummary | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [ingestStatus, setIngestStatus] = React.useState<string | null>(null);
+  const [showCreateCp, setShowCreateCp] = React.useState(false);
+  const [showCreateAgr, setShowCreateAgr] = React.useState(false);
+
+  // Create counterparty form
+  const [cpName, setCpName] = React.useState("");
+  const [cpLei, setCpLei] = React.useState("");
+  const [cpJurisdiction, setCpJurisdiction] = React.useState("");
+
+  // Create agreement form
+  const [agrCpId, setAgrCpId] = React.useState("");
+  const [agrMarginType, setAgrMarginType] = React.useState("IM");
+  const [agrRef, setAgrRef] = React.useState("");
+  const [agrCurrency, setAgrCurrency] = React.useState("USD");
+  const [agrThreshold, setAgrThreshold] = React.useState("0");
+  const [agrMta, setAgrMta] = React.useState("0");
+  const [agrGoverningLaw, setAgrGoverningLaw] = React.useState("");
+  const [agrEffectiveDate, setAgrEffectiveDate] = React.useState("");
+
+  async function loadCounterparties() {
+    const res = await fetch(`${API_BASE}/api/collateral/counterparties`);
+    if (res.ok) {
+      const data = await res.json() as { counterparties: Counterparty[] };
+      setCounterparties(data.counterparties);
+    }
+  }
+
+  async function loadAgreements() {
+    const res = await fetch(`${API_BASE}/api/collateral/agreements`);
+    if (res.ok) {
+      const data = await res.json() as { agreements: MarginAgreement[] };
+      setAgreements(data.agreements);
+    }
+  }
+
+  async function loadSchedule(agreementId: string) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/collateral/agreements/${agreementId}/schedule`);
+      if (res.ok) {
+        const data = await res.json() as { entries: CollateralEntry[]; summary: ScheduleSummary };
+        setEntries(data.entries);
+        setSummary(data.summary);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadCounterparties();
+    void loadAgreements();
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedAgreementId) void loadSchedule(selectedAgreementId);
+    else { setEntries([]); setSummary(null); }
+  }, [selectedAgreementId]);
+
+  async function handleCreateCounterparty() {
+    if (!cpName.trim()) return;
+    const res = await fetch(`${API_BASE}/api/collateral/counterparties`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: cpName.trim(), lei: cpLei || undefined, jurisdiction: cpJurisdiction || undefined }),
+    });
+    if (res.ok) {
+      setCpName(""); setCpLei(""); setCpJurisdiction("");
+      setShowCreateCp(false);
+      await loadCounterparties();
+    }
+  }
+
+  async function handleCreateAgreement() {
+    if (!agrCpId || !agrMarginType) return;
+    const res = await fetch(`${API_BASE}/api/collateral/agreements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        counterparty_id: agrCpId,
+        margin_type: agrMarginType,
+        agreement_ref: agrRef || undefined,
+        base_currency: agrCurrency,
+        threshold_amount: parseFloat(agrThreshold) || 0,
+        mta_amount: parseFloat(agrMta) || 0,
+        governing_law: agrGoverningLaw || undefined,
+        effective_date: agrEffectiveDate || undefined,
+      }),
+    });
+    if (res.ok) {
+      setShowCreateAgr(false);
+      await loadAgreements();
+    }
+  }
+
+  async function handleFileIngest(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!selectedAgreementId || !e.target.files?.length) return;
+    const file = e.target.files[0];
+    setIngestStatus("Parsing…");
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const name = file.name.toLowerCase();
+      let body: Record<string, unknown>;
+      if (name.endsWith(".csv") || file.type.includes("csv") || file.type.includes("text")) {
+        const text = new TextDecoder().decode(bytes);
+        body = { csv_content: text, filename: file.name, replace: true };
+      } else {
+        const b64 = btoa(String.fromCharCode(...bytes));
+        if (name.endsWith(".pdf")) {
+          body = { pdf_base64: b64, filename: file.name, replace: true };
+        } else {
+          body = { xlsx_base64: b64, filename: file.name, replace: true };
+        }
+      }
+      const res = await fetch(`${API_BASE}/api/collateral/agreements/${selectedAgreementId}/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json() as { entries_inserted: number };
+        setIngestStatus(`✓ Ingested ${data.entries_inserted} entries`);
+        await loadSchedule(selectedAgreementId);
+      } else {
+        const err = await res.json() as { detail?: string };
+        setIngestStatus(`✗ ${err.detail ?? "Parse error"}`);
+      }
+    } catch (err) {
+      setIngestStatus(`✗ ${String(err)}`);
+    }
+    e.target.value = "";
+  }
+
+  const selectedAgreement = agreements.find((a) => a.id === selectedAgreementId);
+  const cpForAgreement = counterparties.find((c) => c.id === selectedAgreement?.counterparty_id);
+
+  return (
+    <section className="panel collateral-schedule-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Collateral Management</span>
+          <h2>Eligible collateral schedules</h2>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button className="secondary-button" onClick={() => setShowCreateCp(!showCreateCp)}>
+            + Counterparty
+          </button>
+          <button className="secondary-button" onClick={() => setShowCreateAgr(!showCreateAgr)}>
+            + Agreement
+          </button>
+        </div>
+      </div>
+
+      {/* Create counterparty form */}
+      {showCreateCp && (
+        <div className="collateral-form-card">
+          <strong>New counterparty</strong>
+          <div className="collateral-form-row">
+            <input placeholder="Name *" value={cpName} onChange={(e) => setCpName(e.target.value)} />
+            <input placeholder="LEI" value={cpLei} onChange={(e) => setCpLei(e.target.value)} />
+            <input placeholder="Jurisdiction" value={cpJurisdiction} onChange={(e) => setCpJurisdiction(e.target.value)} />
+            <button className="primary-button" onClick={() => void handleCreateCounterparty()} disabled={!cpName.trim()}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create agreement form */}
+      {showCreateAgr && (
+        <div className="collateral-form-card">
+          <strong>New margin agreement</strong>
+          <div className="collateral-form-row">
+            <select value={agrCpId} onChange={(e) => setAgrCpId(e.target.value)}>
+              <option value="">— Counterparty —</option>
+              {counterparties.map((cp) => (
+                <option key={cp.id} value={cp.id}>{cp.name}</option>
+              ))}
+            </select>
+            <select value={agrMarginType} onChange={(e) => setAgrMarginType(e.target.value)}>
+              {MARGIN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <input placeholder="Agreement ref" value={agrRef} onChange={(e) => setAgrRef(e.target.value)} />
+            <input placeholder="Currency" value={agrCurrency} onChange={(e) => setAgrCurrency(e.target.value)} style={{ width: "4rem" }} />
+          </div>
+          <div className="collateral-form-row">
+            <input placeholder="Threshold ($)" value={agrThreshold} onChange={(e) => setAgrThreshold(e.target.value)} style={{ width: "7rem" }} />
+            <input placeholder="MTA ($)" value={agrMta} onChange={(e) => setAgrMta(e.target.value)} style={{ width: "7rem" }} />
+            <input placeholder="Governing law" value={agrGoverningLaw} onChange={(e) => setAgrGoverningLaw(e.target.value)} />
+            <input type="date" value={agrEffectiveDate} onChange={(e) => setAgrEffectiveDate(e.target.value)} />
+            <button className="primary-button" onClick={() => void handleCreateAgreement()} disabled={!agrCpId || !agrMarginType}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="collateral-layout">
+        {/* Agreements sidebar */}
+        <div className="collateral-sidebar">
+          <div className="collateral-sidebar-header">Agreements ({agreements.length})</div>
+          {agreements.length === 0 && (
+            <p className="collateral-empty">No agreements yet. Create a counterparty and agreement above.</p>
+          )}
+          {agreements.map((agr) => {
+            const cp = counterparties.find((c) => c.id === agr.counterparty_id);
+            return (
+              <button
+                key={agr.id}
+                className={`collateral-agreement-item ${selectedAgreementId === agr.id ? "selected" : ""}`}
+                onClick={() => setSelectedAgreementId(agr.id === selectedAgreementId ? null : agr.id)}
+              >
+                <span className="collateral-margin-chip">{agr.margin_type}</span>
+                <span className="collateral-cp-name">{cp?.name ?? agr.counterparty_id}</span>
+                {agr.agreement_ref && <span className="collateral-agr-ref">{agr.agreement_ref}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Schedule detail */}
+        <div className="collateral-detail">
+          {!selectedAgreementId && (
+            <p className="collateral-empty">Select an agreement to view its collateral schedule.</p>
+          )}
+          {selectedAgreementId && (
+            <>
+              <div className="collateral-detail-header">
+                <div>
+                  <strong>{cpForAgreement?.name}</strong>
+                  <span className="collateral-margin-chip">{selectedAgreement?.margin_type}</span>
+                  {selectedAgreement?.agreement_ref && (
+                    <span className="collateral-agr-ref">{selectedAgreement.agreement_ref}</span>
+                  )}
+                </div>
+                <div className="collateral-ingest-row">
+                  <label className="collateral-upload-btn">
+                    Upload schedule (CSV / XLSX / PDF)
+                    <input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileIngest} style={{ display: "none" }} />
+                  </label>
+                  {ingestStatus && (
+                    <span className={`collateral-ingest-status ${ingestStatus.startsWith("✓") ? "ok" : ingestStatus.startsWith("✗") ? "err" : ""}`}>
+                      {ingestStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Agreement metadata */}
+              <dl className="collateral-meta-grid">
+                <div><dt>Base currency</dt><dd>{selectedAgreement?.base_currency}</dd></div>
+                <div><dt>Threshold</dt><dd>{selectedAgreement?.threshold_amount?.toLocaleString()} {selectedAgreement?.base_currency}</dd></div>
+                <div><dt>MTA</dt><dd>{selectedAgreement?.mta_amount?.toLocaleString()} {selectedAgreement?.base_currency}</dd></div>
+                {selectedAgreement?.governing_law && <div><dt>Governing law</dt><dd>{selectedAgreement.governing_law}</dd></div>}
+                {selectedAgreement?.effective_date && <div><dt>Effective date</dt><dd>{selectedAgreement.effective_date}</dd></div>}
+              </dl>
+
+              {/* Summary stats */}
+              {summary && summary.total_entries > 0 && (
+                <div className="collateral-summary-strip">
+                  <span>{summary.total_entries} entries</span>
+                  <span>{summary.eligible_count} eligible</span>
+                  {summary.avg_haircut_pct != null && (
+                    <span>avg haircut {summary.avg_haircut_pct.toFixed(1)}%</span>
+                  )}
+                  {summary.min_haircut_pct != null && (
+                    <span>range {summary.min_haircut_pct.toFixed(1)}%–{summary.max_haircut_pct?.toFixed(1)}%</span>
+                  )}
+                  <span>classes: {summary.eligible_asset_classes.join(", ")}</span>
+                </div>
+              )}
+
+              {/* Entry table */}
+              {loading && <p className="collateral-loading">Loading…</p>}
+              {!loading && entries.length === 0 && (
+                <p className="collateral-empty">No schedule entries yet. Upload a schedule file above.</p>
+              )}
+              {!loading && entries.length > 0 && (
+                <div className="collateral-table-wrap">
+                  <table className="collateral-table">
+                    <thead>
+                      <tr>
+                        <th>Asset class</th>
+                        <th>ISIN / ID</th>
+                        <th>Currency</th>
+                        <th>Rating floor</th>
+                        <th>Max maturity (yr)</th>
+                        <th>Haircut %</th>
+                        <th>Conc. limit %</th>
+                        <th>Eligible</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entries.map((e) => (
+                        <tr key={e.id} className={e.eligible ? "" : "collateral-row-ineligible"}>
+                          <td><span className="collateral-asset-chip">{e.asset_class}</span></td>
+                          <td className="collateral-mono">{e.isin ?? "—"}</td>
+                          <td>{e.currency ?? "—"}</td>
+                          <td>{e.rating_floor ?? "—"}</td>
+                          <td>{e.max_maturity_years != null ? e.max_maturity_years : "—"}</td>
+                          <td className="collateral-haircut">{e.haircut_pct.toFixed(1)}%</td>
+                          <td>{e.concentration_limit_pct != null ? `${e.concentration_limit_pct.toFixed(1)}%` : "—"}</td>
+                          <td className={e.eligible ? "collateral-eligible" : "collateral-ineligible"}>
+                            {e.eligible ? "✓" : "✗"}
+                          </td>
+                          <td className="collateral-notes">{e.notes ?? ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

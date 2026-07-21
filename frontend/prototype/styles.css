@@ -5351,3 +5351,247 @@ tbody tr:hover {
   color: var(--muted);
   font-style: italic;
 }
+
+/* ── Collateral Schedule Panel ───────────────────────────────────────────── */
+.collateral-schedule-panel { }
+
+.collateral-form-card {
+  background: var(--surface-2, #f9fafb);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.collateral-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.collateral-form-row input,
+.collateral-form-row select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 8rem;
+}
+
+.collateral-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1rem;
+  min-height: 300px;
+}
+
+.collateral-sidebar {
+  border-right: 1px solid var(--border);
+  padding-right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.collateral-sidebar-header {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+
+.collateral-agreement-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.collateral-agreement-item:hover {
+  background: var(--surface-2, #f3f4f6);
+}
+
+.collateral-agreement-item.selected {
+  background: var(--brand-light, #eff6ff);
+  border-color: var(--brand, #2563eb);
+}
+
+.collateral-margin-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  letter-spacing: 0.04em;
+  margin-right: 0.3rem;
+}
+
+.collateral-cp-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.collateral-agr-ref {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.collateral-detail {
+  min-width: 0;
+}
+
+.collateral-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.collateral-ingest-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.collateral-upload-btn {
+  display: inline-block;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2, #f3f4f6);
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.collateral-upload-btn:hover {
+  background: var(--surface);
+}
+
+.collateral-ingest-status {
+  font-size: 0.83rem;
+}
+
+.collateral-ingest-status.ok { color: #15803d; }
+.collateral-ingest-status.err { color: #b91c1c; }
+
+.collateral-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.collateral-meta-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.collateral-meta-grid dt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.collateral-meta-grid dd {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.collateral-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2, #f9fafb);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.83rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.collateral-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.collateral-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.collateral-table th {
+  background: var(--surface-2, #f3f4f6);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.collateral-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.collateral-table tbody tr:last-child td { border-bottom: none; }
+
+.collateral-row-ineligible { opacity: 0.55; }
+
+.collateral-asset-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--surface-2, #e5e7eb);
+  color: var(--text);
+}
+
+.collateral-mono { font-family: monospace; font-size: 0.8rem; }
+.collateral-haircut { font-weight: 600; }
+.collateral-eligible { color: #15803d; font-weight: 700; }
+.collateral-ineligible { color: #b91c1c; font-weight: 700; }
+.collateral-notes { color: var(--muted); font-size: 0.78rem; max-width: 16rem; }
+.collateral-empty { color: var(--muted); font-size: 0.88rem; padding: 1rem 0; }
+.collateral-loading { color: var(--muted); font-size: 0.88rem; }
+
+@media (max-width: 640px) {
+  .collateral-layout { grid-template-columns: 1fr; }
+  .collateral-sidebar { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 1rem; }
+}

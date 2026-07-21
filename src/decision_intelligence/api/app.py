@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
 from decision_intelligence.agents import negotiate_constraints
+from collateral_schedule import CollateralDatabase, parse_schedule
 from decision_intelligence.chat import ChatSession
 from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
@@ -89,6 +90,16 @@ from .schemas import (
     WorkflowScenarioCompareResponse,
     SubstituteReoptimizeRequest,
     SubstituteReoptimizeResponse,
+    CollateralScheduleIngestRequest,
+    CollateralScheduleIngestResponse,
+    CollateralEntryResponse,
+    CollateralScheduleResponse,
+    CounterpartyCreateRequest,
+    CounterpartyResponse,
+    CounterpartyListResponse,
+    MarginAgreementCreateRequest,
+    MarginAgreementResponse,
+    MarginAgreementListResponse,
 )
 
 app = FastAPI(
@@ -107,6 +118,7 @@ app.add_middleware(
 
 import pathlib as _pathlib
 
+_COLLATERAL_DB = CollateralDatabase()
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
@@ -462,6 +474,181 @@ def compare_workflow_runs(
         run_ids=payload.run_ids,
     )
     return WorkflowScenarioCompareResponse(comparison=_json(comparison))
+
+
+
+# ── Collateral schedule management ───────────────────────────────────────────
+
+@app.post("/api/collateral/counterparties", response_model=CounterpartyResponse)
+def create_counterparty(payload: CounterpartyCreateRequest) -> CounterpartyResponse:
+    """Register a new counterparty."""
+    rec = _COLLATERAL_DB.upsert_counterparty(
+        name=payload.name,
+        lei=payload.lei,
+        jurisdiction=payload.jurisdiction,
+        counterparty_id=payload.counterparty_id,
+    )
+    return CounterpartyResponse(**rec)
+
+
+@app.get("/api/collateral/counterparties", response_model=CounterpartyListResponse)
+def list_counterparties() -> CounterpartyListResponse:
+    rows = _COLLATERAL_DB.list_counterparties()
+    return CounterpartyListResponse(counterparties=[CounterpartyResponse(**r) for r in rows])
+
+
+@app.post("/api/collateral/agreements", response_model=MarginAgreementResponse)
+def create_margin_agreement(payload: MarginAgreementCreateRequest) -> MarginAgreementResponse:
+    """Create a margin agreement (counterparty × margin type)."""
+    if not _COLLATERAL_DB.get_counterparty(payload.counterparty_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Counterparty '{payload.counterparty_id}' not found. Create it first.",
+        )
+    rec = _COLLATERAL_DB.create_agreement(
+        counterparty_id=payload.counterparty_id,
+        margin_type=payload.margin_type,
+        agreement_ref=payload.agreement_ref,
+        base_currency=payload.base_currency,
+        threshold_amount=payload.threshold_amount,
+        mta_amount=payload.mta_amount,
+        rounding_amount=payload.rounding_amount,
+        governing_law=payload.governing_law,
+        effective_date=payload.effective_date,
+    )
+    return MarginAgreementResponse(**rec)
+
+
+@app.get("/api/collateral/agreements", response_model=MarginAgreementListResponse)
+def list_margin_agreements(
+    counterparty_id: str | None = None,
+    margin_type: str | None = None,
+) -> MarginAgreementListResponse:
+    rows = _COLLATERAL_DB.list_agreements(
+        counterparty_id=counterparty_id,
+        margin_type=margin_type,
+    )
+    return MarginAgreementListResponse(agreements=[MarginAgreementResponse(**r) for r in rows])
+
+
+@app.get("/api/collateral/agreements/{agreement_id}", response_model=MarginAgreementResponse)
+def get_margin_agreement(agreement_id: str) -> MarginAgreementResponse:
+    rec = _COLLATERAL_DB.get_agreement(agreement_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+    return MarginAgreementResponse(**rec)
+
+
+@app.post(
+    "/api/collateral/agreements/{agreement_id}/ingest",
+    response_model=CollateralScheduleIngestResponse,
+)
+def ingest_collateral_schedule(
+    agreement_id: str,
+    payload: CollateralScheduleIngestRequest,
+) -> CollateralScheduleIngestResponse:
+    """Parse and store a collateral schedule for the given margin agreement."""
+    if not _COLLATERAL_DB.get_agreement(agreement_id):
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+
+    if payload.csv_content:
+        entries = parse_schedule(payload.csv_content, filename=payload.filename)
+    elif payload.xlsx_base64:
+        import base64 as _b64
+        xlsx_bytes = _b64.b64decode(payload.xlsx_base64)
+        entries = parse_schedule(xlsx_bytes, filename=payload.filename or "schedule.xlsx")
+    elif payload.pdf_base64:
+        entries = parse_schedule(b"", pdf_base64=payload.pdf_base64, filename=payload.filename)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide one of: csv_content, xlsx_base64, or pdf_base64.",
+        )
+
+    if not entries:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No collateral entries could be parsed from the provided file. "
+                "Ensure headers include: asset_class, haircut_pct (or synonyms). "
+                "See GET /api/collateral/schema for accepted column names."
+            ),
+        )
+
+    count = _COLLATERAL_DB.insert_entries(
+        agreement_id=agreement_id,
+        entries=entries,
+        replace=payload.replace,
+    )
+    summary = _COLLATERAL_DB.summary(agreement_id)
+    return CollateralScheduleIngestResponse(
+        agreement_id=agreement_id,
+        entries_inserted=count,
+        replaced=payload.replace,
+        summary=summary,
+    )
+
+
+@app.get(
+    "/api/collateral/agreements/{agreement_id}/schedule",
+    response_model=CollateralScheduleResponse,
+)
+def get_collateral_schedule(
+    agreement_id: str,
+    asset_class: str | None = None,
+    eligible_only: bool = False,
+) -> CollateralScheduleResponse:
+    if not _COLLATERAL_DB.get_agreement(agreement_id):
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+
+    rows = _COLLATERAL_DB.list_entries(
+        agreement_id=agreement_id,
+        asset_class=asset_class,
+        eligible_only=eligible_only,
+    )
+    summary = _COLLATERAL_DB.summary(agreement_id)
+
+    def _to_response(r: dict) -> CollateralEntryResponse:
+        return CollateralEntryResponse(
+            id=r["id"],
+            agreement_id=r["agreement_id"],
+            asset_class=r["asset_class"],
+            isin=r.get("isin"),
+            currency=r.get("currency"),
+            rating_floor=r.get("rating_floor"),
+            max_maturity_years=r.get("max_maturity_years"),
+            haircut_pct=r["haircut_pct"],
+            concentration_limit_pct=r.get("concentration_limit_pct"),
+            eligible=bool(r["eligible"]),
+            notes=r.get("notes"),
+            source_row=r.get("source_row"),
+            created_at=r["created_at"],
+        )
+
+    return CollateralScheduleResponse(
+        agreement_id=agreement_id,
+        entries=[_to_response(r) for r in rows],
+        summary=summary,
+    )
+
+
+@app.delete("/api/collateral/agreements/{agreement_id}/schedule")
+def clear_collateral_schedule(agreement_id: str) -> dict:
+    if not _COLLATERAL_DB.get_agreement(agreement_id):
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+    deleted = _COLLATERAL_DB.delete_entries(agreement_id)
+    return {"agreement_id": agreement_id, "entries_deleted": deleted}
+
+
+@app.get("/api/collateral/schema")
+def get_collateral_schema() -> dict:
+    """Return the accepted column name aliases for schedule ingestion."""
+    from decision_intelligence.collateral.models import COLUMN_ALIASES, ASSET_CLASS_ALIASES
+    return {
+        "column_aliases": COLUMN_ALIASES,
+        "asset_class_aliases": {k: v.value for k, v in ASSET_CLASS_ALIASES.items()},
+        "margin_types": ["IM", "VM", "REPO", "SBL", "CCP_IM", "HOUSE", "OTHER"],
+    }
 
 
 @app.post("/api/collateral/reoptimize-with-substitutes", response_model=SubstituteReoptimizeResponse)

@@ -298,6 +298,92 @@ class ConstraintApprovalResponse(BaseModel):
     message: str
 
 
+class CounterpartyCreateRequest(BaseModel):
+    name: str
+    lei: str | None = None
+    jurisdiction: str | None = None
+    counterparty_id: str | None = None
+
+
+class CounterpartyResponse(BaseModel):
+    id: str
+    name: str
+    lei: str | None = None
+    jurisdiction: str | None = None
+    created_at: str
+
+
+class CounterpartyListResponse(BaseModel):
+    counterparties: list[CounterpartyResponse]
+
+
+class MarginAgreementCreateRequest(BaseModel):
+    counterparty_id: str
+    margin_type: str
+    agreement_ref: str | None = None
+    base_currency: str = "USD"
+    threshold_amount: float = 0.0
+    mta_amount: float = 0.0
+    rounding_amount: float = 0.0
+    governing_law: str | None = None
+    effective_date: str | None = None
+
+
+class MarginAgreementResponse(BaseModel):
+    id: str
+    counterparty_id: str
+    margin_type: str
+    agreement_ref: str | None = None
+    base_currency: str
+    threshold_amount: float
+    mta_amount: float
+    rounding_amount: float
+    governing_law: str | None = None
+    effective_date: str | None = None
+    created_at: str
+
+
+class MarginAgreementListResponse(BaseModel):
+    agreements: list[MarginAgreementResponse]
+
+
+class CollateralScheduleIngestRequest(BaseModel):
+    csv_content: str | None = None
+    xlsx_base64: str | None = None
+    pdf_base64: str | None = None
+    filename: str | None = None
+    replace: bool = True
+
+
+class CollateralScheduleIngestResponse(BaseModel):
+    agreement_id: str
+    entries_inserted: int
+    replaced: bool
+    summary: dict[str, Any]
+
+
+class CollateralEntryResponse(BaseModel):
+    id: str
+    agreement_id: str
+    asset_class: str
+    isin: str | None = None
+    currency: str | None = None
+    rating_floor: str | None = None
+    max_maturity_years: float | None = None
+    haircut_pct: float
+    concentration_limit_pct: float | None = None
+    eligible: bool
+    notes: str | None = None
+    source_row: int | None = None
+    created_at: str
+
+
+class CollateralScheduleResponse(BaseModel):
+    agreement_id: str
+    entries: list[CollateralEntryResponse]
+    summary: dict[str, Any]
+
+
 class SubstituteReoptimizeRequest(BaseModel):
     workflow: str = "collateral_liquidity_review"
     portfolio_id: str = "PORT_001"
