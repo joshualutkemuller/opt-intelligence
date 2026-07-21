@@ -640,6 +640,15 @@ def clear_collateral_schedule(agreement_id: str) -> dict:
     return {"agreement_id": agreement_id, "entries_deleted": deleted}
 
 
+@app.get("/api/collateral/agreements/{agreement_id}/history")
+def get_collateral_schedule_history(agreement_id: str) -> dict:
+    """Return a version-by-version audit trail of schedule ingestions."""
+    if not _COLLATERAL_DB.get_agreement(agreement_id):
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+    versions = _COLLATERAL_DB.list_schedule_history(agreement_id)
+    return {"agreement_id": agreement_id, "versions": versions}
+
+
 @app.get("/api/collateral/schema")
 def get_collateral_schema() -> dict:
     """Return the accepted column name aliases for schedule ingestion."""

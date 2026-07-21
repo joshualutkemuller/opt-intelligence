@@ -8,7 +8,7 @@ project; the decision_intelligence API is just one consumer.
 """
 
 from .database import CollateralDatabase
-from .models import AssetClass, MarginType
+from .models import AssetClass, MarginType, normalize_rating
 from .parser import parse_schedule
 
-__all__ = ["CollateralDatabase", "AssetClass", "MarginType", "parse_schedule"]
+__all__ = ["CollateralDatabase", "AssetClass", "MarginType", "normalize_rating", "parse_schedule"]
