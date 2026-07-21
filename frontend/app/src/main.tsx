@@ -1695,6 +1695,14 @@ function App() {
     cap_value: number | null; severity: "warning" | "critical";
     message: string; reoptimize_domain: string; detected_at: string;
   }>>([]);
+  const [driftAutoResults, setDriftAutoResults] = useState<Record<string, {
+    status: "running" | "done" | "error";
+    objective_value?: number;
+    error?: string;
+  }>>({});
+  const [approverRegistry, setApproverRegistry] = useState<Array<{
+    id: string; name: string; role: string; max_tier: number;
+  }>>([]);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -1773,6 +1781,7 @@ function App() {
     void loadDemoPresets();
     void loadDemoDataPackets();
     void loadProductionOptimizers();
+    void loadApproverRegistry();
   }, []);
 
   useEffect(() => {
@@ -1857,6 +1866,15 @@ function App() {
         },
       ]);
     }
+  }
+
+  async function loadApproverRegistry() {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/api/approvers`, { method: "GET" }, 5000);
+      if (!res.ok) return;
+      const data = await res.json() as { approvers: Array<{ id: string; name: string; role: string; max_tier: number }> };
+      if (data.approvers?.length) setApproverRegistry(data.approvers);
+    } catch { /* non-critical */ }
   }
 
   async function loadWorkflowCatalog() {
@@ -2768,6 +2786,39 @@ function App() {
                     };
                     if (driftData.has_baseline && driftData.alerts.length > 0) {
                       setDriftAlerts(driftData.alerts);
+                      // Auto-reoptimize each affected domain
+                      const affectedDomains = [...new Set(driftData.alerts.map((a: { reoptimize_domain: string }) => a.reoptimize_domain))];
+                      const initialAutoResults: Record<string, { status: "running" | "done" | "error" }> = {};
+                      for (const d of affectedDomains) initialAutoResults[d] = { status: "running" };
+                      setDriftAutoResults(initialAutoResults);
+                      for (const domain of affectedDomains) {
+                        void (async () => {
+                          try {
+                            const reoptRes = await fetch(`${API_BASE}/api/drift/reoptimize`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ domain, portfolio_id: "PORT_001", seed: 42 }),
+                            });
+                            if (reoptRes.ok) {
+                              const reoptData = await reoptRes.json() as { status: string; objective_value?: number };
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "done", objective_value: reoptData.objective_value },
+                              }));
+                            } else {
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "error", error: `HTTP ${reoptRes.status}` },
+                              }));
+                            }
+                          } catch (err) {
+                            setDriftAutoResults((prev) => ({
+                              ...prev,
+                              [domain]: { status: "error", error: String(err) },
+                            }));
+                          }
+                        })();
+                      }
                     }
                   }
                   void hasBaselineRes; // consumed above; snapshot comes after check
@@ -3370,16 +3421,18 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
-          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} />
+          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} approverRegistry={approverRegistry} />
 
           <CrossDomainOptimizationPanel workflowRun={workflowRun} />
 
           {driftAlerts.length > 0 && (
             <DriftAlertBanner
               alerts={driftAlerts}
-              onDismiss={() => setDriftAlerts([])}
+              autoResults={driftAutoResults}
+              onDismiss={() => { setDriftAlerts([]); setDriftAutoResults({}); }}
               onReoptimize={(domain) => {
                 setDriftAlerts([]);
+                setDriftAutoResults({});
                 void runSequentialWorkflow();
               }}
             />
@@ -3389,6 +3442,7 @@ function App() {
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
             inputValues={workflowInputValues}
+            approverRegistry={approverRegistry}
             onDecision={submitApprovalDecisions}
             onRerun={runSequentialWorkflow}
             disabled={isWorkflowRunning}
@@ -6844,6 +6898,7 @@ function WorkflowTimelinePanel({
 
 function DriftAlertBanner({
   alerts,
+  autoResults,
   onDismiss,
   onReoptimize,
 }: {
@@ -6851,10 +6906,14 @@ function DriftAlertBanner({
     severity: "warning" | "critical"; message: string; reoptimize_domain: string;
     threshold_name: string; domain: string;
   }>;
+  autoResults: Record<string, { status: "running" | "done" | "error"; objective_value?: number; error?: string }>;
   onDismiss: () => void;
   onReoptimize: (domain: string) => void;
 }) {
   const domains = [...new Set(alerts.map((a) => a.reoptimize_domain))];
+  const allDone = domains.length > 0 && domains.every((d) => autoResults[d]?.status === "done");
+  const anyRunning = domains.some((d) => autoResults[d]?.status === "running");
+
   return (
     <section className="drift-alert-banner">
       <div className="drift-alert-header">
@@ -6868,18 +6927,109 @@ function DriftAlertBanner({
           </li>
         ))}
       </ul>
-      <div className="drift-alert-actions">
-        {domains.map((domain) => (
-          <button
-            key={domain}
-            className="drift-reoptimize-btn"
-            onClick={() => onReoptimize(domain)}
-          >
-            Re-optimize {domain.replace(/_/g, " ")}
-          </button>
-        ))}
-      </div>
+      {/* Auto-reoptimize status per domain */}
+      {domains.length > 0 && (
+        <div className="drift-auto-results">
+          {domains.map((domain) => {
+            const ar = autoResults[domain];
+            if (!ar) return null;
+            const label = domain.replace(/_/g, " ");
+            if (ar.status === "running") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-running">
+                  <span className="drift-auto-spinner">⟳</span> Auto-reoptimizing {label}…
+                </div>
+              );
+            }
+            if (ar.status === "done") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-done">
+                  ✓ {label} reoptimized
+                  {ar.objective_value != null && (
+                    <span className="drift-auto-obj"> — new objective: {ar.objective_value.toFixed(4)}</span>
+                  )}
+                  <button
+                    className="drift-reoptimize-btn drift-reoptimize-btn--secondary"
+                    onClick={() => onReoptimize(domain)}
+                    title="Run full workflow for this domain"
+                  >
+                    Run full workflow
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div key={domain} className="drift-auto-result drift-auto-error">
+                ✗ Auto-reoptimize failed for {label}: {ar.error}
+                <button className="drift-reoptimize-btn" onClick={() => onReoptimize(domain)}>
+                  Retry (full workflow)
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Manual fallback buttons when auto-run hasn't started or all done */}
+      {!anyRunning && !allDone && (
+        <div className="drift-alert-actions">
+          {domains.map((domain) => (
+            <button
+              key={domain}
+              className="drift-reoptimize-btn"
+              onClick={() => onReoptimize(domain)}
+            >
+              Re-optimize {domain.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function ApproverSelect({
+  value,
+  onChange,
+  registry,
+  requiredTier,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  registry: Array<{ id: string; name: string; role: string; max_tier: number }>;
+  requiredTier: number;
+  disabled?: boolean;
+}) {
+  if (!registry.length) {
+    // Fallback to plain text while registry loads
+    return (
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Approver ID"
+        disabled={disabled}
+        aria-label="Approver"
+      />
+    );
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      aria-label="Approver"
+      className="approver-select"
+    >
+      <option value="">— Select approver —</option>
+      {registry.map((a) => {
+        const eligible = a.max_tier >= requiredTier;
+        return (
+          <option key={a.id} value={a.id} disabled={!eligible}>
+            {a.name} ({a.role}){!eligible ? ` — insufficient authority (tier ${a.max_tier} < ${requiredTier})` : ""}
+          </option>
+        );
+      })}
+    </select>
   );
 }
 
@@ -6887,6 +7037,7 @@ function GovernanceReviewPanel({
   workflowRun,
   selectedWorkflow,
   inputValues,
+  approverRegistry,
   onDecision,
   onRerun,
   disabled,
@@ -6894,6 +7045,7 @@ function GovernanceReviewPanel({
   workflowRun: WorkflowRunResult | null;
   selectedWorkflow: WorkflowCatalogItem;
   inputValues: Record<string, string>;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
   onDecision: (
     approvalIds: string[],
     granted: boolean,
@@ -6903,12 +7055,13 @@ function GovernanceReviewPanel({
   onRerun: () => void;
   disabled: boolean;
 }) {
-  const [approver, setApprover] = useState("demo.approver");
+  const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("Reviewed materiality and controls.");
   const [orchRouting, setOrchRouting] = useState<Record<string, unknown> | null>(null);
   const [orchAdvancing, setOrchAdvancing] = useState(false);
 
   const governance = highestGovernanceRecord(workflowRun);
+  const requiredTier = governance?.tier ?? (inputValues["governance.production_constraint_change"] === "true" ? 5 : 0);
   const pendingRecords = pendingGovernanceRecords(workflowRun);
   const pendingApprovalIds = pendingRecords.flatMap((record) =>
     record.approval_id ? [record.approval_id] : [],
@@ -7043,7 +7196,13 @@ function GovernanceReviewPanel({
               <div className="approval-decision-fields">
                 <label>
                   <span>Approver</span>
-                  <input value={approver} onChange={(e) => setApprover(e.target.value)} disabled={orchAdvancing} aria-label="Approver name" />
+                  <ApproverSelect
+                    value={approver}
+                    onChange={setApprover}
+                    registry={approverRegistry}
+                    requiredTier={Number(orchRouting.tier ?? requiredTier)}
+                    disabled={orchAdvancing}
+                  />
                 </label>
                 <label>
                   <span>Reason</span>
@@ -7064,11 +7223,12 @@ function GovernanceReviewPanel({
           <div className="approval-decision-fields">
             <label>
               <span>Approver</span>
-              <input
+              <ApproverSelect
                 value={approver}
-                onChange={(event) => setApprover(event.target.value)}
+                onChange={setApprover}
+                registry={approverRegistry}
+                requiredTier={requiredTier}
                 disabled={disabled || pendingApprovalIds.length === 0}
-                aria-label="Approver name"
               />
             </label>
             <label>
@@ -8041,7 +8201,193 @@ function CrossDomainOptimizationPanel({ workflowRun }: { workflowRun: WorkflowRu
   );
 }
 
-function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+type ConstraintApprovalState =
+  | { phase: "idle" }
+  | { phase: "submitting" }
+  | { phase: "pending"; approvalId: string; requiredRole: string; message: string }
+  | { phase: "approving" }
+  | { phase: "decided"; granted: boolean; approver: string }
+  | { phase: "error"; message: string };
+
+const TIER_APPROVER_ROLES: Record<number, string> = {
+  0: "No approval required",
+  1: "No approval required",
+  2: "No approval required",
+  3: "Domain Head or Risk Analyst",
+  4: "Senior Funding MD",
+  5: "CRO / CCO",
+};
+
+function ProposalCard({
+  proposal,
+  domain,
+  portfolioId,
+  approverRegistry,
+}: {
+  proposal: ConstraintRelaxationProposal;
+  domain: string;
+  portfolioId: string;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
+}) {
+  const [approval, setApproval] = React.useState<ConstraintApprovalState>({ phase: "idle" });
+  const [approver, setApprover] = React.useState("");
+  const needsApproval = proposal.governance_tier >= 3;
+
+  async function initiateApproval() {
+    setApproval({ phase: "submitting" });
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain,
+          parameter: proposal.parameter,
+          proposed_change: proposal.proposed_change,
+          governance_tier: proposal.governance_tier,
+          governance_reason: proposal.governance_reason,
+          estimated_impact: proposal.estimated_impact,
+          estimated_impact_units: proposal.estimated_impact_units,
+          portfolio_id: portfolioId,
+          requestor: "demo.trader",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = (await res.json()) as {
+        approval_id: string;
+        required_approver_role: string;
+        message: string;
+      };
+      setApproval({
+        phase: "pending",
+        approvalId: data.approval_id,
+        requiredRole: data.required_approver_role,
+        message: data.message,
+      });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  async function submitDecision(granted: boolean) {
+    if (approval.phase !== "pending") return;
+    const { approvalId } = approval;
+    setApproval({ phase: "approving" });
+    try {
+      const res = await fetch(`${API_BASE}/api/approvals/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approval_id: approvalId,
+          approver,
+          granted,
+          reason: granted
+            ? `Approved: ${proposal.proposed_change}`
+            : "Rejected by approver.",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setApproval({ phase: "decided", granted, approver });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  return (
+    <div className={`proposal-card ${approval.phase === "decided" && approval.granted ? "proposal-card--approved" : approval.phase === "decided" ? "proposal-card--rejected" : ""}`}>
+      <div className="proposal-card-header">
+        <strong className="proposal-parameter">
+          {titleCase(proposal.parameter.replaceAll("_", " "))}
+        </strong>
+        <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+          {tierLabel(proposal.governance_tier)}
+        </span>
+      </div>
+      <p className="proposal-change">{proposal.proposed_change}</p>
+      <div className="proposal-meta">
+        <span className="proposal-impact">
+          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+        </span>
+        <span className="proposal-confidence">
+          {Math.round(proposal.confidence * 100)}% confidence
+        </span>
+      </div>
+      <p className="proposal-rationale">{proposal.rationale}</p>
+
+      {needsApproval && (
+        <div className="proposal-governance">
+          <div className="proposal-governance-header">
+            <span className="proposal-governance-role">
+              Required: {TIER_APPROVER_ROLES[proposal.governance_tier] ?? `Tier ${proposal.governance_tier} approver`}
+            </span>
+            {approval.phase === "idle" && (
+              <button className="secondary-button proposal-approve-btn" type="button" onClick={() => void initiateApproval()}>
+                Request approval
+              </button>
+            )}
+            {approval.phase === "decided" && (
+              <span className={`status-chip ${approval.granted ? "status-optimal" : "status-block"}`}>
+                {approval.granted ? `Approved by ${approval.approver}` : `Rejected by ${approval.approver}`}
+              </span>
+            )}
+          </div>
+          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+
+          {approval.phase === "submitting" && (
+            <p className="proposal-approval-status">Registering approval request…</p>
+          )}
+          {approval.phase === "approving" && (
+            <p className="proposal-approval-status">Submitting decision…</p>
+          )}
+          {approval.phase === "error" && (
+            <p className="proposal-approval-error">Error: {approval.message}</p>
+          )}
+          {approval.phase === "pending" && (
+            <div className="proposal-approval-flow">
+              <div className="proposal-approval-id">
+                <span className="proposal-approval-id-label">Approval ID</span>
+                <code className="proposal-approval-id-value">{approval.approvalId}</code>
+              </div>
+              <p className="proposal-approval-role-note">
+                Required approver: <strong>{approval.requiredRole}</strong>
+              </p>
+              <div className="proposal-approval-actions">
+                <ApproverSelect
+                  value={approver}
+                  onChange={setApprover}
+                  registry={approverRegistry}
+                  requiredTier={proposal.governance_tier}
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void submitDecision(true)}
+                  disabled={!approver.trim()}
+                >
+                  Approve
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void submitDecision(false)}
+                  disabled={!approver.trim()}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!needsApproval && (
+        <p className="proposal-governance-reason proposal-no-gate">
+          {proposal.governance_reason} — no formal gate required at this tier.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorkflowConstraintNegotiationPanel({ workflowRun, approverRegistry }: { workflowRun: WorkflowRunResult | null; approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }> }) {
   const [activeStep, setActiveStep] = React.useState<number | null>(null);
   const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
   const [negotiating, setNegotiating] = React.useState<number | null>(null);
@@ -8159,27 +8505,13 @@ function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: Work
                   {validProposals.length > 0 ? (
                     <div className="proposal-stack">
                       {validProposals.map((proposal, i) => (
-                        <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
-                          <div className="proposal-card-header">
-                            <strong className="proposal-parameter">
-                              {titleCase(proposal.parameter.replaceAll("_", " "))}
-                            </strong>
-                            <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
-                              {tierLabel(proposal.governance_tier)}
-                            </span>
-                          </div>
-                          <p className="proposal-change">{proposal.proposed_change}</p>
-                          <div className="proposal-meta">
-                            <span className="proposal-impact">
-                              ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
-                            </span>
-                            <span className="proposal-confidence">
-                              {Math.round(proposal.confidence * 100)}% confidence
-                            </span>
-                          </div>
-                          <p className="proposal-rationale">{proposal.rationale}</p>
-                          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
-                        </div>
+                        <ProposalCard
+                          key={`${proposal.parameter}-${i}`}
+                          proposal={proposal}
+                          domain={step.domain}
+                          portfolioId="PORT_001"
+                          approverRegistry={approverRegistry}
+                        />
                       ))}
                     </div>
                   ) : (

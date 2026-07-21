@@ -225,6 +225,8 @@ class ChatSession:
             )
 
         template = DEFAULT_WORKFLOW_REGISTRY.get(workflow_id)
+        # Enter guided collection when the user signals they want to customize
+        # inputs (any natural phrase implying "walk me through" or "with X").
         if template.inputs and _should_collect_registered_inputs(prompt):
             spec = _workflow_spec_from_template(template)
             portfolio_id = _detect_portfolio_id(prompt)
@@ -240,7 +242,8 @@ class ChatSession:
                 plan=self._last_plan.model_dump(),
             )
             return ChatResponse(
-                f"I will guide {template.name} using its registered workflow inputs.\n\n"
+                f"I'll guide you through **{template.name}** inputs "
+                f"({len(template.inputs)} parameters).\n\n"
                 f"{self._last_plan.summary}\n\n{self._next_question()}"
             )
 
@@ -556,16 +559,21 @@ class ChatSession:
 
 
 def _should_collect_registered_inputs(text: str) -> bool:
+    """Return True when the user's message implies they want to set inputs interactively."""
     normalized = text.lower()
     return any(
         token in normalized
         for token in (
-            "guide",
-            "walk me through",
-            "line by line",
-            "step by step",
-            "collect",
-            "ask me",
+            # explicit guided-mode phrases
+            "guide", "guided", "walk me through", "line by line",
+            "step by step", "collect", "ask me", "one by one",
+            # customization intent
+            "customize", "custom", "configure", "set up", "with my",
+            "with a ", "with $", "for portfolio", "with portfolio",
+            "change the", "adjust", "modify", "different",
+            # input-awareness phrases
+            "what inputs", "what parameters", "what do you need",
+            "what information", "what fields", "parameters",
         )
     )
 
@@ -583,9 +591,22 @@ def _workflow_spec_from_template(template: Any) -> WorkflowSpec:
 
 
 def _field_spec_from_input(item: WorkflowInputConfig) -> FieldSpec:
+    if item.type == "select" and item.options:
+        readable = " / ".join(opt.replace("_", " ") for opt in item.options)
+        prompt = f"{item.label}? ({readable})"
+    elif item.type == "currency":
+        prompt = f"{item.label}? (dollar amount, e.g. 50000000 for $50M)"
+    elif item.type in {"fraction", "percent"}:
+        prompt = f"{item.label}? (0–1, e.g. 0.30 for 30%)"
+    elif item.type == "integer":
+        prompt = f"{item.label}? (whole number)"
+    elif item.type == "boolean":
+        prompt = f"{item.label}? (yes / no)"
+    else:
+        prompt = f"{item.label}?"
     return FieldSpec(
         key=item.key,
-        prompt=f"{item.label}?",
+        prompt=prompt,
         parser=_parser_for_input(item),
         default=item.default,
         target="portfolio" if item.key == "portfolio_id" else "context",

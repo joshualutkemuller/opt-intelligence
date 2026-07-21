@@ -63,6 +63,8 @@ from .schemas import (
     AuditNarrativeResponse,
     ChatMessageRequest,
     ChatSessionResponse,
+    ConstraintApprovalRequest,
+    ConstraintApprovalResponse,
     ConstraintNegotiationRequest,
     ConstraintNegotiationResponse,
     CreateChatSessionRequest,
@@ -103,15 +105,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import pathlib as _pathlib
+
 _CHAT_SESSIONS: dict[str, ChatSession] = {}
 _APPROVAL_STORE = ApprovalStore()
 _APPROVAL_AUDIT = AuditLog()
-_NARRATIVE_STORE: dict[str, dict[str, Any]] = {}  # workflow_id → AuditNarrative dict
+
+# Approver registry: maps approver_id → {name, role, max_tier}.
+# max_tier is the highest governance tier this approver is authorized to approve.
+_APPROVER_REGISTRY: dict[str, dict[str, Any]] = {
+    "analyst.risk": {
+        "id": "analyst.risk",
+        "name": "Alex Chen",
+        "role": "Risk Analyst",
+        "max_tier": 3,
+    },
+    "head.domain": {
+        "id": "head.domain",
+        "name": "Morgan Davis",
+        "role": "Domain Head",
+        "max_tier": 3,
+    },
+    "md.funding": {
+        "id": "md.funding",
+        "name": "Jordan Lee",
+        "role": "Senior Funding MD",
+        "max_tier": 4,
+    },
+    "cro": {
+        "id": "cro",
+        "name": "Sam Rivera",
+        "role": "Chief Risk Officer",
+        "max_tier": 5,
+    },
+    "cco": {
+        "id": "cco",
+        "name": "Taylor Kim",
+        "role": "Chief Compliance Officer",
+        "max_tier": 5,
+    },
+}
+
+# approval_id → governance tier, populated when an approval is registered
+# so that submit_approval_decision can validate tier authority.
+_APPROVAL_TIER_MAP: dict[str, int] = {}
 _DRIFT_MONITOR = DriftMonitor()
 _GOVERNANCE_ORCHESTRATOR = GovernanceOrchestrator(
     store=_APPROVAL_STORE,
     audit=_APPROVAL_AUDIT,
 )
+
+# Narrative store — in-memory with disk backing so exports survive API restarts.
+_NARRATIVE_DIR = _pathlib.Path.home() / ".decision_intelligence" / "narratives"
+_NARRATIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_narrative_store() -> dict[str, dict[str, Any]]:
+    store: dict[str, dict[str, Any]] = {}
+    for path in _NARRATIVE_DIR.glob("*.json"):
+        try:
+            store[path.stem] = json.loads(path.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    return store
+
+
+_NARRATIVE_STORE: dict[str, dict[str, Any]] = _load_narrative_store()
 
 
 @app.get("/api/health")
@@ -171,6 +230,10 @@ def send_chat_message(
         orchestrator, _audit = _build_orchestrator()
         workflow_run = SequentialWorkflowRunner(orchestrator).run(patched_plan)
         workflow_result = _json(workflow_run)
+        _persist_narrative(
+            workflow_id=patched_plan.workflow_id,
+            response={"plan": _json(patched_plan), "result": workflow_result},
+        )
         final_step = workflow_run.step_results[-1] if workflow_run.step_results else None
         if final_step is not None:
             result = _json(final_step.result)
@@ -486,6 +549,12 @@ def reoptimize_with_substitutes(payload: SubstituteReoptimizeRequest) -> Substit
     )
 
 
+@app.get("/api/approvers")
+def list_approvers() -> dict[str, Any]:
+    """Return the registered approver roster with their tier authority."""
+    return {"approvers": list(_APPROVER_REGISTRY.values())}
+
+
 @app.get("/api/approvals/pending", response_model=PendingApprovalsResponse)
 def list_pending_approvals() -> PendingApprovalsResponse:
     return PendingApprovalsResponse(approvals=_pending_approval_items())
@@ -495,8 +564,33 @@ def list_pending_approvals() -> PendingApprovalsResponse:
 def submit_approval_decision(
     payload: ApprovalDecisionRequest,
 ) -> ApprovalDecisionResponse:
-    if not payload.approver.strip():
+    approver_id = payload.approver.strip()
+    if not approver_id:
         raise HTTPException(status_code=400, detail="Approver is required.")
+
+    approver_rec = _APPROVER_REGISTRY.get(approver_id)
+    if approver_rec is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Approver '{approver_id}' is not in the registered approver list. "
+                "Use GET /api/approvers to see valid approver IDs."
+            ),
+        )
+
+    # Validate tier authority when granting (rejections are always allowed).
+    if payload.granted:
+        required_tier = _APPROVAL_TIER_MAP.get(payload.approval_id, 0)
+        if required_tier > approver_rec["max_tier"]:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Approver '{approver_id}' ({approver_rec['role']}) is authorized "
+                    f"up to tier {approver_rec['max_tier']}, but this approval requires "
+                    f"tier {required_tier}. "
+                    f"Required role: {_TIER_APPROVER_ROLES.get(required_tier, f'Tier {required_tier} approver')}."
+                ),
+            )
 
     decision = ApprovalDecision(
         approver=payload.approver.strip(),
@@ -562,6 +656,14 @@ def export_workflow_evidence(
         or payload.payload.get("workflow")
     )
     audit_narrative = _NARRATIVE_STORE.get(wf_id) if wf_id else None
+    if audit_narrative is None:
+        # Generate on-the-fly so a cold export still produces a complete PDF.
+        _persist_narrative(
+            workflow_id=wf_id or "export",
+            response=payload.response,
+            payload=payload.payload,
+        )
+        audit_narrative = _NARRATIVE_STORE.get(wf_id or "export")
     packet = build_workflow_evidence_packet(
         response=payload.response,
         payload=payload.payload,
@@ -625,7 +727,14 @@ def generate_audit_narrative(payload: AuditNarrativeRequest) -> AuditNarrativeRe
         or payload.payload.get("workflow") if payload.payload else None
     )
     if wf_id:
+        _persist_narrative(
+            workflow_id=str(wf_id),
+            response=payload.response,
+            payload=payload.payload,
+        )
+        # Use the (possibly LLM-polished) narrative rather than re-generating.
         _NARRATIVE_STORE[str(wf_id)] = _json(narrative)
+        (_NARRATIVE_DIR / f"{wf_id}.json").write_text(json.dumps(_json(narrative), indent=2))
     return AuditNarrativeResponse(narrative=_json(narrative))
 
 
@@ -646,6 +755,8 @@ def route_governance(payload: dict[str, Any]) -> dict[str, Any]:
     from decision_intelligence.governance.orchestrator import _synthetic_request_from_workflow
     request = _synthetic_request_from_workflow(payload, payload.get("context") or {})
     decision = _GOVERNANCE_ORCHESTRATOR.route(request)
+    if decision.approval_id:
+        _APPROVAL_TIER_MAP[decision.approval_id] = decision.tier
     return decision.as_dict()
 
 
@@ -660,6 +771,29 @@ def advance_governance(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="approval_id is required.")
     if not approver:
         raise HTTPException(status_code=400, detail="approver is required.")
+
+    approver_rec = _APPROVER_REGISTRY.get(approver)
+    if approver_rec is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Approver '{approver}' is not in the registered approver list. "
+                "Use GET /api/approvers to see valid approver IDs."
+            ),
+        )
+    if granted:
+        required_tier = _APPROVAL_TIER_MAP.get(approval_id, 0)
+        if required_tier > approver_rec["max_tier"]:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Approver '{approver}' ({approver_rec['role']}) is authorized "
+                    f"up to tier {approver_rec['max_tier']}, but this approval requires "
+                    f"tier {required_tier}. "
+                    f"Required role: {_TIER_APPROVER_ROLES.get(required_tier, f'Tier {required_tier} approver')}."
+                ),
+            )
+
     try:
         result = _GOVERNANCE_ORCHESTRATOR.advance(
             approval_id,
@@ -721,6 +855,89 @@ def drift_list_thresholds() -> dict[str, Any]:
     return {"thresholds": _DRIFT_MONITOR.list_thresholds()}
 
 
+@app.post("/api/drift/reoptimize")
+def drift_reoptimize(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Re-run the optimizer for a single domain flagged by a drift alert.
+
+    Accepts ``domain``, ``workflow_id`` (optional), ``portfolio_id``, ``seed``,
+    ``context``, ``optimizer_runtime``, and ``production_optimizer_id``.
+    After the run the drift baseline is updated so the next check starts fresh.
+    Returns the domain step result and updated objective value.
+    """
+    from decision_intelligence.contracts.objectives import ObjectiveDirection
+    from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY
+
+    domain = str(payload.get("domain", ""))
+    portfolio_id = str(payload.get("portfolio_id", "PORT_001"))
+    seed = int(payload.get("seed", 42))
+    context: dict[str, Any] = dict(payload.get("context") or {})
+    optimizer_runtime = str(payload.get("optimizer_runtime", "phase1"))
+    production_optimizer_id = payload.get("production_optimizer_id")
+    workflow_id = str(payload.get("workflow_id", "")) or None
+
+    _DOMAIN_OPTIMIZER_MAP: dict[str, Any] = {
+        "asset_allocation": AssetAllocationMVOOptimizer,
+        "collateral": CollateralOptimizer,
+        "money_market": MoneyMarketOptimizer,
+        "financing": FinancingOptimizer,
+    }
+    optimizer_cls = _DOMAIN_OPTIMIZER_MAP.get(domain)
+    if optimizer_cls is None:
+        raise HTTPException(status_code=400, detail=f"Unknown domain for drift reoptimize: {domain!r}")
+
+    _DOMAIN_OBJECTIVE: dict[str, tuple[str, str]] = {
+        "asset_allocation": ("maximize_return", "portfolio_return"),
+        "collateral": ("minimize_funding_cost", "funding_cost"),
+        "money_market": ("maximize_yield", "yield"),
+        "financing": ("minimize_financing_cost", "financing_cost"),
+    }
+    obj_name, obj_metric = _DOMAIN_OBJECTIVE.get(domain, ("optimize", "objective_value"))
+    direction = (
+        ObjectiveDirection.MAXIMIZE
+        if obj_name.startswith("maximize")
+        else ObjectiveDirection.MINIMIZE
+    )
+
+    if optimizer_runtime != "phase1":
+        context["optimizer_runtime"] = optimizer_runtime
+    if production_optimizer_id:
+        context["production_optimizer_id"] = production_optimizer_id
+
+    request = OptimizationRequest(
+        domain=domain,
+        portfolio_id=portfolio_id,
+        objective=Objective(name=obj_name, direction=direction, metric=obj_metric),
+        context=context,
+        seed=seed,
+    )
+
+    optimizer = optimizer_cls()
+    problem = optimizer.prepare_problem(request)
+    solution = optimizer.solve(problem)
+
+    # Update drift baseline with a synthetic per-domain result so the monitor
+    # stops firing for this domain after the auto-reoptimize completes.
+    synthetic_result: dict[str, Any] = {
+        "step_results": [
+            {
+                "domain": domain,
+                "result": solution,
+                "objective_value": solution.get("objective_value"),
+                "status": solution.get("status"),
+            }
+        ]
+    }
+    _DRIFT_MONITOR.snapshot(synthetic_result)
+
+    return {
+        "domain": domain,
+        "status": solution.get("status", "unknown"),
+        "objective_value": solution.get("objective_value"),
+        "result": solution,
+        "reoptimized_at": _DRIFT_MONITOR.baseline_time(),
+    }
+
+
 @app.post("/api/constraints/negotiate", response_model=ConstraintNegotiationResponse)
 def negotiate_result_constraints(
     payload: ConstraintNegotiationRequest,
@@ -732,6 +949,65 @@ def negotiate_result_constraints(
         max_proposals=payload.max_proposals,
     )
     return ConstraintNegotiationResponse(negotiation=_json(negotiation))
+
+
+_TIER_APPROVER_ROLES: dict[int, str] = {
+    0: "No approval required",
+    1: "No approval required",
+    2: "No approval required (recommendation tier)",
+    3: "Domain Head or Risk Analyst",
+    4: "Senior Funding MD or equivalent",
+    5: "CRO / CCO (production constraint change)",
+}
+
+
+@app.post("/api/constraints/negotiate/approve", response_model=ConstraintApprovalResponse)
+def initiate_constraint_approval(
+    payload: ConstraintApprovalRequest,
+) -> ConstraintApprovalResponse:
+    """Register a constraint relaxation proposal as a pending approval request."""
+    import hashlib
+
+    tier = payload.governance_tier
+    required_role = _TIER_APPROVER_ROLES.get(tier, f"Tier {tier} approver")
+
+    fingerprint_parts = "|".join([
+        payload.domain,
+        payload.portfolio_id,
+        payload.parameter,
+        payload.proposed_change,
+        str(tier),
+    ])
+    fingerprint = hashlib.sha256(fingerprint_parts.encode()).hexdigest()[:16]
+    approval_id = _APPROVAL_STORE.approval_id(fingerprint)
+    _APPROVAL_TIER_MAP[approval_id] = tier
+
+    _APPROVAL_AUDIT.record(
+        "constraint_relaxation_approval_initiated",
+        f"constraint-{fingerprint}",
+        {
+            "domain": payload.domain,
+            "parameter": payload.parameter,
+            "proposed_change": payload.proposed_change,
+            "governance_tier": tier,
+            "estimated_impact": payload.estimated_impact,
+            "estimated_impact_units": payload.estimated_impact_units,
+            "requestor": payload.requestor,
+            "approval_id": approval_id,
+        },
+    )
+
+    return ConstraintApprovalResponse(
+        approval_id=approval_id,
+        governance_tier=tier,
+        required_approver_role=required_role,
+        status="pending",
+        message=(
+            f"Approval request registered as {approval_id}. "
+            f"This change requires {required_role} sign-off. "
+            f"Submit a decision via POST /api/approvals/decisions with this approval_id."
+        ),
+    )
 
 
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:
@@ -857,7 +1133,11 @@ def _persist_narrative(
             response=response,
             payload=payload,
         )
-        _NARRATIVE_STORE[workflow_id] = _json(narrative)
+        narrative_dict = _json(narrative)
+        _NARRATIVE_STORE[workflow_id] = narrative_dict
+        (_NARRATIVE_DIR / f"{workflow_id}.json").write_text(
+            json.dumps(narrative_dict, indent=2)
+        )
     except Exception:  # noqa: BLE001 — narrative is best-effort; never block the run
         pass
 

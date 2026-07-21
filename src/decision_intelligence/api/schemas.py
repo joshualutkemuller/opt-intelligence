@@ -278,6 +278,26 @@ class ConstraintNegotiationResponse(BaseModel):
     negotiation: dict[str, Any]
 
 
+class ConstraintApprovalRequest(BaseModel):
+    domain: str
+    parameter: str
+    proposed_change: str
+    governance_tier: int
+    governance_reason: str
+    estimated_impact: float = 0.0
+    estimated_impact_units: str = "objective"
+    portfolio_id: str = "PORT_001"
+    requestor: str = "api"
+
+
+class ConstraintApprovalResponse(BaseModel):
+    approval_id: str
+    governance_tier: int
+    required_approver_role: str
+    status: str
+    message: str
+
+
 class SubstituteReoptimizeRequest(BaseModel):
     workflow: str = "collateral_liquidity_review"
     portfolio_id: str = "PORT_001"

@@ -5174,3 +5174,180 @@ tbody tr:hover {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Proposal card governance approval flow */
+.proposal-card--approved {
+  border-color: var(--success, #16a34a);
+  background: color-mix(in srgb, var(--success, #16a34a) 5%, var(--surface));
+}
+
+.proposal-card--rejected {
+  border-color: var(--muted);
+  opacity: 0.7;
+}
+
+.proposal-governance {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.proposal-governance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.proposal-governance-role {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.proposal-approve-btn {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.7rem;
+}
+
+.proposal-no-gate {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.proposal-approval-status {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.proposal-approval-error {
+  font-size: 0.82rem;
+  color: var(--error, #dc2626);
+  margin-top: 0.4rem;
+}
+
+.proposal-approval-flow {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.proposal-approval-id {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.proposal-approval-id-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.proposal-approval-id-value {
+  font-size: 0.78rem;
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  font-family: monospace;
+}
+
+.proposal-approval-role-note {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.proposal-approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.proposal-approver-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+/* ── Drift auto-reoptimize status ────────────────────────────────────────── */
+.drift-auto-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.drift-auto-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+}
+
+.drift-auto-running {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.drift-auto-spinner {
+  display: inline-block;
+  animation: drift-spin 1s linear infinite;
+}
+
+@keyframes drift-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.drift-auto-done {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.drift-auto-obj {
+  color: #166534;
+  font-weight: 600;
+}
+
+.drift-auto-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.drift-reoptimize-btn--secondary {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: auto;
+}
+
+/* ── Approver select ─────────────────────────────────────────────────────── */
+.approver-select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.approver-select option:disabled {
+  color: var(--muted);
+  font-style: italic;
+}

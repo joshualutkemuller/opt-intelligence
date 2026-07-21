@@ -106,90 +106,275 @@ def build_workflow_evidence_packet(
 
 
 def generate_workflow_evidence_pdf(packet: dict[str, Any]) -> bytes:
-    """Render the evidence packet as a compact PDF for stakeholder sharing."""
+    """Render the evidence packet as a compliance-grade PDF for risk committee use."""
 
     try:
+        from reportlab.lib import colors
         from reportlab.lib.pagesizes import LETTER
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-    except ImportError as exc:  # pragma: no cover - exercised only without optional extra
+        from reportlab.platypus import (
+            HRFlowable,
+            PageTemplate,
+            BaseDocTemplate,
+            Frame,
+            Paragraph,
+            Spacer,
+        )
+    except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
             "PDF evidence export requires reportlab. Install the project with the ingest extra."
         ) from exc
 
-    buffer = BytesIO()
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=LETTER,
-        leftMargin=0.55 * inch,
-        rightMargin=0.55 * inch,
-        topMargin=0.55 * inch,
-        bottomMargin=0.55 * inch,
-    )
-    styles = getSampleStyleSheet()
-    title_style = styles["Title"]
-    heading_style = styles["Heading2"]
-    body_style = styles["BodyText"]
+    BRAND_DARK = colors.HexColor("#1e3a5f")
+    BRAND_MID = colors.HexColor("#2e6da4")
+    RULE_COLOR = colors.HexColor("#c8d3e3")
+    BODY_GRAY = colors.HexColor("#374151")
+    MUTED = colors.HexColor("#6b7280")
+    SUCCESS = colors.HexColor("#15803d")
+    WARN = colors.HexColor("#b45309")
+
+    PAGE_W, PAGE_H = LETTER
+    MARGIN_L = 0.75 * inch
+    MARGIN_R = 0.75 * inch
+    MARGIN_T = 1.1 * inch
+    MARGIN_B = 0.75 * inch
+
+    base_styles = getSampleStyleSheet()
+
+    def _style(
+        name: str,
+        parent: str = "Normal",
+        *,
+        font: str = "Helvetica",
+        size: float = 9,
+        leading: float | None = None,
+        color: Any = BODY_GRAY,
+        space_before: float = 0,
+        space_after: float = 2,
+        bold: bool = False,
+        italic: bool = False,
+    ) -> ParagraphStyle:
+        return ParagraphStyle(
+            name,
+            parent=base_styles[parent],
+            fontName="Helvetica-Bold" if bold else ("Helvetica-Oblique" if italic else font),
+            fontSize=size,
+            leading=leading or size * 1.35,
+            textColor=color,
+            spaceAfter=space_after,
+            spaceBefore=space_before,
+        )
+
+    s_body = _style("s_body", size=9, color=BODY_GRAY)
+    s_label = _style("s_label", size=8, color=MUTED, bold=True)
+    s_value = _style("s_value", size=9, color=BODY_GRAY)
+    s_heading = _style("s_heading", size=11, color=BRAND_DARK, bold=True, space_before=10, space_after=4)
+    s_sub = _style("s_sub", size=9, color=BRAND_MID, bold=True, space_before=4, space_after=2)
+    s_bullet = _style("s_bullet", size=9, color=BODY_GRAY, space_before=1)
+    s_narrative = _style("s_narrative", size=9.5, color=BODY_GRAY, leading=14)
+    s_small = _style("s_small", size=7.5, color=MUTED)
+    s_sig_label = _style("s_sig_label", size=8, color=MUTED, bold=True)
+    s_sig_line = _style("s_sig_line", size=9, color=BODY_GRAY)
 
     overview = _record(packet.get("overview"))
     story = _record(packet.get("demo_story"))
-    elements: list[Any] = [
-        Paragraph(str(overview.get("title") or "Workflow Evidence Packet"), title_style),
+    narrative = _record(packet.get("audit_narrative"))
+    governance = _record(packet.get("governance_evidence"))
+    gov_summary = _record(governance.get("summary"))
+
+    run_title = str(overview.get("title") or "Optimization Decision Record")
+    portfolio = str(overview.get("portfolio_id") or "—")
+    workflow_id = str(overview.get("workflow_id") or "—")
+    generated_at = str(packet.get("generated_at") or "—")
+    validation_passed = bool(overview.get("validation_passed"))
+
+    def _header_footer(canvas: Any, doc: Any) -> None:
+        canvas.saveState()
+        # Header band
+        canvas.setFillColor(BRAND_DARK)
+        canvas.rect(0, PAGE_H - 0.6 * inch, PAGE_W, 0.6 * inch, fill=1, stroke=0)
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 10)
+        canvas.drawString(MARGIN_L, PAGE_H - 0.38 * inch, "OPTIMIZATION DECISION RECORD")
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(
+            PAGE_W - MARGIN_R,
+            PAGE_H - 0.38 * inch,
+            f"Portfolio {portfolio}  ·  {generated_at[:10]}",
+        )
+        # Footer rule + page number
+        canvas.setStrokeColor(RULE_COLOR)
+        canvas.setLineWidth(0.5)
+        canvas.line(MARGIN_L, 0.55 * inch, PAGE_W - MARGIN_R, 0.55 * inch)
+        canvas.setFillColor(MUTED)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawString(MARGIN_L, 0.35 * inch, f"Run ID: {workflow_id}")
+        canvas.drawCentredString(PAGE_W / 2, 0.35 * inch, "CONFIDENTIAL — For internal risk committee use only")
+        canvas.drawRightString(PAGE_W - MARGIN_R, 0.35 * inch, f"Page {doc.page}")
+        canvas.restoreState()
+
+    buffer = BytesIO()
+    frame = Frame(MARGIN_L, MARGIN_B, PAGE_W - MARGIN_L - MARGIN_R, PAGE_H - MARGIN_T - MARGIN_B)
+    template = PageTemplate(id="main", frames=[frame], onPage=_header_footer)
+    doc = BaseDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        pageTemplates=[template],
+        leftMargin=MARGIN_L,
+        rightMargin=MARGIN_R,
+        topMargin=MARGIN_T,
+        bottomMargin=MARGIN_B,
+    )
+
+    def _rule() -> HRFlowable:
+        return HRFlowable(width="100%", thickness=0.5, color=RULE_COLOR, spaceAfter=6, spaceBefore=2)
+
+    elements: list[Any] = []
+
+    # ── Title block ───────────────────────────────────────────────────────────
+    elements += [
+        Spacer(1, 2),
+        Paragraph(run_title, _style("s_title", size=16, color=BRAND_DARK, bold=True, space_after=4)),
         Paragraph(
-            f"Generated {packet.get('generated_at')} for "
-            f"{overview.get('portfolio_id') or 'unknown portfolio'}.",
-            body_style,
+            f"Workflow: {workflow_id}  ·  Portfolio: {portfolio}  ·  Generated: {generated_at}",
+            s_small,
         ),
-        Spacer(1, 10),
+        Spacer(1, 6),
         _table(
             [
-                ["Workflow", overview.get("workflow_id")],
-                ["Preset", overview.get("preset_name")],
-                ["Source policy", overview.get("source_policy") or "None"],
-                ["Status", overview.get("status")],
-                ["Validation", "Passed" if overview.get("validation_passed") else "Review"],
-                ["Dependency effects", overview.get("dependency_effect_count")],
+                ["Run status", str(overview.get("status") or "—").upper()],
+                ["Validation", "PASSED" if validation_passed else "REVIEW REQUIRED"],
+                ["Governance tier", f"Tier {gov_summary.get('highest_tier', '—')}"],
                 ["Final improvement", _format_pct(overview.get("final_improvement_pct"))],
+                ["Dependency effects", str(overview.get("dependency_effect_count", 0))],
+                ["Source policy", str(overview.get("source_policy") or "None attached")],
             ],
-            widths=[1.55 * inch, 5.15 * inch],
+            widths=[1.8 * inch, 5.15 * inch],
         ),
         Spacer(1, 12),
-        Paragraph("Presenter Proof Points", heading_style),
-        *_bullet_paragraphs(_list(story.get("talking_points")), body_style),
+    ]
+
+    # ── Audit narrative (executive summary) ───────────────────────────────────
+    decision_summary = str(narrative.get("decision_summary") or story.get("summary") or "")
+    outcome = str(narrative.get("outcome") or story.get("recommendation") or "")
+    if decision_summary or outcome:
+        elements += [
+            Paragraph("Executive Summary", s_heading),
+            _rule(),
+        ]
+        if decision_summary:
+            elements += [Paragraph(s_label.name, s_label), Paragraph(decision_summary, s_narrative)]
+        if outcome:
+            elements += [Paragraph("OUTCOME", s_label), Paragraph(outcome, s_narrative)]
+        elements.append(Spacer(1, 8))
+
+    constraint_context = _list(narrative.get("constraint_context"))
+    if constraint_context:
+        elements += [Paragraph("Constraint Context", s_heading), _rule()]
+        for item in constraint_context:
+            elements.append(Paragraph(f"• {item}", s_bullet))
+        elements.append(Spacer(1, 8))
+
+    risk_flags = _list(narrative.get("risk_flags"))
+    if risk_flags:
+        elements += [Paragraph("Risk Flags", s_heading), _rule()]
+        for flag in risk_flags:
+            elements.append(Paragraph(f"⚠ {flag}", _style("s_risk", size=9, color=WARN)))
+        elements.append(Spacer(1, 8))
+
+    # ── Governance ────────────────────────────────────────────────────────────
+    elements += [
+        Paragraph("Governance Evidence", s_heading),
+        _rule(),
+        _governance_table(governance),
         Spacer(1, 8),
-        Paragraph("Success Criteria", heading_style),
-        *_bullet_paragraphs(_list(story.get("success_criteria")), body_style),
-        Spacer(1, 8),
-        Paragraph("Policy Ingestion Evidence", heading_style),
-        _policy_table(_record(packet.get("policy_ingestion_evidence"))),
-        Spacer(1, 8),
-        Paragraph("Solver Evidence", heading_style),
+    ]
+
+    approval_chain = _list(narrative.get("approval_chain"))
+    if approval_chain:
+        elements += [Paragraph("Approval Chain", s_sub)]
+        for step in approval_chain:
+            elements.append(Paragraph(f"• {step}", s_bullet))
+        elements.append(Spacer(1, 8))
+
+    # ── Solver results ────────────────────────────────────────────────────────
+    elements += [
+        Paragraph("Solver Evidence", s_heading),
+        _rule(),
         _solver_table(_list(packet.get("solver_evidence"))),
         Spacer(1, 8),
-        Paragraph("Governance Evidence", heading_style),
-        _governance_table(_record(packet.get("governance_evidence"))),
-        Spacer(1, 8),
-        Paragraph("Comparison Evidence", heading_style),
-        _comparison_table(_record(packet.get("comparison_evidence"))),
-        Spacer(1, 8),
-        Paragraph("Dependency Evidence", heading_style),
+        Paragraph("Dependency Effects", s_heading),
+        _rule(),
         _dependency_table(_list(_dig(packet, "dependency_evidence", "effects"))),
         Spacer(1, 8),
-        Paragraph("Validation Evidence", heading_style),
+        Paragraph("Validation Evidence", s_heading),
+        _rule(),
         _validation_table(_record(_dig(packet, "validation_evidence", "summary"))),
         Spacer(1, 8),
-        Paragraph("Allocation Evidence", heading_style),
+    ]
+
+    # ── Full narrative markdown (if present) ──────────────────────────────────
+    markdown = str(narrative.get("markdown") or "").strip()
+    if markdown:
+        elements += [Paragraph("Full Audit Narrative", s_heading), _rule()]
+        for line in markdown.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                elements.append(Spacer(1, 3))
+            elif stripped.startswith("## "):
+                elements.append(Paragraph(stripped[3:], s_sub))
+            elif stripped.startswith("- "):
+                elements.append(Paragraph(f"• {stripped[2:]}", s_bullet))
+            else:
+                elements.append(Paragraph(stripped, s_narrative))
+        elements.append(Spacer(1, 10))
+
+    # ── Supporting detail ─────────────────────────────────────────────────────
+    elements += [
+        Paragraph("Policy Ingestion Evidence", s_heading),
+        _rule(),
+        _policy_table(_record(packet.get("policy_ingestion_evidence"))),
+        Spacer(1, 8),
+        Paragraph("Allocation Evidence", s_heading),
+        _rule(),
         _allocation_table(_list(packet.get("allocation_evidence"))),
         Spacer(1, 8),
-        Paragraph("Operational Action Evidence", heading_style),
-        _operational_table(_list(_dig(packet, "operational_evidence", "actions"))),
-        Spacer(1, 8),
-        Paragraph("Recommendation", heading_style),
-        Paragraph(str(story.get("recommendation") or "Review workflow output."), body_style),
-        *_narrative_elements(packet, heading_style, body_style),
     ]
-    document.build(elements)
+
+    # ── Signature block ───────────────────────────────────────────────────────
+    elements += [
+        Spacer(1, 16),
+        Paragraph("Authorization & Sign-Off", s_heading),
+        _rule(),
+        _table(
+            [
+                ["Prepared by", ""],
+                ["Role / Department", ""],
+                ["Date", generated_at[:10]],
+                ["Reviewed by (Risk)", ""],
+                ["Reviewed by (Compliance)", ""],
+                ["Date approved", ""],
+                ["Approval reference", str(
+                    next(
+                        (r.get("approval_id") for r in _list(governance.get("records")) if r.get("approval_id")),
+                        "— (no formal approval required at this tier)",
+                    )
+                )],
+            ],
+            widths=[2.2 * inch, 4.75 * inch],
+        ),
+        Spacer(1, 10),
+        Paragraph(
+            "This document is generated automatically from the optimization run record "
+            "and serves as the primary audit artifact for regulatory and compliance review. "
+            "It must be reviewed and countersigned by the approvers named above before any "
+            "execution action is taken at Tier 3 or above.",
+            _style("s_disc", size=7.5, color=MUTED, italic=True),
+        ),
+    ]
+
+    doc.build(elements)
     return buffer.getvalue()
 
 
