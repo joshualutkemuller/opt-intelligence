@@ -8,7 +8,7 @@ import io
 import re
 from typing import Any
 
-from .models import COLUMN_ALIASES, normalize_asset_class, normalize_eligible, normalize_rating
+from .models import COLUMN_ALIASES, normalize_asset_class, normalize_eligible, normalize_rating, validate_isin
 
 
 def _resolve_header(raw: str) -> str | None:
@@ -65,6 +65,13 @@ def _rows_to_entries(
                 stripped = str(raw).strip() if raw is not None else None
                 if stripped:
                     entry["rating_floor"] = normalize_rating(stripped)
+            elif canonical == "isin":
+                stripped = str(raw).strip() if raw is not None else None
+                if stripped:
+                    entry["isin"] = stripped
+                    valid, reason = validate_isin(stripped)
+                    if not valid:
+                        entry["isin_invalid"] = reason
             else:
                 stripped = str(raw).strip() if raw is not None else None
                 if stripped:
@@ -130,15 +137,37 @@ def parse_xlsx(content: bytes) -> list[dict[str, Any]]:
     return _rows_to_entries(headers, data_rows)
 
 
+def parse_pdf_tables(pdf_bytes: bytes) -> list[dict[str, Any]]:
+    """Extract collateral entries from a PDF using pdfplumber's table extractor.
+
+    Iterates every page, extracts all tables, and passes each one through
+    ``_rows_to_entries``.  The first row of each table is treated as the header.
+    Returns combined entries from all pages/tables.
+    """
+    import pdfplumber  # type: ignore[import-untyped]
+
+    entries: list[dict[str, Any]] = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if not table or len(table) < 2:
+                    continue
+                headers = [str(c or "").strip() for c in table[0]]
+                data_rows = [[str(c or "").strip() for c in row] for row in table[1:]]
+                entries.extend(_rows_to_entries(headers, data_rows))
+    return entries
+
+
 def parse_pdf_text(text: str) -> list[dict[str, Any]]:
     """Extract collateral entries from plain text extracted from a PDF.
 
-    Attempts to detect a tabular section by looking for lines that contain
-    numeric haircut values.  Falls back to returning a best-effort parse.
+    Used as a fallback when pdfplumber is unavailable or returns no tables.
+    Heuristically detects tabular sections by looking for lines that contain
+    recognised column headers followed by lines with numeric values.
     """
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-    # Heuristic: find lines that look like data rows (contain a % or decimal)
     table_lines: list[str] = []
     header_line: str | None = None
     header_found = False
@@ -159,7 +188,6 @@ def parse_pdf_text(text: str) -> list[dict[str, Any]]:
     if not header_line or not table_lines:
         return []
 
-    # Split lines by 2+ spaces or tab (common in PDF-extracted tables)
     splitter = re.compile(r"\s{2,}|\t")
     headers = splitter.split(header_line)
     rows = [splitter.split(line) for line in table_lines]
@@ -198,18 +226,22 @@ def parse_schedule(
 
         # Heuristic path — use pdfplumber if available, else text fallback.
         try:
+            # Structured table extraction — preferred path
+            entries = parse_pdf_tables(pdf_bytes)
+            if entries:
+                return entries
+            # pdfplumber found no tables; fall back to text heuristic
             import pdfplumber  # type: ignore[import-untyped]
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                text = "\n".join(
-                    page.extract_text() or "" for page in pdf.pages
-                )
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            return parse_pdf_text(text)
         except ImportError:
-            # Fallback: try to decode as text (will fail for binary PDFs)
+            # pdfplumber not installed — text heuristic only
             try:
                 text = pdf_bytes.decode("utf-8", errors="replace")
             except Exception:
                 text = ""
-        return parse_pdf_text(text)
+            return parse_pdf_text(text)
 
     if isinstance(content, str):
         return parse_csv(content)
