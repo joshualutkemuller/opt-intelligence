@@ -3370,6 +3370,10 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
+          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} />
+
+          <CrossDomainOptimizationPanel workflowRun={workflowRun} />
+
           {driftAlerts.length > 0 && (
             <DriftAlertBanner
               alerts={driftAlerts}
@@ -4792,6 +4796,10 @@ function CollateralHqlaAnalyticsPanel({
   policyApplied: boolean;
   selectedPreset: DemoPresetCatalogItem;
 }) {
+  const [substituteResult, setSubstituteResult] = React.useState<Record<string, unknown> | null>(null);
+  const [substituteLoading, setSubstituteLoading] = React.useState(false);
+  const [substituteError, setSubstituteError] = React.useState<string | null>(null);
+
   const collateralStep = workflowRun?.step_results.find((step) => step.domain === "collateral");
   const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
   const afterRun = Boolean(workflowRun);
@@ -5012,6 +5020,91 @@ function CollateralHqlaAnalyticsPanel({
                     </div>
                   ))}
                 </div>
+                <div className="lending-reoptimize-row">
+                  <button
+                    className="lending-reoptimize-btn"
+                    disabled={substituteLoading}
+                    onClick={() => {
+                      setSubstituteLoading(true);
+                      setSubstituteError(null);
+                      setSubstituteResult(null);
+                      const excludeIds = lendingOpportunities.map((o) => String(o.asset_id));
+                      const ctx = toRecord(selectedPreset.context);
+                      const collateralCtx = toRecord(ctx.collateral);
+                      fetch("/api/collateral/reoptimize-with-substitutes", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          workflow: selectedPreset.workflow_id ?? "collateral_liquidity_review",
+                          portfolio_id: selectedPreset.portfolio_id ?? "PORT_001",
+                          seed: selectedPreset.seed ?? 42,
+                          optimizer_runtime: "phase1",
+                          context: collateralCtx,
+                          excluded_asset_ids: excludeIds,
+                        }),
+                      })
+                        .then((r) => r.ok ? r.json() : r.json().then((e: unknown) => Promise.reject(e)))
+                        .then((data: unknown) => {
+                          setSubstituteResult(data as Record<string, unknown>);
+                        })
+                        .catch((err: unknown) => {
+                          const msg = err && typeof err === "object" && "detail" in err
+                            ? String((err as Record<string, unknown>).detail)
+                            : "Re-optimization failed.";
+                          setSubstituteError(msg);
+                        })
+                        .finally(() => setSubstituteLoading(false));
+                    }}
+                  >
+                    {substituteLoading ? "Re-optimizing…" : "⟳ Re-optimize with substitutes"}
+                  </button>
+                  <span className="lending-reoptimize-hint">
+                    Excludes {lendingOpportunities.length} flagged asset{lendingOpportunities.length !== 1 ? "s" : ""} — forces LP to find cheaper substitute collateral
+                  </span>
+                </div>
+                {substituteError && (
+                  <p className="lending-substitute-error">{substituteError}</p>
+                )}
+                {substituteResult && (
+                  <div className="lending-substitute-result">
+                    <div className="lending-substitute-summary">
+                      {String(substituteResult.summary)}
+                    </div>
+                    <div className="lending-substitute-metrics">
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Original cost</span>
+                        <span className="lending-sub-value">{formatCurrency(Number(substituteResult.original_objective))}</span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Substitute cost</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {formatCurrency(Number(substituteResult.substitute_objective))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Delta</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {Number(substituteResult.objective_delta) <= 0 ? "−" : "+"}
+                          {formatCurrency(Math.abs(Number(substituteResult.objective_delta)))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Conflicts resolved</span>
+                        <span className="lending-sub-value lending-sub-better">
+                          {(substituteResult.original_lending_opportunities as unknown[]).length - (substituteResult.remaining_lending_opportunities as unknown[]).length}
+                          {" "}of{" "}
+                          {(substituteResult.original_lending_opportunities as unknown[]).length}
+                        </span>
+                      </div>
+                    </div>
+                    {(substituteResult.remaining_lending_opportunities as unknown[]).length > 0 && (
+                      <p className="lending-substitute-remaining">
+                        {(substituteResult.remaining_lending_opportunities as unknown[]).length} conflict(s) remain — substitute assets also carry high lending rates.
+                        Consider running constraint negotiation or broadening eligible asset classes.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
             ) : afterRun ? (
               <p className="lending-opportunity-intro lending-ok-note">
@@ -5844,54 +5937,142 @@ function EvidenceRoomPanel({
             auditNarrative
               ? auditNarrative.llm_polished
                 ? `Polished · ${String(auditNarrative.llm_provider || "llm")}`
-                : "Deterministic"
+                : "Generated"
               : workflowRun
-                ? "Available"
+                ? "Generating…"
                 : "Pending"
           }
         >
           {auditNarrative ? (
-            <div className="audit-narrative-preview">
-              <p>{String(auditNarrative.decision_summary || "Narrative generated.").slice(0, 360)}</p>
-              <div className="audit-narrative-actions">
-                {!auditNarrative.llm_polished ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={handlePolishNarrative}
-                    disabled={isPolishing}
-                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
-                  >
-                    {isPolishing ? "Polishing…" : "Polish with LLM"}
-                  </button>
-                ) : (
-                  <span className="status-chip status-optimal">LLM polished</span>
-                )}
-                {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
-              </div>
-            </div>
+            <AuditNarrativeDisplay
+              narrative={auditNarrative}
+              isPolishing={isPolishing}
+              polishError={polishError}
+              onPolish={handlePolishNarrative}
+              llmConfig={llmConfig}
+            />
           ) : (
-            <div className="audit-narrative-preview">
-              <p>{workflowRun ? "Narrative persisted. Click below to polish with a local LLM." : "Run a workflow to generate the audit narrative."}</p>
-              {workflowRun ? (
-                <div className="audit-narrative-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={handlePolishNarrative}
-                    disabled={isPolishing}
-                    title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
-                  >
-                    {isPolishing ? "Polishing…" : "Polish with LLM"}
-                  </button>
-                  {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
-                </div>
-              ) : null}
-            </div>
+            <p className="evidence-pending">
+              {workflowRun ? "Narrative is being generated…" : "Run a workflow to generate the compliance audit narrative."}
+            </p>
           )}
         </EvidenceSection>
       </div>
     </section>
+  );
+}
+
+function AuditNarrativeDisplay({
+  narrative,
+  isPolishing,
+  polishError,
+  onPolish,
+  llmConfig,
+}: {
+  narrative: Record<string, unknown>;
+  isPolishing: boolean;
+  polishError: string | null;
+  onPolish: () => void;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const constraintContext = Array.isArray(narrative.constraint_context)
+    ? (narrative.constraint_context as string[])
+    : [];
+  const approvalChain = Array.isArray(narrative.approval_chain)
+    ? (narrative.approval_chain as string[])
+    : [];
+  const riskFlags = Array.isArray(narrative.risk_flags)
+    ? (narrative.risk_flags as string[])
+    : [];
+  const timeline = Array.isArray(narrative.timeline)
+    ? (narrative.timeline as string[])
+    : [];
+  const markdown = String(narrative.markdown || "").trim();
+
+  return (
+    <div className="audit-narrative-full">
+      <div className="audit-narrative-section">
+        <span className="audit-narrative-label">Decision summary</span>
+        <p className="audit-narrative-body">{String(narrative.decision_summary || "")}</p>
+      </div>
+
+      {Boolean(narrative.outcome) && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Outcome</span>
+          <p className="audit-narrative-body">{String(narrative.outcome)}</p>
+        </div>
+      )}
+
+      {constraintContext.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Constraint context</span>
+          <ul className="audit-narrative-list">
+            {constraintContext.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {approvalChain.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Approval chain</span>
+          <ul className="audit-narrative-list">
+            {approvalChain.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {riskFlags.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Risk flags</span>
+          <ul className="audit-narrative-list audit-narrative-risks">
+            {riskFlags.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Timeline</span>
+          <ol className="audit-narrative-list">
+            {timeline.map((item, i) => <li key={i}>{item}</li>)}
+          </ol>
+        </div>
+      )}
+
+      {markdown && (
+        <div className="audit-narrative-section">
+          <button
+            className="audit-narrative-expand-btn"
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "▾ Hide full narrative" : "▸ View full narrative"}
+          </button>
+          {expanded && (
+            <pre className="audit-narrative-markdown">{markdown}</pre>
+          )}
+        </div>
+      )}
+
+      <div className="audit-narrative-actions">
+        {!narrative.llm_polished ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onPolish}
+            disabled={isPolishing}
+            title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
+          >
+            {isPolishing ? "Polishing…" : "Polish with LLM"}
+          </button>
+        ) : (
+          <span className="status-chip status-optimal">LLM polished</span>
+        )}
+        {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+      </div>
+    </div>
   );
 }
 
@@ -7659,6 +7840,359 @@ function tierLabel(tier: number): string {
     5: "Tier 5 – Policy Change",
   };
   return labels[tier] ?? `Tier ${tier}`;
+}
+
+// --------------------------------------------------------------------------- //
+// Cross-domain optimization view
+// --------------------------------------------------------------------------- //
+
+type DomainPnL = {
+  domain: string;
+  objectiveValue: number;
+  baselineValue: number;
+  improvement: number;
+  improvementPct: number;
+  unit: string;
+  improvementLabel: string;
+  bindingConstraints: string[];
+  topSensitivity: Sensitivity | null;
+};
+
+type CrossDomainOpportunity = {
+  domain: string;
+  parameter: string;
+  shadowPrice: number;
+  unit: string;
+  interpretation: string;
+  downstreamDomains: string[];
+};
+
+function buildCrossDomainData(workflowRun: WorkflowRunResult): {
+  pnl: DomainPnL[];
+  cascade: DependencyEffect[];
+  opportunities: CrossDomainOpportunity[];
+  aggregateImprovementSummary: string;
+} {
+  const steps = workflowRun.step_results;
+
+  // Unit and improvement labeling per domain
+  function domainMeta(domain: string, obj: number, baseline: number) {
+    const improvement = Math.abs(baseline - obj);
+    const improvementPct = baseline !== 0 ? (improvement / Math.abs(baseline)) * 100 : 0;
+    if (domain === "money_market" || domain === "asset_allocation") {
+      const bpsImp = (obj - baseline) * 100;
+      return { unit: "%", improvementLabel: `+${bpsImp.toFixed(1)} bps`, improvement, improvementPct };
+    }
+    const sign = obj < baseline ? "–" : "+";
+    const fmt = improvement >= 1e6 ? `${sign}$${(improvement / 1e6).toFixed(2)}M` : `${sign}$${improvement.toFixed(0)}`;
+    return { unit: "USD", improvementLabel: fmt, improvement, improvementPct };
+  }
+
+  const pnl: DomainPnL[] = steps.map((step) => {
+    const r = step.result;
+    const obj = r.objective_value ?? 0;
+    const baseline = r.baseline_value ?? 0;
+    const meta = domainMeta(step.domain, obj, baseline);
+    const sensitivities = r.sensitivities ?? [];
+    const topSens = [...sensitivities].sort((a, b) => Math.abs(b.shadow_price) - Math.abs(a.shadow_price))[0] ?? null;
+    return {
+      domain: step.domain,
+      objectiveValue: obj,
+      baselineValue: baseline,
+      improvement: meta.improvement,
+      improvementPct: meta.improvementPct,
+      unit: meta.unit,
+      improvementLabel: meta.improvementLabel,
+      bindingConstraints: r.binding_constraints ?? [],
+      topSensitivity: topSens,
+    };
+  });
+
+  // All dependency effects across all steps
+  const cascade = steps.flatMap((s) => s.dependency_effects ?? []);
+
+  // Which domains are downstream of each source
+  const downstreamMap: Record<string, Set<string>> = {};
+  for (const effect of cascade) {
+    const src = effect.source_step_id.replace(/_\d+$/, "");
+    const tgt = effect.target_step_id.replace(/_\d+$/, "");
+    if (!downstreamMap[src]) downstreamMap[src] = new Set();
+    downstreamMap[src].add(tgt);
+  }
+
+  // Top opportunities: sensitivities with positive shadow price, deduped by parameter
+  const seen = new Set<string>();
+  const opportunities: CrossDomainOpportunity[] = [];
+  for (const step of steps) {
+    const sensitivities = step.result.sensitivities ?? [];
+    for (const sens of sensitivities) {
+      if (sens.shadow_price <= 0) continue;
+      const key = `${step.domain}:${sens.parameter}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const downstream = Array.from(downstreamMap[step.domain] ?? []);
+      const unit = step.domain === "money_market" ? "bps" : "USD";
+      opportunities.push({
+        domain: step.domain,
+        parameter: sens.parameter,
+        shadowPrice: sens.shadow_price,
+        unit,
+        interpretation: sens.interpretation,
+        downstreamDomains: downstream,
+      });
+    }
+  }
+  opportunities.sort((a, b) => b.shadowPrice - a.shadowPrice);
+
+  const improvingSides = pnl.filter((p) => p.improvementPct > 0);
+  const aggregateImprovementSummary = improvingSides.length > 0
+    ? `All ${improvingSides.length} domain${improvingSides.length > 1 ? "s" : ""} improved vs baseline: ${improvingSides.map((p) => `${titleCase(p.domain.replace("_", " "))} ${p.improvementLabel}`).join(", ")}.`
+    : "Run a multi-domain workflow to see cross-domain optimization impact.";
+
+  return { pnl, cascade, opportunities, aggregateImprovementSummary };
+}
+
+function CrossDomainOptimizationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+  const steps = workflowRun?.step_results ?? [];
+  const multiDomain = steps.length >= 2;
+  if (!workflowRun || !multiDomain) return null;
+
+  const { pnl, cascade, opportunities, aggregateImprovementSummary } = buildCrossDomainData(workflowRun);
+
+  return (
+    <section className="panel cross-domain-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Cross-Domain View</span>
+          <h2>Aggregate optimization impact</h2>
+        </div>
+        <span className="status-chip status-optimal">{steps.length} domains</span>
+      </div>
+
+      <p className="cross-domain-summary">{aggregateImprovementSummary}</p>
+
+      {/* Per-domain P&L row */}
+      <div className="cross-domain-pnl-row">
+        {pnl.map((d) => (
+          <div key={d.domain} className="cross-domain-pnl-card">
+            <span className="cross-domain-domain-label">{titleCase(d.domain.replace(/_/g, " "))}</span>
+            <span className="cross-domain-improvement">{d.improvementLabel}</span>
+            <span className="cross-domain-pct">{d.improvementPct.toFixed(1)}% vs baseline</span>
+            {d.bindingConstraints.length > 0 && (
+              <span className="cross-domain-binding">
+                {d.bindingConstraints.length} binding constraint{d.bindingConstraints.length > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Dependency cascade */}
+      {cascade.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Constraint cascade</span>
+          <div className="cascade-list">
+            {cascade.map((effect, i) => {
+              const src = titleCase(effect.source_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const tgt = titleCase(effect.target_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const key = effect.target_context_key.replace(/_/g, " ");
+              const sign = effect.delta >= 0 ? "+" : "";
+              const pct = (effect.delta * 100).toFixed(1);
+              return (
+                <div key={i} className="cascade-item">
+                  <span className="cascade-arrow">{src} → {tgt}</span>
+                  <span className="cascade-effect">
+                    {key} {sign}{pct}pp
+                  </span>
+                  <span className="cascade-reason">{effect.reason}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Top opportunities */}
+      {opportunities.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Highest-value relaxation opportunities</span>
+          <div className="opportunity-list">
+            {opportunities.slice(0, 4).map((opp, i) => (
+              <div key={i} className="opportunity-item">
+                <div className="opportunity-item-header">
+                  <strong>{opp.parameter.replace(/_/g, " ")}</strong>
+                  <span className="opportunity-domain-chip">{titleCase(opp.domain.replace(/_/g, " "))}</span>
+                  {opp.downstreamDomains.length > 0 && (
+                    <span className="opportunity-downstream">
+                      → affects {opp.downstreamDomains.map((d) => titleCase(d.replace(/_/g, " "))).join(", ")}
+                    </span>
+                  )}
+                </div>
+                <p className="opportunity-interpretation">{opp.interpretation}</p>
+                <span className="opportunity-shadow">
+                  Shadow price: {opp.shadowPrice.toFixed(2)} {opp.unit}/M
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function WorkflowConstraintNegotiationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+  const [activeStep, setActiveStep] = React.useState<number | null>(null);
+  const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
+  const [negotiating, setNegotiating] = React.useState<number | null>(null);
+  const [targetImprovement, setTargetImprovement] = React.useState("15");
+  const [targetUnits, setTargetUnits] = React.useState("bps");
+
+  const steps = workflowRun?.step_results ?? [];
+  const stepsWithConstraints = steps.filter(
+    (s) => s.result.binding_constraints && s.result.binding_constraints.length > 0
+  );
+
+  if (!workflowRun || stepsWithConstraints.length === 0) return null;
+
+  async function negotiate(stepIndex: number, stepResult: OptimizationResult) {
+    setNegotiating(stepIndex);
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: stepResult as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 15,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = (await res.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiations((prev) => ({ ...prev, [stepIndex]: data.negotiation }));
+      setActiveStep(stepIndex);
+    } catch {
+      /* silent — show nothing rather than blocking */
+    } finally {
+      setNegotiating(null);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Constraint Negotiation</span>
+          <h2>What would need to change?</h2>
+        </div>
+        <div className="negotiation-inputs" style={{ marginTop: 0 }}>
+          <label className="negotiation-label">
+            Target
+            <input
+              type="number"
+              className="negotiation-input"
+              value={targetImprovement}
+              onChange={(e) => setTargetImprovement(e.target.value)}
+              min={0}
+              step={1}
+            />
+          </label>
+          <label className="negotiation-label">
+            Units
+            <select
+              className="negotiation-select"
+              value={targetUnits}
+              onChange={(e) => setTargetUnits(e.target.value)}
+            >
+              <option value="bps">bps</option>
+              <option value="utility">utility</option>
+              <option value="cost_savings">cost savings</option>
+              <option value="objective">objective</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="wf-negotiate-steps">
+        {stepsWithConstraints.map((step, idx) => {
+          const stepIndex = steps.indexOf(step);
+          const neg = negotiations[stepIndex];
+          const isNegotiating = negotiating === stepIndex;
+          const isActive = activeStep === stepIndex;
+          const validProposals = neg?.proposals.filter((p) => p.estimated_impact > 0) ?? [];
+
+          return (
+            <div key={stepIndex} className="wf-negotiate-step">
+              <div className="wf-negotiate-step-header">
+                <div>
+                  <strong>{titleCase(step.domain)} optimizer</strong>
+                  <span className="wf-negotiate-constraints">
+                    {step.result.binding_constraints.slice(0, 3).join(" · ")}
+                    {step.result.binding_constraints.length > 3 ? ` +${step.result.binding_constraints.length - 3} more` : ""}
+                  </span>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    if (isActive && neg) {
+                      setActiveStep(null);
+                    } else {
+                      void negotiate(stepIndex, step.result);
+                    }
+                  }}
+                  disabled={isNegotiating}
+                >
+                  {isNegotiating ? "Analyzing…" : isActive ? "Hide" : "Analyze"}
+                </button>
+              </div>
+
+              {isActive && neg && (
+                <div className="negotiation-results">
+                  <p className="negotiation-recommendation">{neg.recommendation}</p>
+                  {neg.blockers.length > 0 && (
+                    <div className="negotiation-blockers">
+                      {neg.blockers.map((b, i) => <p key={i} className="negotiation-blocker">{b}</p>)}
+                    </div>
+                  )}
+                  {validProposals.length > 0 ? (
+                    <div className="proposal-stack">
+                      {validProposals.map((proposal, i) => (
+                        <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
+                          <div className="proposal-card-header">
+                            <strong className="proposal-parameter">
+                              {titleCase(proposal.parameter.replaceAll("_", " "))}
+                            </strong>
+                            <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+                              {tierLabel(proposal.governance_tier)}
+                            </span>
+                          </div>
+                          <p className="proposal-change">{proposal.proposed_change}</p>
+                          <div className="proposal-meta">
+                            <span className="proposal-impact">
+                              ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+                            </span>
+                            <span className="proposal-confidence">
+                              {Math.round(proposal.confidence * 100)}% confidence
+                            </span>
+                          </div>
+                          <p className="proposal-rationale">{proposal.rationale}</p>
+                          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="negotiation-blocker">No proposals with estimated improvement available for this target.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ConstraintPanel({ result }: { result: OptimizationResult }) {

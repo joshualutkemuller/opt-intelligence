@@ -85,6 +85,8 @@ from .schemas import (
     WorkflowRunResponse,
     WorkflowScenarioCompareRequest,
     WorkflowScenarioCompareResponse,
+    SubstituteReoptimizeRequest,
+    SubstituteReoptimizeResponse,
 )
 
 app = FastAPI(
@@ -397,6 +399,91 @@ def compare_workflow_runs(
         run_ids=payload.run_ids,
     )
     return WorkflowScenarioCompareResponse(comparison=_json(comparison))
+
+
+@app.post("/api/collateral/reoptimize-with-substitutes", response_model=SubstituteReoptimizeResponse)
+def reoptimize_with_substitutes(payload: SubstituteReoptimizeRequest) -> SubstituteReoptimizeResponse:
+    """Re-run the collateral optimizer with flagged high-lending assets excluded.
+
+    The excluded assets are removed from the eligible inventory so the LP must
+    find cheaper substitute collateral to cover the same obligations.  Returns
+    the original and substitute objective values, the lending-opportunity diff,
+    and the full substitute result for the frontend to display.
+    """
+    from decision_intelligence.contracts.objectives import ObjectiveDirection
+    from decision_intelligence.optimizers.collateral import CollateralOptimizer
+
+    optimizer = CollateralOptimizer()
+
+    def _build_request(extra_context: dict) -> OptimizationRequest:
+        ctx = dict(payload.context)
+        ctx.update(extra_context)
+        if payload.optimizer_runtime != "phase1":
+            ctx["optimizer_runtime"] = payload.optimizer_runtime
+        if payload.production_optimizer_id:
+            ctx["production_optimizer_id"] = payload.production_optimizer_id
+        return OptimizationRequest(
+            domain="collateral",
+            portfolio_id=payload.portfolio_id,
+            objective=Objective(
+                name="minimize_funding_cost",
+                direction=ObjectiveDirection.MINIMIZE,
+                metric="funding_cost",
+            ),
+            context=ctx,
+            seed=payload.seed,
+        )
+
+    orig_request = _build_request({})
+    orig_problem = optimizer.prepare_problem(orig_request)
+    orig_solution = optimizer.solve(orig_problem)
+    orig_obj = float(orig_solution.get("objective_value", 0.0))
+    orig_opps = orig_solution.get("lending_opportunities", [])
+
+    sub_request = _build_request({"excluded_asset_ids": payload.excluded_asset_ids})
+    sub_problem = optimizer.prepare_problem(sub_request)
+    sub_solution = optimizer.solve(sub_problem)
+
+    if sub_solution.get("status") != "optimal":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Substitute re-optimization did not find a feasible solution. "
+                "The excluded assets may be required to cover obligations — "
+                "consider excluding fewer assets. "
+                f"Solver message: {sub_solution.get('message', 'unknown')}"
+            ),
+        )
+
+    sub_obj = float(sub_solution.get("objective_value", 0.0))
+    remaining_opps = sub_solution.get("lending_opportunities", [])
+    delta = sub_obj - orig_obj
+    excluded_count = len(payload.excluded_asset_ids)
+    freed_count = len(orig_opps) - len(remaining_opps)
+
+    if delta <= 0:
+        cost_note = f"funding cost improved by ${abs(delta):,.2f} after substitution"
+    else:
+        cost_note = f"funding cost increased by ${delta:,.2f} after substitution (substitute assets carry higher cost)"
+
+    summary = (
+        f"Re-optimized with {excluded_count} asset(s) excluded from collateral pool. "
+        f"{freed_count} of {len(orig_opps)} lending opportunity conflict(s) resolved. "
+        f"{len(remaining_opps)} conflict(s) remain. "
+        f"Original objective: ${orig_obj:,.2f}; substitute objective: ${sub_obj:,.2f} — {cost_note}."
+    )
+
+    from decision_intelligence.production_optimizers.adapters._utils import to_jsonable
+
+    return SubstituteReoptimizeResponse(
+        original_objective=orig_obj,
+        substitute_objective=sub_obj,
+        objective_delta=round(delta, 4),
+        original_lending_opportunities=to_jsonable(orig_opps),
+        remaining_lending_opportunities=to_jsonable(remaining_opps),
+        substitute_result=to_jsonable({k: v for k, v in sub_solution.items() if k != "x"}),
+        summary=summary,
+    )
 
 
 @app.get("/api/approvals/pending", response_model=PendingApprovalsResponse)

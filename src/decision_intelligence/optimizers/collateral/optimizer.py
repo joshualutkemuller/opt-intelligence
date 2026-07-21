@@ -41,7 +41,7 @@ _CONCENTRATION_LIMIT = 0.60   # max 60% from any single asset class per obligati
 
 # Assets with funding_cost_bps above this threshold are considered high-demand
 # securities-lending candidates.  Posting them as collateral forgoes that rebate.
-_LENDING_OPPORTUNITY_THRESHOLD_BPS = 60.0
+_LENDING_OPPORTUNITY_THRESHOLD_BPS = 30.0
 
 
 class CollateralOptimizer(OptimizationCapability):
@@ -65,8 +65,9 @@ class CollateralOptimizer(OptimizationCapability):
 
         assets, obligations = load_collateral(request)
 
-        # Filter ineligible assets
-        eligible = [a for a in assets if a.eligible]
+        # Filter ineligible assets; also exclude any assets the caller wants substituted out
+        excluded_ids: set[str] = set(request.context.get("excluded_asset_ids", []))
+        eligible = [a for a in assets if a.eligible and a.asset_id not in excluded_ids]
         n, m = len(eligible), len(obligations)
 
         # Cost vector: one variable per (asset, obligation) pair
@@ -157,6 +158,7 @@ class CollateralOptimizer(OptimizationCapability):
             "baseline_value": baseline_value,
             "conc_limit": conc_limit,
             "lending_opportunity_threshold_bps": lending_threshold,
+            "excluded_asset_ids": list(excluded_ids),
             "request": request,
             "solver_spec": SolverSpec.from_context(request.context),
         }
@@ -179,6 +181,7 @@ class CollateralOptimizer(OptimizationCapability):
         if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
             x = solver_result.x
             n = problem["n"]
+            m = problem["m"]
             mv = problem["mv"]
             hc = problem["hc"]
             assets = problem["assets"]
