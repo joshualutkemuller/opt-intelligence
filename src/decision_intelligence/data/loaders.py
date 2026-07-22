@@ -222,8 +222,12 @@ def _load_collateral_from_db(
     ``context.required_value``
         Post-haircut USD amount the obligation must cover.  Falls back to the
         agreement's ``mta_amount`` and then $10 M.
+    ``data_source.inventory``
+        Path to a CSV of real inventory positions (columns = ``CollateralAsset``
+        field names).  When present the simulation is skipped entirely and the
+        eligibility/haircut rules from the DB are applied on top of real holdings.
     ``context.n_assets``, ``context.seed``
-        Forwarded to ``simulate_inventory`` for the backing inventory.
+        Forwarded to ``simulate_inventory`` when no *inventory* path is given.
     """
     try:
         from collateral_schedule import CollateralDatabase
@@ -272,12 +276,17 @@ def _load_collateral_from_db(
             if current is None or conc < current:
                 conc_by_class[ac] = conc / 100.0
 
-    # Base inventory from simulation (or we could also accept csv via src["inventory"]).
-    base_assets, _ = simulate_inventory(
-        n_assets=request.context.get("n_assets", 20),
-        seed=request.context.get("seed", 42),
-        context_overrides=request.context,
-    )
+    # Base inventory: real CSV positions feed if provided, else simulation.
+    # The CSV must have columns matching CollateralAsset field names.
+    inventory_path = src.get("inventory")
+    if inventory_path:
+        base_assets = load_dataclass_csv(inventory_path, CollateralAsset)
+    else:
+        base_assets, _ = simulate_inventory(
+            n_assets=request.context.get("n_assets", 20),
+            seed=request.context.get("seed", 42),
+            context_overrides=request.context,
+        )
 
     # Apply schedule rules: override eligible flag and haircut per asset class.
     for asset in base_assets:

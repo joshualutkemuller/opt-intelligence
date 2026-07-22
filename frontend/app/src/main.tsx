@@ -7307,6 +7307,10 @@ function CollateralSchedulePanel() {
   const [showCreateCp, setShowCreateCp] = React.useState(false);
   const [showCreateAgr, setShowCreateAgr] = React.useState(false);
 
+  // Inline row editing
+  const [editingEntryId, setEditingEntryId] = React.useState<string | null>(null);
+  const [editFields, setEditFields] = React.useState<Partial<CollateralEntry>>({});
+
   // Create counterparty form
   const [cpName, setCpName] = React.useState("");
   const [cpLei, setCpLei] = React.useState("");
@@ -7350,6 +7354,25 @@ function CollateralSchedulePanel() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSaveEntry(entryId: string) {
+    const res = await fetch(`${API_BASE}/api/collateral/entries/${entryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editFields),
+    });
+    if (res.ok) {
+      setEditingEntryId(null);
+      setEditFields({});
+      if (selectedAgreementId) void loadSchedule(selectedAgreementId);
+    }
+  }
+
+  async function handleDeleteEntry(entryId: string) {
+    if (!window.confirm("Delete this entry? This cannot be undone.")) return;
+    const res = await fetch(`${API_BASE}/api/collateral/entries/${entryId}`, { method: "DELETE" });
+    if (res.ok && selectedAgreementId) void loadSchedule(selectedAgreementId);
   }
 
   React.useEffect(() => {
@@ -7590,29 +7613,66 @@ function CollateralSchedulePanel() {
                         <th>ISIN / ID</th>
                         <th>Currency</th>
                         <th>Rating floor</th>
-                        <th>Max maturity (yr)</th>
+                        <th>Max mat. (yr)</th>
                         <th>Haircut %</th>
-                        <th>Conc. limit %</th>
+                        <th>Conc. %</th>
                         <th>Eligible</th>
                         <th>Notes</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {entries.map((e) => (
-                        <tr key={e.id} className={e.eligible ? "" : "collateral-row-ineligible"}>
-                          <td><span className="collateral-asset-chip">{e.asset_class}</span></td>
-                          <td className="collateral-mono">{e.isin ?? "—"}</td>
-                          <td>{e.currency ?? "—"}</td>
-                          <td>{e.rating_floor ?? "—"}</td>
-                          <td>{e.max_maturity_years != null ? e.max_maturity_years : "—"}</td>
-                          <td className="collateral-haircut">{e.haircut_pct.toFixed(1)}%</td>
-                          <td>{e.concentration_limit_pct != null ? `${e.concentration_limit_pct.toFixed(1)}%` : "—"}</td>
-                          <td className={e.eligible ? "collateral-eligible" : "collateral-ineligible"}>
-                            {e.eligible ? "✓" : "✗"}
-                          </td>
-                          <td className="collateral-notes">{e.notes ?? ""}</td>
-                        </tr>
-                      ))}
+                      {entries.map((e) => {
+                        const isEditing = editingEntryId === e.id;
+                        if (isEditing) {
+                          const ef = editFields;
+                          return (
+                            <tr key={e.id} className="collateral-row-editing">
+                              <td>
+                                <select value={ef.asset_class ?? e.asset_class} onChange={ev => setEditFields(f => ({ ...f, asset_class: ev.target.value }))}>
+                                  {["CASH","GOVT","AGENCY","CORP","HY_CORP","EQUITY","ABS","MBS","MUNI","MMF","COVERED","OTHER"].map(ac => <option key={ac}>{ac}</option>)}
+                                </select>
+                              </td>
+                              <td><input className="collateral-edit-input" value={ef.isin ?? e.isin ?? ""} onChange={ev => setEditFields(f => ({ ...f, isin: ev.target.value }))} placeholder="ISIN" /></td>
+                              <td><input className="collateral-edit-input collateral-edit-sm" value={ef.currency ?? e.currency ?? ""} onChange={ev => setEditFields(f => ({ ...f, currency: ev.target.value }))} placeholder="CCY" /></td>
+                              <td><input className="collateral-edit-input collateral-edit-sm" value={ef.rating_floor ?? e.rating_floor ?? ""} onChange={ev => setEditFields(f => ({ ...f, rating_floor: ev.target.value }))} placeholder="e.g. A-" /></td>
+                              <td><input className="collateral-edit-input collateral-edit-sm" type="number" value={ef.max_maturity_years ?? e.max_maturity_years ?? ""} onChange={ev => setEditFields(f => ({ ...f, max_maturity_years: parseFloat(ev.target.value) || undefined }))} /></td>
+                              <td><input className="collateral-edit-input collateral-edit-sm" type="number" step="0.1" value={ef.haircut_pct ?? e.haircut_pct} onChange={ev => setEditFields(f => ({ ...f, haircut_pct: parseFloat(ev.target.value) }))} /></td>
+                              <td><input className="collateral-edit-input collateral-edit-sm" type="number" step="1" value={ef.concentration_limit_pct ?? e.concentration_limit_pct ?? ""} onChange={ev => setEditFields(f => ({ ...f, concentration_limit_pct: parseFloat(ev.target.value) || undefined }))} /></td>
+                              <td>
+                                <input type="checkbox" checked={ef.eligible ?? e.eligible} onChange={ev => setEditFields(f => ({ ...f, eligible: ev.target.checked }))} />
+                              </td>
+                              <td><input className="collateral-edit-input" value={ef.notes ?? e.notes ?? ""} onChange={ev => setEditFields(f => ({ ...f, notes: ev.target.value }))} /></td>
+                              <td className="collateral-actions">
+                                <button className="collateral-btn-save" onClick={() => void handleSaveEntry(e.id)}>Save</button>
+                                <button className="collateral-btn-cancel" onClick={() => { setEditingEntryId(null); setEditFields({}); }}>Cancel</button>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return (
+                          <tr key={e.id} className={e.eligible ? "" : "collateral-row-ineligible"}>
+                            <td><span className="collateral-asset-chip">{e.asset_class}</span></td>
+                            <td className={"collateral-mono" + ((e as any).isin_invalid ? " collateral-isin-warn" : "")}>
+                              {e.isin ?? "—"}
+                              {(e as any).isin_invalid && <span className="collateral-isin-badge" title={(e as any).isin_invalid}>!</span>}
+                            </td>
+                            <td>{e.currency ?? "—"}</td>
+                            <td>{e.rating_floor ?? "—"}</td>
+                            <td>{e.max_maturity_years != null ? e.max_maturity_years : "—"}</td>
+                            <td className="collateral-haircut">{e.haircut_pct.toFixed(1)}%</td>
+                            <td>{e.concentration_limit_pct != null ? `${e.concentration_limit_pct.toFixed(1)}%` : "—"}</td>
+                            <td className={e.eligible ? "collateral-eligible" : "collateral-ineligible"}>
+                              {e.eligible ? "✓" : "✗"}
+                            </td>
+                            <td className="collateral-notes">{e.notes ?? ""}</td>
+                            <td className="collateral-actions">
+                              <button className="collateral-btn-edit" onClick={() => { setEditingEntryId(e.id); setEditFields({}); }}>Edit</button>
+                              <button className="collateral-btn-delete" onClick={() => void handleDeleteEntry(e.id)}>Delete</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
