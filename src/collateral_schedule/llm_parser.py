@@ -32,6 +32,7 @@ Accuracy design (see handoff §5.1 / limitation #1):
 
 from __future__ import annotations
 
+import re as _re
 import tempfile
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -584,8 +585,69 @@ def _dedupe(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+_TABLE_HEADER_RE = _re.compile(r"^\[page \d+ table \d+\]", _re.MULTILINE)
+
+
+def _is_table_block(para: str) -> bool:
+    return bool(_TABLE_HEADER_RE.match(para.lstrip()))
+
+
+def _table_header_line(para: str) -> str:
+    """Return the '[page N table M]' header line from a table paragraph."""
+    m = _TABLE_HEADER_RE.search(para)
+    return m.group(0) if m else ""
+
+
+def _split_table_block(para: str, max_chars: int) -> list[str]:
+    """Split an oversized table block on row boundaries.
+
+    The first line is the '[page N table M]' header; the second line is
+    treated as the column-header row. Both are repeated at the top of every
+    sub-chunk so the model always knows what table and which columns it's
+    reading.
+    """
+    lines = para.splitlines()
+    # Identify header lines: the [page N table M] tag and the column header row.
+    section_tag = lines[0] if lines and _TABLE_HEADER_RE.match(lines[0].strip()) else ""
+    col_header = lines[1] if len(lines) > 1 and "|" in lines[1] else ""
+    prefix_lines = [l for l in [section_tag, col_header] if l]
+    prefix = "\n".join(prefix_lines) + "\n" if prefix_lines else ""
+
+    data_lines = lines[len(prefix_lines):]
+    sub_chunks: list[str] = []
+    current_lines: list[str] = []
+    current_size = len(prefix)
+
+    for line in data_lines:
+        line_len = len(line) + 1  # +1 for \n
+        if current_size + line_len > max_chars and current_lines:
+            sub_chunks.append(prefix + "\n".join(current_lines))
+            current_lines = []
+            current_size = len(prefix)
+        # If a single row is itself longer than the budget, hard-split it.
+        if line_len > max_chars:
+            for i in range(0, len(line), max_chars - len(prefix)):
+                sub_chunks.append(prefix + line[i : i + max_chars - len(prefix)])
+            continue
+        current_lines.append(line)
+        current_size += line_len
+
+    if current_lines:
+        sub_chunks.append(prefix + "\n".join(current_lines))
+    return sub_chunks or [para[:max_chars]]
+
+
 def _split_chunks(text: str, max_chars: int, max_chunks: int) -> list[str]:
     """Split on paragraph boundaries into ≤max_chunks pieces of ≤max_chars.
+
+    Table blocks (paragraphs starting with '[page N table M]') are split on
+    row boundaries rather than mid-character, and the section header + column
+    header row are repeated at the top of every continuation chunk so the
+    model retains column context.
+
+    Non-table paragraphs carry the most-recent section header as a one-line
+    prefix when they start a new chunk mid-section, so the model knows which
+    part of the document it is reading.
 
     If the document exceeds the total budget, later content is dropped —
     but the budget (max_chars × max_chunks) is ~6× the old truncation limit.
@@ -593,29 +655,71 @@ def _split_chunks(text: str, max_chars: int, max_chunks: int) -> list[str]:
     text = text.strip()
     if len(text) <= max_chars:
         return [text] if text else []
+
     paragraphs = text.split("\n\n")
     chunks: list[str] = []
     current: list[str] = []
     size = 0
-    for para in paragraphs:
-        # A single paragraph larger than the budget is hard-split.
-        while len(para) > max_chars:
-            if current:
-                chunks.append("\n\n".join(current))
-                current, size = [], 0
-            chunks.append(para[:max_chars])
-            para = para[max_chars:]
-            if len(chunks) >= max_chunks:
-                return chunks[:max_chunks]
-        if size + len(para) + 2 > max_chars and current:
+    last_section_tag: str = ""  # most recent [page N table M] or [page N] tag
+
+    def _flush() -> bool:
+        nonlocal current, size
+        if current:
             chunks.append("\n\n".join(current))
             current, size = [], 0
+            return len(chunks) >= max_chunks
+        return False
+
+    for para in paragraphs:
+        # Track current section header for context carry-forward.
+        m = _TABLE_HEADER_RE.search(para)
+        if m:
+            last_section_tag = m.group(0)
+        elif para.lstrip().startswith("[page "):
+            last_section_tag = para.lstrip().split("\n")[0]
+
+        if _is_table_block(para) and len(para) > max_chars:
+            # Flush whatever is pending before the table sub-chunks.
+            if _flush():
+                return chunks[:max_chunks]
+            for sub in _split_table_block(para, max_chars):
+                if len(chunks) >= max_chunks:
+                    return chunks[:max_chunks]
+                chunks.append(sub)
+            continue
+
+        # Hard-split non-table paragraphs that exceed the budget.
+        # `was_hard_split` tracks whether we broke a paragraph mid-content so
+        # the remainder also gets the section-context prefix.
+        was_hard_split = False
+        while len(para) > max_chars:
+            if _flush():
+                return chunks[:max_chunks]
+            prefix = (last_section_tag + "\n") if last_section_tag else ""
+            safe = max_chars - len(prefix)
+            chunks.append(prefix + para[:safe])
+            para = para[safe:]
+            was_hard_split = True
             if len(chunks) >= max_chunks:
                 return chunks[:max_chunks]
+
+        if size + len(para) + 2 > max_chars:
+            if _flush():
+                return chunks[:max_chunks]
+            # Carry section tag as first line of the new chunk.
+            if last_section_tag and para and not _TABLE_HEADER_RE.match(para.lstrip()):
+                current.append(last_section_tag)
+                size += len(last_section_tag) + 2
+        elif was_hard_split and last_section_tag and not current:
+            # Remainder of a hard-split paragraph starts a fresh chunk —
+            # prepend the section tag so the model retains context.
+            current.append(last_section_tag)
+            size += len(last_section_tag) + 2
+
         current.append(para)
         size += len(para) + 2
-    if current and len(chunks) < max_chunks:
-        chunks.append("\n\n".join(current))
+
+    _flush()
     return chunks[:max_chunks]
 
 
