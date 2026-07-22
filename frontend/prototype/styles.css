@@ -5595,3 +5595,63 @@ tbody tr:hover {
   .collateral-layout { grid-template-columns: 1fr; }
   .collateral-sidebar { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 1rem; }
 }
+
+/* Inline entry editing */
+.collateral-actions { white-space: nowrap; }
+.collateral-btn-edit,
+.collateral-btn-delete,
+.collateral-btn-save,
+.collateral-btn-cancel {
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  margin-right: 0.25rem;
+}
+.collateral-btn-edit   { background: #dbeafe; color: #1d4ed8; }
+.collateral-btn-delete { background: #fee2e2; color: #b91c1c; }
+.collateral-btn-save   { background: #dcfce7; color: #15803d; }
+.collateral-btn-cancel { background: #f3f4f6; color: #374151; }
+.collateral-btn-edit:hover   { background: #bfdbfe; }
+.collateral-btn-delete:hover { background: #fecaca; }
+.collateral-btn-save:hover   { background: #bbf7d0; }
+.collateral-btn-cancel:hover { background: #e5e7eb; }
+
+.collateral-row-editing td { background: #fffbeb; padding: 0.25rem 0.4rem; }
+.collateral-edit-input {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.3rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.collateral-edit-sm { width: 5rem; }
+
+/* ISIN validation warning */
+.collateral-isin-warn { color: #b45309; }
+.collateral-isin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-left: 0.25rem;
+  cursor: help;
+}
+
+@media (prefers-color-scheme: dark) {
+  .collateral-row-editing td { background: #292524; }
+  .collateral-edit-input { background: #1c1917; color: #e7e5e4; border-color: #44403c; }
+  .collateral-btn-edit   { background: #1e3a5f; color: #93c5fd; }
+  .collateral-btn-delete { background: #450a0a; color: #fca5a5; }
+  .collateral-btn-save   { background: #052e16; color: #86efac; }
+  .collateral-btn-cancel { background: #1c1917; color: #d6d3d1; }
+}

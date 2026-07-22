@@ -360,6 +360,7 @@ class CollateralScheduleIngestResponse(BaseModel):
     entries_inserted: int
     replaced: bool
     summary: dict[str, Any]
+    isin_warnings: list[dict[str, Any]] = []
 
 
 class CollateralEntryResponse(BaseModel):
@@ -367,6 +368,7 @@ class CollateralEntryResponse(BaseModel):
     agreement_id: str
     asset_class: str
     isin: str | None = None
+    isin_invalid: str | None = None
     currency: str | None = None
     rating_floor: str | None = None
     max_maturity_years: float | None = None
@@ -376,6 +378,19 @@ class CollateralEntryResponse(BaseModel):
     notes: str | None = None
     source_row: int | None = None
     created_at: str
+    schedule_version: int = 1
+
+
+class CollateralEntryUpdateRequest(BaseModel):
+    asset_class: str | None = None
+    isin: str | None = None
+    currency: str | None = None
+    rating_floor: str | None = None
+    max_maturity_years: float | None = None
+    haircut_pct: float | None = None
+    concentration_limit_pct: float | None = None
+    eligible: bool | None = None
+    notes: str | None = None
 
 
 class CollateralScheduleResponse(BaseModel):

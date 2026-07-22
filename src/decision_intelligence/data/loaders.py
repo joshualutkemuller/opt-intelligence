@@ -178,7 +178,149 @@ def load_collateral(
             _require(src, "obligations", "collateral"), CollateralObligation
         )
         return assets, obligations
+    if src["type"] == "collateral_db":
+        return _load_collateral_from_db(request, src)
     raise DataSourceError(f"Unknown data_source type '{src['type']}' for collateral.")
+
+
+# Canonical CollateralDB asset class → optimizer asset_class string
+_COLLATERAL_DB_CLASS_MAP: dict[str, str] = {
+    "CASH": "cash",
+    "GOVT": "govt_bond",
+    "AGENCY": "govt_bond",
+    "CORP": "corp_bond",
+    "HY_CORP": "corp_bond",
+    "EQUITY": "equity",
+    "ABS": "corp_bond",
+    "MBS": "corp_bond",
+    "MUNI": "govt_bond",
+    "MMF": "cash",
+    "COVERED": "corp_bond",
+    "OTHER": "corp_bond",
+}
+
+
+def _map_db_asset_class(db_class: str) -> str:
+    return _COLLATERAL_DB_CLASS_MAP.get(db_class.upper(), "corp_bond")
+
+
+def _load_collateral_from_db(
+    request: OptimizationRequest,
+    src: dict[str, Any],
+) -> tuple[list[CollateralAsset], list[CollateralObligation]]:
+    """Load eligibility rules from CollateralDatabase; overlay on simulated inventory.
+
+    Required context keys
+    ---------------------
+    ``data_source.agreement_id`` or ``context.agreement_id``
+        The margin agreement whose schedule drives eligibility and haircuts.
+
+    Optional context keys
+    ---------------------
+    ``data_source.db_path``
+        Path to the SQLite file (defaults to ``CollateralDatabase`` default path).
+    ``context.required_value``
+        Post-haircut USD amount the obligation must cover.  Falls back to the
+        agreement's ``mta_amount`` and then $10 M.
+    ``data_source.inventory``
+        Path to a CSV of real inventory positions (columns = ``CollateralAsset``
+        field names).  When present the simulation is skipped entirely and the
+        eligibility/haircut rules from the DB are applied on top of real holdings.
+    ``context.n_assets``, ``context.seed``
+        Forwarded to ``simulate_inventory`` when no *inventory* path is given.
+    """
+    try:
+        from collateral_schedule import CollateralDatabase
+    except ImportError as exc:
+        raise DataSourceError(
+            "collateral_db source requires the 'collateral_schedule' package."
+        ) from exc
+
+    agreement_id = src.get("agreement_id") or request.context.get("agreement_id")
+    if not agreement_id:
+        raise DataSourceError(
+            "collateral_db source requires 'agreement_id' in data_source or context."
+        )
+
+    db_path = src.get("db_path")
+    db = CollateralDatabase(db_path) if db_path else CollateralDatabase()
+
+    agr = db.get_agreement(agreement_id)
+    if agr is None:
+        raise DataSourceError(
+            f"Agreement '{agreement_id}' not found in CollateralDatabase."
+        )
+
+    entries = db.list_entries(agreement_id)
+
+    # Derive eligibility and haircut/concentration rules from the schedule entries.
+    # When multiple rows exist for the same optimizer asset class (e.g. GOVT + AGENCY
+    # both map to govt_bond) we use the minimum haircut (most favourable rule) and
+    # the minimum concentration limit (most restrictive rule).
+    eligible_classes: set[str] = set()
+    haircut_by_class: dict[str, float] = {}
+    conc_by_class: dict[str, float] = {}
+
+    for entry in entries:
+        ac = _map_db_asset_class(entry["asset_class"])
+        if entry.get("eligible"):
+            eligible_classes.add(ac)
+        hc = entry.get("haircut_pct")
+        if hc is not None:
+            current = haircut_by_class.get(ac)
+            if current is None or hc < current:
+                haircut_by_class[ac] = hc / 100.0  # % → fraction
+        conc = entry.get("concentration_limit_pct")
+        if conc is not None:
+            current = conc_by_class.get(ac)
+            if current is None or conc < current:
+                conc_by_class[ac] = conc / 100.0
+
+    # Base inventory: real CSV positions feed if provided, else simulation.
+    # The CSV must have columns matching CollateralAsset field names.
+    inventory_path = src.get("inventory")
+    if inventory_path:
+        base_assets = load_dataclass_csv(inventory_path, CollateralAsset)
+    else:
+        base_assets, _ = simulate_inventory(
+            n_assets=request.context.get("n_assets", 20),
+            seed=request.context.get("seed", 42),
+            context_overrides=request.context,
+        )
+
+    # Apply schedule rules: override eligible flag and haircut per asset class.
+    for asset in base_assets:
+        ac = asset.asset_class
+        asset.eligible = ac in eligible_classes
+        if ac in haircut_by_class:
+            asset.haircut = haircut_by_class[ac]
+
+    # Propagate the tightest concentration limit to request context so the
+    # optimizer's concentration constraint picks it up automatically.
+    if conc_by_class:
+        tightest = min(conc_by_class.values())
+        request.context.setdefault("concentration_limit", tightest)
+
+    # Resolve the counterparty name for human-readable output.
+    cp_map = {c["id"]: c["name"] for c in db.list_counterparties()}
+    counterparty_name = cp_map.get(agr["counterparty_id"], agr["counterparty_id"])
+
+    required_value = float(
+        request.context.get("required_value")
+        or agr.get("mta_amount")
+        or 10_000_000.0
+    )
+
+    obligation = CollateralObligation(
+        obligation_id=agreement_id,
+        counterparty=counterparty_name,
+        required_value=required_value,
+        eligible_asset_classes=sorted(eligible_classes),
+        venue_type="bilateral",
+        agreement_type=agr.get("margin_type", "OTHER"),
+    )
+
+    return base_assets, [obligation]
 
 
 def load_money_market(

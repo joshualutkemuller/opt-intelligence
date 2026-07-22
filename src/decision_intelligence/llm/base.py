@@ -46,6 +46,8 @@ class LLMProvider(abc.ABC):
     name: str = "base"
     #: whether the provider can consume a PDF document directly.
     supports_native_pdf: bool = False
+    #: whether the provider accepts rendered page images (vision / multimodal).
+    supports_vision: bool = False
 
     def __init__(self, model: str) -> None:
         self.model = model
@@ -70,6 +72,22 @@ class LLMProvider(abc.ABC):
     @abc.abstractmethod
     def generate(self, prompt: str, *, system: str | None = None, max_tokens: int = 1024) -> str:
         """Return free-text for a prompt (used for explanations)."""
+
+    def extract_with_images(
+        self,
+        schema: type[T],
+        *,
+        instruction: str,
+        system: str | None = None,
+        text: str | None = None,
+        images: list[bytes] | None = None,
+    ) -> T:
+        """Extract structured data from text + rendered page images.
+
+        Default implementation ignores *images* and delegates to :meth:`extract`
+        with *text* only. Override in providers that support multimodal input.
+        """
+        return self.extract(schema, instruction=instruction, system=system, text=text)
 
     # -- shared helpers ------------------------------------------------------ #
     @staticmethod

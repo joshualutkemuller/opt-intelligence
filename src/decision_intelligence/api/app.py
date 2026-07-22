@@ -90,9 +90,10 @@ from .schemas import (
     WorkflowScenarioCompareResponse,
     SubstituteReoptimizeRequest,
     SubstituteReoptimizeResponse,
+    CollateralEntryResponse,
+    CollateralEntryUpdateRequest,
     CollateralScheduleIngestRequest,
     CollateralScheduleIngestResponse,
-    CollateralEntryResponse,
     CollateralScheduleResponse,
     CounterpartyCreateRequest,
     CounterpartyResponse,
@@ -477,6 +478,26 @@ def compare_workflow_runs(
 
 
 
+def _to_entry_response(r: dict) -> CollateralEntryResponse:
+    return CollateralEntryResponse(
+        id=r["id"],
+        agreement_id=r["agreement_id"],
+        asset_class=r["asset_class"],
+        isin=r.get("isin"),
+        isin_invalid=r.get("isin_invalid"),
+        currency=r.get("currency"),
+        rating_floor=r.get("rating_floor"),
+        max_maturity_years=r.get("max_maturity_years"),
+        haircut_pct=r["haircut_pct"],
+        concentration_limit_pct=r.get("concentration_limit_pct"),
+        eligible=bool(r["eligible"]),
+        notes=r.get("notes"),
+        source_row=r.get("source_row"),
+        created_at=r["created_at"],
+        schedule_version=r.get("schedule_version", 1),
+    )
+
+
 # ── Collateral schedule management ───────────────────────────────────────────
 
 @app.post("/api/collateral/counterparties", response_model=CounterpartyResponse)
@@ -575,6 +596,12 @@ def ingest_collateral_schedule(
             ),
         )
 
+    isin_warnings = [
+        {"source_row": e.get("source_row"), "isin": e["isin"], "reason": e["isin_invalid"]}
+        for e in entries
+        if e.get("isin_invalid")
+    ]
+
     count = _COLLATERAL_DB.insert_entries(
         agreement_id=agreement_id,
         entries=entries,
@@ -586,6 +613,7 @@ def ingest_collateral_schedule(
         entries_inserted=count,
         replaced=payload.replace,
         summary=summary,
+        isin_warnings=isin_warnings,
     )
 
 
@@ -608,26 +636,9 @@ def get_collateral_schedule(
     )
     summary = _COLLATERAL_DB.summary(agreement_id)
 
-    def _to_response(r: dict) -> CollateralEntryResponse:
-        return CollateralEntryResponse(
-            id=r["id"],
-            agreement_id=r["agreement_id"],
-            asset_class=r["asset_class"],
-            isin=r.get("isin"),
-            currency=r.get("currency"),
-            rating_floor=r.get("rating_floor"),
-            max_maturity_years=r.get("max_maturity_years"),
-            haircut_pct=r["haircut_pct"],
-            concentration_limit_pct=r.get("concentration_limit_pct"),
-            eligible=bool(r["eligible"]),
-            notes=r.get("notes"),
-            source_row=r.get("source_row"),
-            created_at=r["created_at"],
-        )
-
     return CollateralScheduleResponse(
         agreement_id=agreement_id,
-        entries=[_to_response(r) for r in rows],
+        entries=[_to_entry_response(r) for r in rows],
         summary=summary,
     )
 
@@ -638,6 +649,46 @@ def clear_collateral_schedule(agreement_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
     deleted = _COLLATERAL_DB.delete_entries(agreement_id)
     return {"agreement_id": agreement_id, "entries_deleted": deleted}
+
+
+@app.get("/api/collateral/agreements/{agreement_id}/history")
+def get_collateral_schedule_history(agreement_id: str) -> dict:
+    """Return a version-by-version audit trail of schedule ingestions."""
+    if not _COLLATERAL_DB.get_agreement(agreement_id):
+        raise HTTPException(status_code=404, detail=f"Agreement '{agreement_id}' not found.")
+    versions = _COLLATERAL_DB.list_schedule_history(agreement_id)
+    return {"agreement_id": agreement_id, "versions": versions}
+
+
+@app.patch(
+    "/api/collateral/entries/{entry_id}",
+    response_model=CollateralEntryResponse,
+)
+def update_collateral_entry(
+    entry_id: str,
+    payload: CollateralEntryUpdateRequest,
+) -> CollateralEntryResponse:
+    """Update editable fields on a single live collateral entry."""
+    existing = _COLLATERAL_DB.get_entry(entry_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found.")
+    if existing.get("superseded_at"):
+        raise HTTPException(status_code=409, detail="Cannot edit a superseded (historical) entry.")
+    fields = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updated = _COLLATERAL_DB.update_entry(entry_id, fields)
+    return _to_entry_response(updated)
+
+
+@app.delete("/api/collateral/entries/{entry_id}")
+def delete_collateral_entry(entry_id: str) -> dict:
+    """Hard-delete a single live collateral entry."""
+    existing = _COLLATERAL_DB.get_entry(entry_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found.")
+    if existing.get("superseded_at"):
+        raise HTTPException(status_code=409, detail="Cannot delete a superseded (historical) entry.")
+    deleted = _COLLATERAL_DB.delete_entry(entry_id)
+    return {"entry_id": entry_id, "deleted": deleted}
 
 
 @app.get("/api/collateral/schema")

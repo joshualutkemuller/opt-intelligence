@@ -132,6 +132,120 @@ def normalize_asset_class(raw: str) -> str:
     return AssetClass.OTHER.value
 
 
+# Moody's long-form → S&P-style canonical mapping
+_MOODYS_LONG: dict[str, str] = {
+    "aaa": "AAA", "aa1": "AA+", "aa2": "AA", "aa3": "AA-",
+    "a1": "A+", "a2": "A", "a3": "A-",
+    "baa1": "BBB+", "baa2": "BBB", "baa3": "BBB-",
+    "ba1": "BB+", "ba2": "BB", "ba3": "BB-",
+    "b1": "B+", "b2": "B", "b3": "B-",
+    "caa1": "CCC+", "caa2": "CCC", "caa3": "CCC-",
+    "ca": "CC", "c": "D",
+    # Watchlist suffixes that appear in source data
+    "aaa (stable)": "AAA", "aa+ (stable)": "AA+",
+}
+
+# S&P / Fitch canonical ratings (returned as-is after upper-casing)
+_SP_CANONICAL: frozenset[str] = frozenset({
+    "AAA", "AA+", "AA", "AA-",
+    "A+", "A", "A-",
+    "BBB+", "BBB", "BBB-",
+    "BB+", "BB", "BB-",
+    "B+", "B", "B-",
+    "CCC+", "CCC", "CCC-",
+    "CC", "C", "D", "NR", "WR",
+})
+
+# Common shorthand / aliases not in Moody's long form
+_RATING_ALIASES: dict[str, str] = {
+    "investment grade": "BBB-",
+    "ig": "BBB-",
+    "non-investment grade": "BB+",
+    "hy": "BB+",
+    "high yield": "BB+",
+    "speculative": "BB+",
+    "not rated": "NR",
+    "unrated": "NR",
+    "withdrawn": "WR",
+}
+
+
+def normalize_rating(raw: str) -> str:
+    """Map a free-text rating string to a canonical S&P-style rating.
+
+    Handles S&P, Fitch (identical notation), Moody's long-form (e.g. ``Aaa``,
+    ``Baa3``), and common aliases (``Investment Grade`` → ``BBB-``).  Unknown
+    strings are returned upper-cased so they round-trip without data loss.
+    """
+    if not raw or not isinstance(raw, str):
+        return "NR"
+    key = raw.strip().lower()
+    # Remove watch/outlook suffixes: "AA+ (stable)" → "aa+"
+    for suffix in (" (stable)", " (negative)", " (positive)", " (developing)", " watch"):
+        key = key.replace(suffix, "")
+    key = key.strip()
+
+    # Check Moody's long form
+    if key in _MOODYS_LONG:
+        return _MOODYS_LONG[key]
+    # Check aliases
+    if key in _RATING_ALIASES:
+        return _RATING_ALIASES[key]
+    # Check S&P / Fitch canonical (case-insensitive)
+    upper = key.upper()
+    if upper in _SP_CANONICAL:
+        return upper
+    # Unknown — return upper-cased original so it's legible
+    return raw.strip().upper()
+
+
+def validate_isin(isin: str) -> tuple[bool, str]:
+    """Validate an ISIN using the ISO 6166 Luhn-mod-10 checksum.
+
+    Returns ``(True, "")`` for a valid ISIN, or ``(False, reason)`` for an
+    invalid one.  CUSIPs (9-char) are accepted and treated as valid identifiers
+    even though they don't follow ISIN structure.
+    """
+    if not isin or not isinstance(isin, str):
+        return False, "empty"
+    raw = isin.strip().upper()
+
+    # CUSIP: 9 alphanumeric characters — no ISIN checksum, accept as-is
+    if len(raw) == 9 and raw.isalnum():
+        return True, ""
+
+    if len(raw) != 12:
+        return False, f"wrong length ({len(raw)}, expected 12)"
+
+    if not raw[:2].isalpha():
+        return False, "first two characters must be alphabetic country code"
+
+    if not raw[2:].isalnum():
+        return False, "characters 3-12 must be alphanumeric"
+
+    # Convert each character to digits: A=10, B=11, …, Z=35
+    digits: list[int] = []
+    for ch in raw:
+        if ch.isdigit():
+            digits.append(int(ch))
+        else:
+            val = ord(ch) - ord("A") + 10
+            digits.extend(divmod(val, 10))
+
+    # Luhn mod-10 over the expanded digit string
+    total = 0
+    for i, d in enumerate(reversed(digits)):
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+
+    if total % 10 != 0:
+        return False, "checksum failed"
+    return True, ""
+
+
 def normalize_eligible(raw: Any) -> bool:
     if isinstance(raw, bool):
         return raw
