@@ -9,6 +9,12 @@ from .loaders import (
     load_financing,
     load_money_market,
 )
+from .quality import (
+    DataQualityReport,
+    DataQualityResult,
+    DataQualityViolation,
+    run_quality_checks,
+)
 
 __all__ = [
     "DataSourceError",
@@ -17,4 +23,8 @@ __all__ = [
     "load_financing",
     "load_money_market",
     "load_dataclass_csv",
+    "DataQualityReport",
+    "DataQualityResult",
+    "DataQualityViolation",
+    "run_quality_checks",
 ]

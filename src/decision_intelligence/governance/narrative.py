@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from decision_intelligence.llm.base import LLMProvider
 
 
 class AuditNarrative(BaseModel):
@@ -21,6 +24,9 @@ class AuditNarrative(BaseModel):
     timeline: list[str] = Field(default_factory=list)
     markdown: str
     json_payload: dict[str, Any] = Field(default_factory=dict)
+    llm_polished: bool = False
+    llm_provider: str | None = None
+    llm_model: str | None = None
 
 
 def build_workflow_audit_narrative(
@@ -254,6 +260,50 @@ def _record(value: Any) -> dict[str, Any]:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def polish_narrative(narrative: AuditNarrative, provider: LLMProvider) -> AuditNarrative:
+    """Rewrite ``narrative.markdown`` as compliance-grade prose via ``provider``.
+
+    The structured fields (decision_summary, constraint_context, etc.) are kept
+    verbatim as source-of-truth; only the ``markdown`` output and
+    ``decision_summary`` / ``outcome`` prose fields are overwritten with the
+    LLM-polished versions.  ``llm_polished``, ``llm_provider``, and
+    ``llm_model`` are set on the returned narrative.
+    """
+    system = (
+        "You are a compliance documentation specialist. "
+        "Rewrite the provided draft audit narrative as polished, professional prose "
+        "suitable for regulatory review. "
+        "Preserve all factual content, section headings, and bullet lists. "
+        "Return only the finished markdown — no preamble or commentary."
+    )
+    prompt = (
+        f"Rewrite the following draft audit narrative as polished compliance prose.\n\n"
+        f"{narrative.markdown}"
+    )
+    try:
+        polished_md = provider.generate(prompt, system=system, max_tokens=2048)
+    except Exception:  # noqa: BLE001 — fall back to deterministic on any LLM failure
+        return narrative
+
+    # Extract an updated decision_summary from the first non-heading paragraph.
+    lines = [ln.strip() for ln in polished_md.splitlines() if ln.strip()]
+    new_summary = narrative.decision_summary
+    for line in lines:
+        if not line.startswith("#") and not line.startswith("-") and len(line) > 40:
+            new_summary = line
+            break
+
+    return narrative.model_copy(
+        update={
+            "markdown": polished_md,
+            "decision_summary": new_summary,
+            "llm_polished": True,
+            "llm_provider": provider.name,
+            "llm_model": provider.model,
+        }
+    )
 
 
 def _dig(source: dict[str, Any], *keys: str) -> Any:

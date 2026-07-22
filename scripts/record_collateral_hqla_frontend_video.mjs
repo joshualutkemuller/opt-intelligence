@@ -16,7 +16,7 @@ const tmpDir = path.join(repoRoot, "tmp", "video", "frontend-collateral-hqla");
 const apiUrl = "http://127.0.0.1:8000";
 const uiUrl = "http://127.0.0.1:5173";
 const outputPath = path.join(outDir, "collateral-hqla-frontend-orchestration-demo.mp4");
-const targetSeconds = 102;
+const targetSeconds = 115;
 
 const sleeps = {
   opening: 4000,
@@ -26,7 +26,7 @@ const sleeps = {
   run: 8000,
 };
 
-const totalStages = 11;
+const totalStages = 12;
 
 function stage(number, title, body, action) {
   return { number, total: totalStages, title, body, action };
@@ -48,7 +48,10 @@ async function main() {
       await waitForUrl(uiUrl, 30000);
     }
 
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    });
     const context = await browser.newContext({
       viewport: { width: 1600, height: 900 },
       deviceScaleFactor: 1,
@@ -128,7 +131,7 @@ async function main() {
     await page
       .locator(".production-runtime-toggle")
       .getByRole("button", { name: /^Production$/ })
-      .click();
+      .dispatchEvent("click");
     await caption(
       page,
       stage(
@@ -233,11 +236,23 @@ async function main() {
     );
     await page.waitForTimeout(sleeps.long);
 
-    await panelFocus(page, "Document-To-Constraint Traceability");
+    await panelFocus(page, "Collateral HQLA Analytics");
     await caption(
       page,
       stage(
         11,
+        "Lending Opportunity Detection",
+        "Assets allocated as collateral with a funding cost ≥ 60 bps are flagged as foregone securities-lending revenue. High-severity items (≥ 90 bps) appear in red — substitute cheaper collateral and lend these assets instead.",
+        "Review flagged assets stripped from collateral and identified as lending candidates",
+      ),
+    );
+    await page.waitForTimeout(sleeps.long);
+
+    await panelFocus(page, "Document-To-Constraint Traceability");
+    await caption(
+      page,
+      stage(
+        12,
         "Trace Document Text To Constraints",
         "Each applied schedule field is mapped to a validated input, constraint family, and optimizer step for audit review.",
         "Connect evidence snippets to optimizer controls",
@@ -249,7 +264,7 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
+        12,
         "Close With Evidence",
         "The evidence room brings together document extraction, model versions, solver metadata, validation, governance, and workflow trace.",
         "Prepare the run for stakeholder review",
@@ -261,7 +276,7 @@ async function main() {
     await caption(
       page,
       stage(
-        11,
+        12,
         "Governance Stays In The Loop",
         "The demo remains a recommendation unless approval tiers, materiality thresholds, and policy-change controls allow further action.",
         "Review approval tier and materiality settings",
@@ -275,9 +290,9 @@ async function main() {
       await caption(
         page,
         stage(
-          11,
+          12,
           "Presentation-Ready Proof",
-          "The clip shows schedule ingestion, LLM-assisted explanation, deterministic optimization, HQLA analytics, and governance evidence in one flow.",
+          "The clip shows schedule ingestion, LLM-assisted explanation, deterministic optimization, HQLA analytics, lending opportunity detection, and governance evidence in one flow.",
           "End of collateral HQLA orchestration demo",
         ),
       );
@@ -289,10 +304,10 @@ async function main() {
     await browser.close();
 
     const webmPath = await video.path();
-    await convertToMp4(webmPath, outputPath, targetSeconds);
-    const stat = await fs.stat(outputPath);
+    const finalPath = await convertToMp4(webmPath, outputPath, targetSeconds);
+    const stat = await fs.stat(finalPath);
     console.log(
-      `Wrote ${path.relative(repoRoot, outputPath)} (${targetSeconds}s, ${(stat.size / 1024 / 1024).toFixed(2)} MB)`,
+      `Wrote ${path.relative(repoRoot, finalPath)} (${targetSeconds}s, ${(stat.size / 1024 / 1024).toFixed(2)} MB)`,
     );
   } finally {
     for (const child of processes.reverse()) {
@@ -404,6 +419,16 @@ async function installRecordingOverlays(page) {
         outline-offset: 4px !important;
         box-shadow: 0 0 0 9999px rgba(3, 7, 12, 0.14), 0 0 30px rgba(0, 200, 240, 0.26) !important;
       }
+      .sidebar {
+        position: absolute !important;
+        left: -9999px !important;
+        width: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+      }
+      .workspace {
+        grid-template-columns: 1fr !important;
+      }
     `,
   });
   await page.evaluate(() => {
@@ -473,40 +498,36 @@ async function panelFocus(page, headingText) {
 }
 
 async function ensureCollateralPathLoaded(page) {
+  // Click the Collateral button via DOM (sidebar may be hidden in recording mode).
   try {
-    await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 6000 });
-    return;
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll("button")).find(
+        (b) => /^Collateral$/i.test(b.textContent?.trim() ?? ""),
+      );
+      if (btn) btn.click();
+    });
   } catch {
-    // The video path button can be off-screen or covered in some browser captures.
+    // ignore if not present
   }
-  await clickByRoleMatch(page, "button", /^Collateral$/);
-  await page.getByText("Schedule Intake", { exact: true }).first().waitFor({ timeout: 12000 });
+  // Wait for the Schedule Intake element to exist in DOM regardless of visibility.
+  await page.waitForSelector("text=Schedule Intake", { state: "attached", timeout: 12000 });
 }
 
 async function clickByRole(page, role, name) {
   const locator = page.getByRole(role, { name, exact: true }).first();
-  await locator.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
-  await locator.click();
+  await locator.dispatchEvent("click");
 }
 
 async function clickByRoleMatch(page, role, name) {
   const locator = page.getByRole(role, { name }).first();
-  await locator.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
-  await locator.click();
+  await locator.dispatchEvent("click");
 }
 
 async function clickButtonText(page, name) {
-  await page.evaluate((buttonName) => {
-    const button = Array.from(document.querySelectorAll("button")).find(
-      (node) => node.textContent?.trim() === buttonName,
-    );
-    if (!(button instanceof HTMLButtonElement)) {
-      throw new Error(`Button not found: ${buttonName}`);
-    }
-    button.click();
-  }, name);
+  const locator = page.getByRole("button", { name, exact: true }).first();
+  await locator.dispatchEvent("click");
 }
 
 async function fillTextbox(page, label, value) {
@@ -543,38 +564,36 @@ async function waitForUrl(url, timeoutMs) {
 }
 
 async function convertToMp4(webmPath, mp4Path, durationSeconds) {
-  const ffmpeg = await findFfmpeg();
+  const { ffmpeg, supportsH264 } = await findFfmpeg();
+  // If the only ffmpeg available is the stripped Playwright build (no libx264),
+  // fall back to webm output so the recording is still saved.
+  const outPath = supportsH264 ? mp4Path : mp4Path.replace(/\.mp4$/, ".webm");
+  const args = supportsH264
+    ? [
+        "-y", "-fflags", "+genpts", "-i", webmPath,
+        "-t", String(durationSeconds), "-r", "25",
+        "-vf", "setpts=PTS-STARTPTS",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        outPath,
+      ]
+    : [
+        "-y", "-i", webmPath,
+        "-t", String(durationSeconds),
+        "-c:v", "copy",
+        outPath,
+      ];
+  if (!supportsH264) {
+    console.log(`[warn] libx264 not available — saving as webm: ${outPath}`);
+  }
   await new Promise((resolve, reject) => {
-    const child = spawn(
-      ffmpeg,
-      [
-        "-y",
-        "-fflags",
-        "+genpts",
-        "-i",
-        webmPath,
-        "-t",
-        String(durationSeconds),
-        "-r",
-        "25",
-        "-vf",
-        "setpts=PTS-STARTPTS",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        mp4Path,
-      ],
-      { stdio: "ignore" },
-    );
+    const child = spawn(ffmpeg, args, { stdio: "ignore" });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited with status ${code}`));
     });
   });
+  return outPath;
 }
 
 async function findFfmpeg() {
@@ -593,18 +612,26 @@ async function findFfmpeg() {
       "darwin-x64",
       "ffmpeg",
     ),
+    "/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux",
     "ffmpeg",
   ];
   for (const candidate of candidates) {
-    if (candidate === "ffmpeg") return candidate;
     try {
       await fs.access(candidate);
-      return candidate;
+      // Check if this build supports libx264.
+      const supportsH264 = await new Promise((resolve) => {
+        const probe = spawn(candidate, ["-encoders"], { stdio: ["ignore", "pipe", "ignore"] });
+        let out = "";
+        probe.stdout.on("data", (d) => { out += d; });
+        probe.on("exit", () => resolve(out.includes("libx264")));
+        probe.on("error", () => resolve(false));
+      });
+      return { ffmpeg: candidate, supportsH264 };
     } catch {
-      // Keep looking for the bundled binary.
+      // Keep looking.
     }
   }
-  return "ffmpeg";
+  return { ffmpeg: "ffmpeg", supportsH264: true };
 }
 
 main().catch((error) => {

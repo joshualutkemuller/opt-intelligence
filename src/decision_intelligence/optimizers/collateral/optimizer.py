@@ -39,6 +39,10 @@ from .data import CollateralAsset, CollateralObligation
 
 _CONCENTRATION_LIMIT = 0.60   # max 60% from any single asset class per obligation
 
+# Assets with funding_cost_bps above this threshold are considered high-demand
+# securities-lending candidates.  Posting them as collateral forgoes that rebate.
+_LENDING_OPPORTUNITY_THRESHOLD_BPS = 30.0
+
 
 class CollateralOptimizer(OptimizationCapability):
     name = "Collateral Optimizer"
@@ -61,8 +65,9 @@ class CollateralOptimizer(OptimizationCapability):
 
         assets, obligations = load_collateral(request)
 
-        # Filter ineligible assets
-        eligible = [a for a in assets if a.eligible]
+        # Filter ineligible assets; also exclude any assets the caller wants substituted out
+        excluded_ids: set[str] = set(request.context.get("excluded_asset_ids", []))
+        eligible = [a for a in assets if a.eligible and a.asset_id not in excluded_ids]
         n, m = len(eligible), len(obligations)
 
         # Cost vector: one variable per (asset, obligation) pair
@@ -135,6 +140,9 @@ class CollateralOptimizer(OptimizationCapability):
         # Baseline: naive equal-weight allocation
         baseline_value = _compute_naive_cost(eligible, obligations)
 
+        lending_threshold = float(
+            request.context.get("lending_opportunity_threshold_bps", _LENDING_OPPORTUNITY_THRESHOLD_BPS)
+        )
         return {
             "assets": eligible,
             "obligations": obligations,
@@ -149,6 +157,8 @@ class CollateralOptimizer(OptimizationCapability):
             "elig_mask": elig_mask,
             "baseline_value": baseline_value,
             "conc_limit": conc_limit,
+            "lending_opportunity_threshold_bps": lending_threshold,
+            "excluded_asset_ids": list(excluded_ids),
             "request": request,
             "solver_spec": SolverSpec.from_context(request.context),
         }
@@ -171,10 +181,12 @@ class CollateralOptimizer(OptimizationCapability):
         if solver_result.status == SolveStatus.OPTIMAL and solver_result.x is not None:
             x = solver_result.x
             n = problem["n"]
+            m = problem["m"]
             mv = problem["mv"]
             hc = problem["hc"]
             assets = problem["assets"]
             obligations = problem["obligations"]
+            threshold = problem.get("lending_opportunity_threshold_bps", _LENDING_OPPORTUNITY_THRESHOLD_BPS)
 
             allocations = []
             for j, obl in enumerate(obligations):
@@ -198,6 +210,7 @@ class CollateralOptimizer(OptimizationCapability):
                         })
 
             binding = _find_binding_constraints(problem, x)
+            lending_opportunities = _detect_lending_opportunities(assets, x, n, m, mv, threshold)
             return {
                 "status": SolveStatus.OPTIMAL,
                 "objective_value": float(solver_result.objective_value or 0.0),
@@ -205,6 +218,7 @@ class CollateralOptimizer(OptimizationCapability):
                 "allocations": allocations,
                 "binding_constraints": binding,
                 "metadata": solver_result.metadata,
+                "lending_opportunities": lending_opportunities,
             }
 
         return {
@@ -313,22 +327,80 @@ class CollateralOptimizer(OptimizationCapability):
 
         binding = ", ".join(solution.get("binding_constraints", [])) or "none"
 
+        threshold = problem.get("lending_opportunity_threshold_bps", _LENDING_OPPORTUNITY_THRESHOLD_BPS)
+        lending_opps = solution.get("lending_opportunities") or _detect_lending_opportunities(
+            assets, x, problem["n"], problem["m"], mv, threshold
+        )
+
+        lending_note = ""
+        if lending_opps:
+            total_lending_mv = sum(op["market_value"] for op in lending_opps)
+            lending_note = (
+                f"\n⚠️  Lending opportunity alert: {len(lending_opps)} high-demand asset(s) "
+                f"(${total_lending_mv / 1e6:.1f}M market value) in inventory have lending rates "
+                f"above {threshold:.0f} bps. Posting these as collateral forgoes that revenue. "
+                "Consider sourcing substitute collateral and lending these assets instead."
+            )
+
         return (
             f"Collateral optimizer allocated {len(assets)} eligible assets across "
             f"{len(obligations)} obligations.\n"
             f"Objective (funding cost): ${obj:,.2f} vs baseline ${baseline:,.2f} "
             f"— improvement of ${improvement:,.2f} ({improvement_pct:.1f}%).\n"
             f"Asset class mix: {class_lines}.\n"
-            f"Binding constraints: {binding}.\n"
-            f"The optimizer preferred lower-haircut, lower-cost assets (government bonds) "
-            f"for counterparties requiring higher-quality collateral, while routing "
-            f"corporate bonds and equities to less restrictive obligations."
+            f"Binding constraints: {binding}."
+            f"{lending_note}"
         )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _detect_lending_opportunities(
+    assets: list[CollateralAsset],
+    x: np.ndarray,
+    n: int,
+    m: int,
+    mv: np.ndarray,
+    threshold_bps: float,
+) -> list[dict[str, Any]]:
+    """Return assets that are being posted as collateral but have high lending demand.
+
+    An asset is flagged when its funding_cost_bps exceeds *threshold_bps* AND it has
+    any nonzero allocation in the solution.  High funding cost is used as a proxy for
+    high securities-lending demand (the market rebate the desk forgoes by pledging the
+    asset as collateral instead of lending it out).
+    """
+    opportunities = []
+    for i, asset in enumerate(assets):
+        if asset.funding_cost_bps < threshold_bps:
+            continue
+        allocated_mv = sum(x[i + j * n] * mv[i] for j in range(m))
+        if allocated_mv < 1e-4:
+            continue
+        foregone_revenue_bps = asset.funding_cost_bps
+        annual_revenue_foregone = allocated_mv * foregone_revenue_bps / 10_000
+        opportunities.append({
+            "asset_id": asset.asset_id,
+            "label": asset.label,
+            "asset_class": asset.asset_class,
+            "market_value": round(mv[i], 2),
+            "allocated_as_collateral_value": round(allocated_mv, 2),
+            "lending_rate_bps": round(asset.funding_cost_bps, 1),
+            "annual_revenue_foregone": round(annual_revenue_foregone, 2),
+            "message": (
+                f"{asset.label} is posted as collateral but commands a "
+                f"{asset.funding_cost_bps:.0f} bps lending rate — "
+                f"${annual_revenue_foregone:,.0f}/yr in foregone lending revenue. "
+                "Consider sourcing cheaper substitute collateral and lending this asset instead."
+            ),
+            "severity": "high" if asset.funding_cost_bps >= threshold_bps * 1.5 else "medium",
+        })
+    # Sort by foregone revenue descending
+    opportunities.sort(key=lambda op: -op["annual_revenue_foregone"])
+    return opportunities
+
 
 def _compute_naive_cost(
     assets: list[CollateralAsset], obligations: list[CollateralObligation]

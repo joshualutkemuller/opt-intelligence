@@ -14,6 +14,8 @@ class CreateChatSessionRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
 
 
 class ChatSessionResponse(BaseModel):
@@ -254,6 +256,11 @@ class AuditNarrativeRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     preset: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, Any] = Field(default_factory=dict)
+    llm_polish: bool = False
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class AuditNarrativeResponse(BaseModel):
@@ -269,3 +276,129 @@ class ConstraintNegotiationRequest(BaseModel):
 
 class ConstraintNegotiationResponse(BaseModel):
     negotiation: dict[str, Any]
+
+
+class ConstraintApprovalRequest(BaseModel):
+    domain: str
+    parameter: str
+    proposed_change: str
+    governance_tier: int
+    governance_reason: str
+    estimated_impact: float = 0.0
+    estimated_impact_units: str = "objective"
+    portfolio_id: str = "PORT_001"
+    requestor: str = "api"
+
+
+class ConstraintApprovalResponse(BaseModel):
+    approval_id: str
+    governance_tier: int
+    required_approver_role: str
+    status: str
+    message: str
+
+
+class CounterpartyCreateRequest(BaseModel):
+    name: str
+    lei: str | None = None
+    jurisdiction: str | None = None
+    counterparty_id: str | None = None
+
+
+class CounterpartyResponse(BaseModel):
+    id: str
+    name: str
+    lei: str | None = None
+    jurisdiction: str | None = None
+    created_at: str
+
+
+class CounterpartyListResponse(BaseModel):
+    counterparties: list[CounterpartyResponse]
+
+
+class MarginAgreementCreateRequest(BaseModel):
+    counterparty_id: str
+    margin_type: str
+    agreement_ref: str | None = None
+    base_currency: str = "USD"
+    threshold_amount: float = 0.0
+    mta_amount: float = 0.0
+    rounding_amount: float = 0.0
+    governing_law: str | None = None
+    effective_date: str | None = None
+
+
+class MarginAgreementResponse(BaseModel):
+    id: str
+    counterparty_id: str
+    margin_type: str
+    agreement_ref: str | None = None
+    base_currency: str
+    threshold_amount: float
+    mta_amount: float
+    rounding_amount: float
+    governing_law: str | None = None
+    effective_date: str | None = None
+    created_at: str
+
+
+class MarginAgreementListResponse(BaseModel):
+    agreements: list[MarginAgreementResponse]
+
+
+class CollateralScheduleIngestRequest(BaseModel):
+    csv_content: str | None = None
+    xlsx_base64: str | None = None
+    pdf_base64: str | None = None
+    filename: str | None = None
+    replace: bool = True
+
+
+class CollateralScheduleIngestResponse(BaseModel):
+    agreement_id: str
+    entries_inserted: int
+    replaced: bool
+    summary: dict[str, Any]
+
+
+class CollateralEntryResponse(BaseModel):
+    id: str
+    agreement_id: str
+    asset_class: str
+    isin: str | None = None
+    currency: str | None = None
+    rating_floor: str | None = None
+    max_maturity_years: float | None = None
+    haircut_pct: float
+    concentration_limit_pct: float | None = None
+    eligible: bool
+    notes: str | None = None
+    source_row: int | None = None
+    created_at: str
+
+
+class CollateralScheduleResponse(BaseModel):
+    agreement_id: str
+    entries: list[CollateralEntryResponse]
+    summary: dict[str, Any]
+
+
+class SubstituteReoptimizeRequest(BaseModel):
+    workflow: str = "collateral_liquidity_review"
+    portfolio_id: str = "PORT_001"
+    seed: int = 42
+    optimizer_runtime: Literal["phase1", "production"] = "phase1"
+    production_optimizer_id: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
+    excluded_asset_ids: list[str] = Field(default_factory=list)
+
+
+class SubstituteReoptimizeResponse(BaseModel):
+    original_objective: float
+    substitute_objective: float
+    objective_delta: float
+    original_lending_opportunities: list[dict[str, Any]]
+    remaining_lending_opportunities: list[dict[str, Any]]
+    substitute_result: dict[str, Any]
+    summary: str

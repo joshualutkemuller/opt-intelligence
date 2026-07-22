@@ -1,0 +1,13 @@
+Asset Class,ISIN,Currency,Rating Floor,Max Maturity (yr),Haircut (%),Concentration Limit (%),Eligible,Notes
+CASH,,,,,0.0,,Yes,USD/EUR/GBP cash
+GOVT,US912828ZT,USD,A-,30,2.0,40,Yes,UST on-the-run
+GOVT,GB00B7L9SL19,GBP,A-,30,2.5,30,Yes,UK Gilts
+GOVT,DE0001102473,EUR,A-,30,2.0,30,Yes,German Bunds
+AGENCY,US3135G0T60,USD,A,10,3.0,20,Yes,FNMA senior
+CORP,,USD,BBB-,5,10.0,15,Yes,IG corporate bonds
+CORP,,EUR,BBB-,5,10.0,10,Yes,EUR IG corporate
+HY_CORP,,,BB,3,20.0,5,No,High yield excluded
+EQUITY,,,,,15.0,10,No,Equity excluded under ISDA CSA
+MMF,,,AAA,,0.5,20,Yes,AAA-rated money market funds
+COVERED,,EUR,A,10,4.0,15,Yes,EUR covered bonds
+ABS,,,AA,5,12.0,5,No,ABS excluded

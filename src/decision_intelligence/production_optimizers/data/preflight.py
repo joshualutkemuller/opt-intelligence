@@ -123,6 +123,7 @@ def _configured_source_contracts(
                 snapshot_required=bool(
                     payload.get("snapshot_required", model_config.data_contract.snapshot_required)
                 ),
+                quality_checks=list(model_config.data_contract.quality_checks),
                 metadata={
                     key: value
                     for key, value in payload.items()
@@ -167,6 +168,7 @@ def _legacy_csv_contracts(
                 required_columns=list(required_columns),
                 primary_keys=list(model_config.data_contract.primary_keys.get(dataset, [])),
                 snapshot_required=model_config.data_contract.snapshot_required,
+                quality_checks=list(model_config.data_contract.quality_checks),
                 metadata=metadata,
             )
         )
@@ -187,6 +189,7 @@ def _simulated_source_contracts(
             required_columns=list(model_config.data_contract.required_columns.get(dataset, [])),
             primary_keys=list(model_config.data_contract.primary_keys.get(dataset, [])),
             snapshot_required=model_config.data_contract.snapshot_required,
+            quality_checks=list(model_config.data_contract.quality_checks),
             metadata={
                 "source_note": "deterministic simulated or context-provided demo data",
             },

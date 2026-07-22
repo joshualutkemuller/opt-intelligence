@@ -22,6 +22,7 @@ from decision_intelligence.contracts import (
 )
 from decision_intelligence.contracts.requests import ExecutionMode
 from decision_intelligence.contracts.scenarios import ScenarioType
+from decision_intelligence.governance.drift import DriftAlert
 from decision_intelligence.workflows import DEFAULT_WORKFLOW_REGISTRY, WorkflowPlan
 from decision_intelligence.workflows.config_loader import WorkflowInputConfig
 
@@ -67,6 +68,8 @@ class ChatSession:
         self._last_intent: AgentIntent | None = None
         self._last_plan: ExecutionPlan | None = None
         self._trace: list[AgentTraceEvent] = []
+        self._pending_alerts: list[DriftAlert] = []
+        self._last_alert_domains: list[str] = []
 
     @property
     def active(self) -> bool:
@@ -107,7 +110,41 @@ class ChatSession:
             "trace": _dump_models(self._trace),
         }
 
+    def inject_alerts(self, alerts: list[DriftAlert]) -> None:
+        """Push drift alerts into the session; they surface on the next reply()."""
+        for alert in alerts:
+            self._record_trace(
+                "proactive_alert",
+                alert.message,
+                threshold_name=alert.threshold_name,
+                domain=alert.domain,
+                metric_key=alert.metric_key,
+                current_value=alert.current_value,
+                baseline_value=alert.baseline_value,
+                cap_value=alert.cap_value,
+                severity=alert.severity,
+                reoptimize_domain=alert.reoptimize_domain,
+            )
+        self._pending_alerts.extend(alerts)
+
     def reply(self, text: str) -> ChatResponse:
+        # Surface any queued drift alerts before processing the user's message.
+        if self._pending_alerts:
+            alerts = self._pending_alerts[:]
+            self._pending_alerts.clear()
+            lines = ["**Proactive alert** — the orchestrator detected portfolio drift:"]
+            for alert in alerts:
+                icon = "🔴" if alert.severity == "critical" else "🟡"
+                lines.append(f"{icon} {alert.message}")
+            domains = sorted({a.reoptimize_domain for a in alerts})
+            self._last_alert_domains = domains
+            domain_list = ", ".join(domains)
+            lines.append(
+                f"\nType **re-optimize {domain_list}** or just **yes** to trigger "
+                "a fresh optimization, or continue with your original request."
+            )
+            return ChatResponse("\n".join(lines))
+
         prompt = text.strip()
         low = prompt.lower()
 
@@ -117,6 +154,19 @@ class ChatSession:
             return ChatResponse("Leaving guided workflow.", should_exit=True)
 
         if self._state is None:
+            # "re-optimize <domain>" shortcut — emitted by drift alert responses.
+            reopt_domain = _parse_reoptimize(low)
+            if reopt_domain == "__yes__":
+                reopt_domain = self._last_alert_domains[0] if self._last_alert_domains else None
+            if reopt_domain:
+                self._last_alert_domains = []
+                self._record_trace(
+                    "proactive_reoptimize",
+                    f"User accepted drift alert; re-optimizing {reopt_domain}.",
+                    domain=reopt_domain,
+                )
+                return self._start(reopt_domain, prompt, None)
+
             intent = self._intent_agent.analyze(prompt)
             self._last_intent = intent
             self._record_trace(
@@ -175,6 +225,8 @@ class ChatSession:
             )
 
         template = DEFAULT_WORKFLOW_REGISTRY.get(workflow_id)
+        # Enter guided collection when the user signals they want to customize
+        # inputs (any natural phrase implying "walk me through" or "with X").
         if template.inputs and _should_collect_registered_inputs(prompt):
             spec = _workflow_spec_from_template(template)
             portfolio_id = _detect_portfolio_id(prompt)
@@ -190,7 +242,8 @@ class ChatSession:
                 plan=self._last_plan.model_dump(),
             )
             return ChatResponse(
-                f"I will guide {template.name} using its registered workflow inputs.\n\n"
+                f"I'll guide you through **{template.name}** inputs "
+                f"({len(template.inputs)} parameters).\n\n"
                 f"{self._last_plan.summary}\n\n{self._next_question()}"
             )
 
@@ -506,16 +559,21 @@ class ChatSession:
 
 
 def _should_collect_registered_inputs(text: str) -> bool:
+    """Return True when the user's message implies they want to set inputs interactively."""
     normalized = text.lower()
     return any(
         token in normalized
         for token in (
-            "guide",
-            "walk me through",
-            "line by line",
-            "step by step",
-            "collect",
-            "ask me",
+            # explicit guided-mode phrases
+            "guide", "guided", "walk me through", "line by line",
+            "step by step", "collect", "ask me", "one by one",
+            # customization intent
+            "customize", "custom", "configure", "set up", "with my",
+            "with a ", "with $", "for portfolio", "with portfolio",
+            "change the", "adjust", "modify", "different",
+            # input-awareness phrases
+            "what inputs", "what parameters", "what do you need",
+            "what information", "what fields", "parameters",
         )
     )
 
@@ -533,9 +591,22 @@ def _workflow_spec_from_template(template: Any) -> WorkflowSpec:
 
 
 def _field_spec_from_input(item: WorkflowInputConfig) -> FieldSpec:
+    if item.type == "select" and item.options:
+        readable = " / ".join(opt.replace("_", " ") for opt in item.options)
+        prompt = f"{item.label}? ({readable})"
+    elif item.type == "currency":
+        prompt = f"{item.label}? (dollar amount, e.g. 50000000 for $50M)"
+    elif item.type in {"fraction", "percent"}:
+        prompt = f"{item.label}? (0–1, e.g. 0.30 for 30%)"
+    elif item.type == "integer":
+        prompt = f"{item.label}? (whole number)"
+    elif item.type == "boolean":
+        prompt = f"{item.label}? (yes / no)"
+    else:
+        prompt = f"{item.label}?"
     return FieldSpec(
         key=item.key,
-        prompt=f"{item.label}?",
+        prompt=prompt,
         parser=_parser_for_input(item),
         default=item.default,
         target="portfolio" if item.key == "portfolio_id" else "context",
@@ -664,6 +735,29 @@ def _execution_plan_from_workflow(
         ],
         ready_to_run=True,
     )
+
+
+_KNOWN_DOMAINS = {
+    "asset_allocation", "collateral", "money_market", "financing",
+    "asset allocation", "money market",
+}
+_DOMAIN_ALIASES = {
+    "asset allocation": "asset_allocation",
+    "money market": "money_market",
+}
+
+
+def _parse_reoptimize(text: str) -> str | None:
+    """Return a domain name if the text is a re-optimize shortcut or plain 'yes'."""
+    text = text.strip().lower()
+    # "yes" alone → return a sentinel so caller uses last alerted domain
+    if text in {"yes", "y", "ok", "sure", "go", "do it"}:
+        return "__yes__"
+    m = re.match(r"re[-\s]?optim(?:ize|ise)[\s:]+([a-z_ ]+)", text)
+    if m:
+        raw = m.group(1).strip()
+        return _DOMAIN_ALIASES.get(raw, raw.replace(" ", "_"))
+    return None
 
 
 def _detect_portfolio_id(text: str) -> str | None:

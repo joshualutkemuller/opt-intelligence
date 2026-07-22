@@ -1677,8 +1677,32 @@ function App() {
   const [ollamaInput, setOllamaInput] = useState(
     "Explain the MVO asset allocation demo in plain English.",
   );
-  const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
+  const [llmConfig, setLlmConfig] = useState<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+  }>({
+    provider: "openai",
+    model: "llama3.1:8b",
+    baseUrl: "http://localhost:11434/v1",
+    apiKey: "",
+  });
   const [isOllamaRunning, setIsOllamaRunning] = useState(false);
+  const [driftAlerts, setDriftAlerts] = useState<Array<{
+    threshold_name: string; domain: string; metric_key: string;
+    current_value: number; baseline_value: number | null;
+    cap_value: number | null; severity: "warning" | "critical";
+    message: string; reoptimize_domain: string; detected_at: string;
+  }>>([]);
+  const [driftAutoResults, setDriftAutoResults] = useState<Record<string, {
+    status: "running" | "done" | "error";
+    objective_value?: number;
+    error?: string;
+  }>>({});
+  const [approverRegistry, setApproverRegistry] = useState<Array<{
+    id: string; name: string; role: string; max_tier: number;
+  }>>([]);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunResult | null>(null);
@@ -1704,7 +1728,7 @@ function App() {
   const [policyPdfPreviewUrl, setPolicyPdfPreviewUrl] = useState<string | null>(null);
   const [policyBackend, setPolicyBackend] =
     useState<"deterministic" | "llm" | "auto">("deterministic");
-  const [policyModel, setPolicyModel] = useState("llama3.1:8b");
+  // policyModel is now sourced from llmConfig.model
   const [policyResult, setPolicyResult] = useState<PolicyIngestionResponse | null>(null);
   const [policyApplied, setPolicyApplied] = useState(false);
   const [isPolicyIngesting, setIsPolicyIngesting] = useState(false);
@@ -1724,6 +1748,17 @@ function App() {
   const [solver, setSolver] = useState(solverKeyForWorkflow(fallbackDemoPresets[0].workflow_id));
   const [isRunning, setIsRunning] = useState(false);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [isWorkflowStreaming, setIsWorkflowStreaming] = useState(false);
+  const [streamSteps, setStreamSteps] = useState<
+    Array<{
+      step_id: string;
+      domain: string;
+      name: string;
+      status: "running" | "complete" | "pending";
+      objective_value?: number | null;
+      improvement_pct?: number | null;
+    }>
+  >([]);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [isExportingEvidence, setIsExportingEvidence] = useState(false);
   const [scriptModeEnabled, setScriptModeEnabled] = useState(true);
@@ -1746,6 +1781,7 @@ function App() {
     void loadDemoPresets();
     void loadDemoDataPackets();
     void loadProductionOptimizers();
+    void loadApproverRegistry();
   }, []);
 
   useEffect(() => {
@@ -1830,6 +1866,15 @@ function App() {
         },
       ]);
     }
+  }
+
+  async function loadApproverRegistry() {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/api/approvers`, { method: "GET" }, 5000);
+      if (!res.ok) return;
+      const data = await res.json() as { approvers: Array<{ id: string; name: string; role: string; max_tier: number }> };
+      if (data.approvers?.length) setApproverRegistry(data.approvers);
+    } catch { /* non-critical */ }
   }
 
   async function loadWorkflowCatalog() {
@@ -2130,7 +2175,11 @@ function App() {
       const response = await fetchWithTimeout(`${API_BASE}/api/chat/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          optimizer_runtime: optimizerRuntime,
+          production_optimizer_id: selectedProductionOptimizerId || undefined,
+        }),
       });
       if (!response.ok) throw new Error(String(response.status));
       const body = (await response.json()) as ChatApiResponse;
@@ -2190,7 +2239,7 @@ function App() {
     setIsOllamaRunning(true);
     setOllamaMessages((items) => [
       ...items,
-      { role: "assistant", content: "Thinking locally with Ollama...", pending: true },
+      { role: "assistant", content: `Thinking with ${llmConfig.provider} / ${llmConfig.model}…`, pending: true },
     ]);
 
     try {
@@ -2201,9 +2250,10 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
-            provider: "openai",
-            model: ollamaModel,
-            base_url: "http://localhost:11434/v1",
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            base_url: llmConfig.baseUrl || undefined,
+            api_key: llmConfig.apiKey || undefined,
             max_tokens: 512,
             system:
               "You are a concise portfolio optimization assistant. Explain concepts plainly for a nontechnical market stakeholder.",
@@ -2224,7 +2274,7 @@ function App() {
       setOllamaMessages((items) =>
         replacePendingMessage(
           items,
-          `Ollama chat did not complete (${detail}). Confirm Ollama is running on http://localhost:11434 and that the model exists.`,
+          `LLM chat did not complete (${detail}). Check that ${llmConfig.provider} is reachable at ${llmConfig.baseUrl || "default endpoint"} and the model "${llmConfig.model}" is available.`,
         ),
       );
     } finally {
@@ -2356,10 +2406,10 @@ function App() {
             pdf_base64: policyPdfBase64 || undefined,
             filename: policyFilename || undefined,
             backend: policyBackend,
-            provider: policyBackend === "deterministic" ? undefined : "openai",
-            model: policyBackend === "deterministic" ? undefined : policyModel,
-            base_url:
-              policyBackend === "deterministic" ? undefined : "http://localhost:11434/v1",
+            provider: policyBackend === "deterministic" ? undefined : llmConfig.provider,
+            model: policyBackend === "deterministic" ? undefined : llmConfig.model,
+            base_url: policyBackend === "deterministic" ? undefined : (llmConfig.baseUrl || undefined),
+            api_key: policyBackend === "deterministic" ? undefined : (llmConfig.apiKey || undefined),
           }),
         },
         policyBackend === "deterministic" ? 15000 : 60000,
@@ -2642,46 +2692,169 @@ function App() {
       },
     ]);
 
+    setIsWorkflowStreaming(true);
+    setStreamSteps([]);
     try {
-      const response = await fetchWithTimeout(
-        `${API_BASE}/api/workflows/run`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadWithPolicy),
-        },
-        20000,
-      );
+      const response = await fetch(`${API_BASE}/api/workflows/run-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadWithPolicy),
+      });
       if (!response.ok) throw new Error(String(response.status));
-      const body = (await response.json()) as WorkflowRunApiResponse;
-      const finalStep = [...body.result.step_results].reverse()[0];
-      setPresenterReviewOpen(false);
-      setWorkflowRun(body.result);
-      if (finalStep?.result) {
-        setResult(finalStep.result);
+      if (!response.body) throw new Error("No response body for streaming");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as {
+              event: string;
+              step_id?: string;
+              domain?: string;
+              name?: string;
+              step_index?: number;
+              step_count?: number;
+              status?: string;
+              objective_value?: number | null;
+              improvement_pct?: number | null;
+              result?: WorkflowRunResult;
+            };
+            if (event.event === "step_started" && event.step_id) {
+              setStreamSteps((prev) => [
+                ...prev.filter((s) => s.step_id !== event.step_id),
+                {
+                  step_id: event.step_id!,
+                  domain: event.domain ?? "",
+                  name: event.name ?? "",
+                  status: "running",
+                },
+              ]);
+            } else if (event.event === "step_completed" && event.step_id) {
+              setStreamSteps((prev) =>
+                prev.map((s) =>
+                  s.step_id === event.step_id
+                    ? {
+                        ...s,
+                        status: "complete",
+                        objective_value: event.objective_value,
+                        improvement_pct: event.improvement_pct,
+                      }
+                    : s,
+                ),
+              );
+            } else if (event.event === "workflow_completed" && event.result) {
+              const body: WorkflowRunApiResponse = {
+                plan: {
+                  workflow_id: event.result.workflow_id,
+                  name: event.result.name,
+                  description: "",
+                  steps: [],
+                },
+                result: event.result,
+              };
+              const finalStep = [...event.result.step_results].reverse()[0];
+              setPresenterReviewOpen(false);
+              setWorkflowRun(event.result);
+              if (finalStep?.result) {
+                setResult(finalStep.result);
+              }
+              setLatestPayload(body);
+              setLatestWorkflowRunPayload(payloadWithPolicy);
+              // Drift monitoring: check against baseline, then store new snapshot.
+              void (async () => {
+                try {
+                  const driftBody = { workflow_result: event.result };
+                  const hasBaselineRes = await fetch(`${API_BASE}/api/drift/thresholds`);
+                  const driftCheckRes = await fetch(`${API_BASE}/api/drift/check`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(driftBody),
+                  });
+                  if (driftCheckRes.ok) {
+                    const driftData = await driftCheckRes.json() as {
+                      alerts: typeof driftAlerts; has_baseline: boolean;
+                    };
+                    if (driftData.has_baseline && driftData.alerts.length > 0) {
+                      setDriftAlerts(driftData.alerts);
+                      // Auto-reoptimize each affected domain
+                      const affectedDomains = [...new Set(driftData.alerts.map((a: { reoptimize_domain: string }) => a.reoptimize_domain))];
+                      const initialAutoResults: Record<string, { status: "running" | "done" | "error" }> = {};
+                      for (const d of affectedDomains) initialAutoResults[d] = { status: "running" };
+                      setDriftAutoResults(initialAutoResults);
+                      for (const domain of affectedDomains) {
+                        void (async () => {
+                          try {
+                            const reoptRes = await fetch(`${API_BASE}/api/drift/reoptimize`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ domain, portfolio_id: "PORT_001", seed: 42 }),
+                            });
+                            if (reoptRes.ok) {
+                              const reoptData = await reoptRes.json() as { status: string; objective_value?: number };
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "done", objective_value: reoptData.objective_value },
+                              }));
+                            } else {
+                              setDriftAutoResults((prev) => ({
+                                ...prev,
+                                [domain]: { status: "error", error: `HTTP ${reoptRes.status}` },
+                              }));
+                            }
+                          } catch (err) {
+                            setDriftAutoResults((prev) => ({
+                              ...prev,
+                              [domain]: { status: "error", error: String(err) },
+                            }));
+                          }
+                        })();
+                      }
+                    }
+                  }
+                  void hasBaselineRes; // consumed above; snapshot comes after check
+                  await fetch(`${API_BASE}/api/drift/snapshot`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(driftBody),
+                  });
+                } catch { /* ignore drift errors */ }
+              })();
+              if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
+                setScriptModeEnabled(true);
+                setScriptStepIndex((current) => Math.max(current, 3));
+              }
+              addRunHistoryEntry(
+                createRunHistoryEntry({
+                  preset: selectedPreset,
+                  workflow: selectedWorkflow,
+                  solverKey: solver,
+                  inputValues: workflowInputValues,
+                  payload: payloadWithPolicy,
+                  response: body,
+                }),
+              );
+              setMessages((items) =>
+                replacePendingMessage(
+                  items,
+                  `Sequential workflow complete. ${event.result!.step_results.length} optimizer steps ran with aggregate validation ${event.result!.validation_summary.passed ? "passing" : "requiring review"}.`,
+                ),
+              );
+            }
+          } catch {
+            // ignore parse errors for malformed SSE lines
+          }
+        }
       }
-      setLatestPayload(body);
-      setLatestWorkflowRunPayload(payloadWithPolicy);
-      if (selectedPreset.preset_id === VIDEO_DEMO_PRESET_ID) {
-        setScriptModeEnabled(true);
-        setScriptStepIndex((current) => Math.max(current, 3));
-      }
-      addRunHistoryEntry(
-        createRunHistoryEntry({
-          preset: selectedPreset,
-          workflow: selectedWorkflow,
-          solverKey: solver,
-          inputValues: workflowInputValues,
-          payload: payloadWithPolicy,
-          response: body,
-        }),
-      );
-      setMessages((items) =>
-        replacePendingMessage(
-          items,
-          `Sequential workflow complete. ${body.result.step_results.length} optimizer steps ran with aggregate validation ${body.result.validation_summary.passed ? "passing" : "requiring review"}.`,
-        ),
-      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "unknown error";
       setMessages((items) =>
@@ -2692,6 +2865,7 @@ function App() {
       );
     } finally {
       setIsWorkflowRunning(false);
+      setIsWorkflowStreaming(false);
     }
   }
 
@@ -2977,7 +3151,7 @@ function App() {
             text={policyText}
             filename={policyFilename}
             backend={policyBackend}
-            model={policyModel}
+            llmModel={llmConfig.model}
             result={policyResult}
             applied={policyApplied}
             isIngesting={isPolicyIngesting}
@@ -2996,7 +3170,6 @@ function App() {
             pdfPreviewUrl={policyPdfPreviewUrl}
             onFileChange={handlePolicyFileChange}
             onBackendChange={setPolicyBackend}
-            onModelChange={setPolicyModel}
             onIngest={ingestPolicyDocument}
             onApply={applyPolicyInputs}
             onLoadSample={isCollateralHqlaSelected ? selectCollateralHqlaPath : undefined}
@@ -3128,6 +3301,9 @@ function App() {
               </div>
             </div>
 
+            <ChatIntakeProgress workflow={workflow} />
+            {isWorkflowStreaming && <StreamingWorkflowProgress steps={streamSteps} />}
+
             <div className="messages" aria-live="polite" ref={messagesRef}>
               {messages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
@@ -3157,27 +3333,22 @@ function App() {
             </form>
           </section>
 
-          <section className="ollama-panel panel" aria-label="Local Ollama chat">
+          <LLMSettingsPanel config={llmConfig} onChange={setLlmConfig} />
+
+          <section className="ollama-panel panel" aria-label="Local LLM chat">
             <div className="section-header">
               <div>
                 <span className="eyebrow">Local LLM</span>
-                <h2>Ollama Chat</h2>
+                <h2>LLM Chat</h2>
               </div>
-              <label className="model-control">
-                <span>Model</span>
-                <input
-                  value={ollamaModel}
-                  onChange={(event) => setOllamaModel(event.target.value)}
-                  aria-label="Ollama model"
-                />
-              </label>
+              <span className="model-badge">{llmConfig.provider} · {llmConfig.model}</span>
             </div>
 
             <div className="messages ollama-messages" aria-live="polite">
               {ollamaMessages.map((message, index) => (
                 <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
                   <span className="message-label">
-                    {message.role === "user" ? "User" : "Ollama"}
+                    {message.role === "user" ? "User" : llmConfig.provider}
                   </span>
                   <p>{message.content}</p>
                 </article>
@@ -3192,7 +3363,7 @@ function App() {
                 aria-label="Ollama chat input"
               />
               <button className="primary-button" type="submit" disabled={isOllamaRunning}>
-                {isOllamaRunning ? "Thinking" : "Ask Ollama"}
+                {isOllamaRunning ? "Thinking" : "Ask LLM"}
               </button>
             </form>
           </section>
@@ -3250,14 +3421,34 @@ function App() {
             selectedPreset={selectedPreset}
           />
 
+          <WorkflowConstraintNegotiationPanel workflowRun={workflowRun} approverRegistry={approverRegistry} />
+
+          <CrossDomainOptimizationPanel workflowRun={workflowRun} />
+
+          {driftAlerts.length > 0 && (
+            <DriftAlertBanner
+              alerts={driftAlerts}
+              autoResults={driftAutoResults}
+              onDismiss={() => { setDriftAlerts([]); setDriftAutoResults({}); }}
+              onReoptimize={(domain) => {
+                setDriftAlerts([]);
+                setDriftAutoResults({});
+                void runSequentialWorkflow();
+              }}
+            />
+          )}
+
           <GovernanceReviewPanel
             workflowRun={workflowRun}
             selectedWorkflow={selectedWorkflow}
             inputValues={workflowInputValues}
+            approverRegistry={approverRegistry}
             onDecision={submitApprovalDecisions}
             onRerun={runSequentialWorkflow}
             disabled={isWorkflowRunning}
           />
+
+          <CollateralSchedulePanel />
 
           <WorkflowComparisonPanel
             workflowRun={workflowRun}
@@ -3291,6 +3482,8 @@ function App() {
             selectedPreset={selectedPreset}
             selectedWorkflow={selectedWorkflow}
             selectedProductionOptimizer={selectedProductionOptimizer}
+            llmConfig={llmConfig}
+            latestWorkflowRunPayload={latestWorkflowRunPayload}
           />
 
           <ValidationPanel result={dashboard} />
@@ -4659,6 +4852,10 @@ function CollateralHqlaAnalyticsPanel({
   policyApplied: boolean;
   selectedPreset: DemoPresetCatalogItem;
 }) {
+  const [substituteResult, setSubstituteResult] = React.useState<Record<string, unknown> | null>(null);
+  const [substituteLoading, setSubstituteLoading] = React.useState(false);
+  const [substituteError, setSubstituteError] = React.useState<string | null>(null);
+
   const collateralStep = workflowRun?.step_results.find((step) => step.domain === "collateral");
   const moneyMarketStep = workflowRun?.step_results.find((step) => step.domain === "money_market");
   const afterRun = Boolean(workflowRun);
@@ -4667,6 +4864,9 @@ function CollateralHqlaAnalyticsPanel({
     collateralStep?.result.solver_metadata.domain_attachments,
   );
   const venueCounts = toRecord(collateralAttachments.obligation_venue_counts);
+  const lendingOpportunities = Array.isArray(collateralAttachments.lending_opportunities)
+    ? (collateralAttachments.lending_opportunities as Array<Record<string, unknown>>)
+    : [];
   const extractedFields = policyResult?.extracted_fields || [];
   const appliedCount = extractedFields.filter((field) => field.applied).length;
   const context = toRecord(selectedPreset.context);
@@ -4844,6 +5044,137 @@ function CollateralHqlaAnalyticsPanel({
             />
           </div>
         </div>
+
+        {(lendingOpportunities.length > 0 || afterRun) && (
+          <div className="lending-opportunity-card">
+            <div className="card-heading">
+              <strong>⚡ Lending opportunity alerts</strong>
+              <span className={lendingOpportunities.length > 0 ? "lending-badge-warn" : "lending-badge-ok"}>
+                {lendingOpportunities.length > 0
+                  ? `${lendingOpportunities.length} flagged`
+                  : afterRun ? "None detected" : "Pending run"}
+              </span>
+            </div>
+            {lendingOpportunities.length > 0 ? (
+              <>
+                <p className="lending-opportunity-intro">
+                  The optimizer detected high-demand securities-lending candidates being posted as
+                  collateral. Consider sourcing substitute collateral and lending these assets instead
+                  to capture the foregone revenue.
+                </p>
+                <div className="lending-opportunity-list">
+                  {lendingOpportunities.map((opp, idx) => (
+                    <div key={idx} className={`lending-opp-item lending-opp-${String(opp.severity)}`}>
+                      <div className="lending-opp-header">
+                        <span className="lending-opp-label">{String(opp.label)}</span>
+                        <span className="lending-opp-rate">{String(opp.lending_rate_bps)} bps lending rate</span>
+                      </div>
+                      <div className="lending-opp-stats">
+                        <span>Pledged: {formatCurrency(Number(opp.allocated_as_collateral_value))}</span>
+                        <span>Foregone: {formatCurrency(Number(opp.annual_revenue_foregone))}/yr</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="lending-reoptimize-row">
+                  <button
+                    className="lending-reoptimize-btn"
+                    disabled={substituteLoading}
+                    onClick={() => {
+                      setSubstituteLoading(true);
+                      setSubstituteError(null);
+                      setSubstituteResult(null);
+                      const excludeIds = lendingOpportunities.map((o) => String(o.asset_id));
+                      const ctx = toRecord(selectedPreset.context);
+                      const collateralCtx = toRecord(ctx.collateral);
+                      fetch("/api/collateral/reoptimize-with-substitutes", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          workflow: selectedPreset.workflow_id ?? "collateral_liquidity_review",
+                          portfolio_id: selectedPreset.portfolio_id ?? "PORT_001",
+                          seed: selectedPreset.seed ?? 42,
+                          optimizer_runtime: "phase1",
+                          context: collateralCtx,
+                          excluded_asset_ids: excludeIds,
+                        }),
+                      })
+                        .then((r) => r.ok ? r.json() : r.json().then((e: unknown) => Promise.reject(e)))
+                        .then((data: unknown) => {
+                          setSubstituteResult(data as Record<string, unknown>);
+                        })
+                        .catch((err: unknown) => {
+                          const msg = err && typeof err === "object" && "detail" in err
+                            ? String((err as Record<string, unknown>).detail)
+                            : "Re-optimization failed.";
+                          setSubstituteError(msg);
+                        })
+                        .finally(() => setSubstituteLoading(false));
+                    }}
+                  >
+                    {substituteLoading ? "Re-optimizing…" : "⟳ Re-optimize with substitutes"}
+                  </button>
+                  <span className="lending-reoptimize-hint">
+                    Excludes {lendingOpportunities.length} flagged asset{lendingOpportunities.length !== 1 ? "s" : ""} — forces LP to find cheaper substitute collateral
+                  </span>
+                </div>
+                {substituteError && (
+                  <p className="lending-substitute-error">{substituteError}</p>
+                )}
+                {substituteResult && (
+                  <div className="lending-substitute-result">
+                    <div className="lending-substitute-summary">
+                      {String(substituteResult.summary)}
+                    </div>
+                    <div className="lending-substitute-metrics">
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Original cost</span>
+                        <span className="lending-sub-value">{formatCurrency(Number(substituteResult.original_objective))}</span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Substitute cost</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {formatCurrency(Number(substituteResult.substitute_objective))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Delta</span>
+                        <span className={`lending-sub-value ${Number(substituteResult.objective_delta) <= 0 ? "lending-sub-better" : "lending-sub-worse"}`}>
+                          {Number(substituteResult.objective_delta) <= 0 ? "−" : "+"}
+                          {formatCurrency(Math.abs(Number(substituteResult.objective_delta)))}
+                        </span>
+                      </div>
+                      <div className="lending-sub-metric">
+                        <span className="lending-sub-label">Conflicts resolved</span>
+                        <span className="lending-sub-value lending-sub-better">
+                          {(substituteResult.original_lending_opportunities as unknown[]).length - (substituteResult.remaining_lending_opportunities as unknown[]).length}
+                          {" "}of{" "}
+                          {(substituteResult.original_lending_opportunities as unknown[]).length}
+                        </span>
+                      </div>
+                    </div>
+                    {(substituteResult.remaining_lending_opportunities as unknown[]).length > 0 && (
+                      <p className="lending-substitute-remaining">
+                        {(substituteResult.remaining_lending_opportunities as unknown[]).length} conflict(s) remain — substitute assets also carry high lending rates.
+                        Consider running constraint negotiation or broadening eligible asset classes.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : afterRun ? (
+              <p className="lending-opportunity-intro lending-ok-note">
+                No high-demand lending assets are being posted as collateral in this run. Optimal
+                allocation preserved high-rebate inventory for lending.
+              </p>
+            ) : (
+              <p className="lending-opportunity-intro">
+                Run the workflow to identify high-demand securities-lending candidates in your
+                collateral inventory.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -5433,6 +5764,8 @@ function EvidenceRoomPanel({
   selectedPreset,
   selectedWorkflow,
   selectedProductionOptimizer,
+  llmConfig,
+  latestWorkflowRunPayload,
 }: {
   workflowRun: WorkflowRunResult | null;
   result: OptimizationResult | null;
@@ -5441,6 +5774,8 @@ function EvidenceRoomPanel({
   selectedPreset: DemoPresetCatalogItem;
   selectedWorkflow: WorkflowCatalogItem;
   selectedProductionOptimizer: ProductionOptimizerCatalogItem | null;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
+  latestWorkflowRunPayload: WorkflowRunPayload | null;
 }) {
   const steps = workflowRun?.step_results || [];
   const finalResult = result || steps.at(-1)?.result || null;
@@ -5453,6 +5788,50 @@ function EvidenceRoomPanel({
   const checks = finalResult?.validation_report?.checks || [];
   const trace = workflowRun?.trace || finalResult?.agent_trace || [];
   const solver = finalResult?.solver_metadata || {};
+
+  const [auditNarrative, setAuditNarrative] = useState<Record<string, unknown> | null>(null);
+  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishError, setPolishError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const wfId = workflowRun?.workflow_id;
+    if (!wfId) { setAuditNarrative(null); return; }
+    fetch(`/api/audit/narrative/${encodeURIComponent(wfId)}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setAuditNarrative(data?.narrative || null))
+      .catch(() => setAuditNarrative(null));
+  }, [workflowRun?.workflow_id]);
+
+  async function handlePolishNarrative() {
+    if (!workflowRun || !latestWorkflowRunPayload) return;
+    setIsPolishing(true);
+    setPolishError(null);
+    try {
+      const res = await fetch("/api/audit/narrative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          response: { result: workflowRun },
+          payload: latestWorkflowRunPayload,
+          llm_polish: true,
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          base_url: llmConfig.baseUrl || undefined,
+          api_key: llmConfig.apiKey || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPolishError(data.detail || "Polish failed.");
+      } else {
+        setAuditNarrative(data.narrative || null);
+      }
+    } catch {
+      setPolishError("Could not reach the API.");
+    } finally {
+      setIsPolishing(false);
+    }
+  }
 
   return (
     <section className="panel evidence-room-panel">
@@ -5607,8 +5986,149 @@ function EvidenceRoomPanel({
             <p>Trace events appear after planning or workflow execution.</p>
           )}
         </EvidenceSection>
+
+        <EvidenceSection
+          title="Audit Narrative"
+          status={
+            auditNarrative
+              ? auditNarrative.llm_polished
+                ? `Polished · ${String(auditNarrative.llm_provider || "llm")}`
+                : "Generated"
+              : workflowRun
+                ? "Generating…"
+                : "Pending"
+          }
+        >
+          {auditNarrative ? (
+            <AuditNarrativeDisplay
+              narrative={auditNarrative}
+              isPolishing={isPolishing}
+              polishError={polishError}
+              onPolish={handlePolishNarrative}
+              llmConfig={llmConfig}
+            />
+          ) : (
+            <p className="evidence-pending">
+              {workflowRun ? "Narrative is being generated…" : "Run a workflow to generate the compliance audit narrative."}
+            </p>
+          )}
+        </EvidenceSection>
       </div>
     </section>
+  );
+}
+
+function AuditNarrativeDisplay({
+  narrative,
+  isPolishing,
+  polishError,
+  onPolish,
+  llmConfig,
+}: {
+  narrative: Record<string, unknown>;
+  isPolishing: boolean;
+  polishError: string | null;
+  onPolish: () => void;
+  llmConfig: { provider: string; model: string; baseUrl: string; apiKey: string };
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const constraintContext = Array.isArray(narrative.constraint_context)
+    ? (narrative.constraint_context as string[])
+    : [];
+  const approvalChain = Array.isArray(narrative.approval_chain)
+    ? (narrative.approval_chain as string[])
+    : [];
+  const riskFlags = Array.isArray(narrative.risk_flags)
+    ? (narrative.risk_flags as string[])
+    : [];
+  const timeline = Array.isArray(narrative.timeline)
+    ? (narrative.timeline as string[])
+    : [];
+  const markdown = String(narrative.markdown || "").trim();
+
+  return (
+    <div className="audit-narrative-full">
+      <div className="audit-narrative-section">
+        <span className="audit-narrative-label">Decision summary</span>
+        <p className="audit-narrative-body">{String(narrative.decision_summary || "")}</p>
+      </div>
+
+      {Boolean(narrative.outcome) && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Outcome</span>
+          <p className="audit-narrative-body">{String(narrative.outcome)}</p>
+        </div>
+      )}
+
+      {constraintContext.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Constraint context</span>
+          <ul className="audit-narrative-list">
+            {constraintContext.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {approvalChain.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Approval chain</span>
+          <ul className="audit-narrative-list">
+            {approvalChain.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {riskFlags.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Risk flags</span>
+          <ul className="audit-narrative-list audit-narrative-risks">
+            {riskFlags.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div className="audit-narrative-section">
+          <span className="audit-narrative-label">Timeline</span>
+          <ol className="audit-narrative-list">
+            {timeline.map((item, i) => <li key={i}>{item}</li>)}
+          </ol>
+        </div>
+      )}
+
+      {markdown && (
+        <div className="audit-narrative-section">
+          <button
+            className="audit-narrative-expand-btn"
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "▾ Hide full narrative" : "▸ View full narrative"}
+          </button>
+          {expanded && (
+            <pre className="audit-narrative-markdown">{markdown}</pre>
+          )}
+        </div>
+      )}
+
+      <div className="audit-narrative-actions">
+        {!narrative.llm_polished ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onPolish}
+            disabled={isPolishing}
+            title={`Polish via ${llmConfig.provider} (${llmConfig.model})`}
+          >
+            {isPolishing ? "Polishing…" : "Polish with LLM"}
+          </button>
+        ) : (
+          <span className="status-chip status-optimal">LLM polished</span>
+        )}
+        {polishError ? <span className="status-chip status-block">{polishError}</span> : null}
+      </div>
+    </div>
   );
 }
 
@@ -5632,12 +6152,78 @@ function EvidenceSection({
   );
 }
 
+function LLMSettingsPanel({
+  config,
+  onChange,
+}: {
+  config: { provider: string; model: string; baseUrl: string; apiKey: string };
+  onChange: (config: { provider: string; model: string; baseUrl: string; apiKey: string }) => void;
+}) {
+  function set(key: string, value: string) {
+    onChange({ ...config, [key]: value });
+  }
+
+  return (
+    <section className="panel compact llm-settings-panel">
+      <div className="panel-heading">
+        <span className="eyebrow">LLM Settings</span>
+        <span className="model-badge">{config.provider} · {config.model || "no model"}</span>
+      </div>
+
+      <div className="llm-settings-fields">
+        <label>
+          <span>Protocol</span>
+          <select
+            value={config.provider}
+            onChange={(e) => set("provider", e.target.value)}
+            aria-label="LLM protocol"
+          >
+            <option value="openai">openai-compatible</option>
+            <option value="anthropic">anthropic</option>
+          </select>
+        </label>
+        <label>
+          <span>Model</span>
+          <input
+            value={config.model}
+            onChange={(e) => set("model", e.target.value)}
+            placeholder="Any model string your endpoint accepts"
+            aria-label="LLM model"
+          />
+        </label>
+        <label className="llm-settings-wide">
+          <span>Base URL</span>
+          <input
+            value={config.baseUrl}
+            onChange={(e) => set("baseUrl", e.target.value)}
+            placeholder="https://your-gateway/v1  (blank = provider default)"
+            aria-label="LLM base URL"
+          />
+        </label>
+        <label>
+          <span>API Key</span>
+          <input
+            type="password"
+            value={config.apiKey}
+            onChange={(e) => set("apiKey", e.target.value)}
+            placeholder="Blank = use env var"
+            aria-label="LLM API key"
+          />
+        </label>
+      </div>
+      <p className="llm-settings-hint">
+        Any OpenAI-compatible gateway: set Protocol to <code>openai-compatible</code>, paste your gateway URL, and type whatever model string it accepts.
+      </p>
+    </section>
+  );
+}
+
 function PolicyIngestionPanel({
   selectedWorkflow,
   text,
   filename,
   backend,
-  model,
+  llmModel,
   result,
   applied,
   isIngesting,
@@ -5647,7 +6233,6 @@ function PolicyIngestionPanel({
   onTextChange,
   onFileChange,
   onBackendChange,
-  onModelChange,
   onIngest,
   onApply,
   onLoadSample,
@@ -5656,7 +6241,7 @@ function PolicyIngestionPanel({
   text: string;
   filename: string;
   backend: "deterministic" | "llm" | "auto";
-  model: string;
+  llmModel: string;
   result: PolicyIngestionResponse | null;
   applied: boolean;
   isIngesting: boolean;
@@ -5666,7 +6251,6 @@ function PolicyIngestionPanel({
   onTextChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   onBackendChange: (value: "deterministic" | "llm" | "auto") => void;
-  onModelChange: (value: string) => void;
   onIngest: () => void;
   onApply: () => void;
   onLoadSample?: () => void;
@@ -5749,17 +6333,18 @@ function PolicyIngestionPanel({
             aria-label="IPS ingestion backend"
           >
             <option value="deterministic">Deterministic</option>
-            <option value="llm">Ollama assisted</option>
+            <option value="llm">LLM assisted</option>
             <option value="auto">Auto</option>
           </select>
         </label>
         <label>
           <span>Model</span>
           <input
-            value={model}
-            onChange={(event) => onModelChange(event.target.value)}
-            disabled={disabled || isIngesting || backend === "deterministic"}
-            aria-label="IPS ingestion model"
+            value={llmModel}
+            readOnly
+            disabled={backend === "deterministic"}
+            aria-label="IPS ingestion model (set in LLM Settings)"
+            title="Configure model in the LLM Settings panel"
           />
         </label>
       </div>
@@ -6061,6 +6646,78 @@ function presenterStatusClass(status: PresenterStatus): string {
   return "status-ready";
 }
 
+function ChatIntakeProgress({ workflow }: { workflow: WorkflowState | null }) {
+  if (!workflow || !workflow.domain || workflow.awaiting_confirmation) return null;
+  const requiredFields = workflow.plan?.required_fields ?? [];
+  if (requiredFields.length === 0) return null;
+  const collected = workflow.collected ?? {};
+  const nextField = workflow.next_field;
+  return (
+    <div className="chat-intake-progress">
+      <span className="intake-progress-label">Intake Progress</span>
+      <div className="intake-field-rows">
+        {requiredFields.map((field) => {
+          const isCollected = field.key in collected;
+          const isNext = !isCollected && field.key === nextField;
+          const cls = isCollected
+            ? "intake-field-row intake-field--collected"
+            : isNext
+              ? "intake-field-row intake-field--next"
+              : "intake-field-row intake-field--pending";
+          const icon = isCollected ? "✓" : isNext ? "→" : "·";
+          return (
+            <div key={field.key} className={cls}>
+              <span className="intake-field-icon">{icon}</span>
+              <span className="intake-field-label">{field.label}</span>
+              {isCollected && (
+                <span className="intake-field-value">
+                  {String(collected[field.key])}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StreamingWorkflowProgress({
+  steps,
+}: {
+  steps: Array<{
+    step_id: string;
+    domain: string;
+    name: string;
+    status: "running" | "complete" | "pending";
+    objective_value?: number | null;
+    improvement_pct?: number | null;
+  }>;
+}) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="streaming-progress">
+      <span className="streaming-progress-label">Running workflow…</span>
+      {steps.map((step) => (
+        <div
+          key={step.step_id}
+          className={`streaming-step streaming-step--${step.status}`}
+        >
+          <span className="streaming-step-icon">
+            {step.status === "complete" ? "✓" : step.status === "running" ? "⟳" : "·"}
+          </span>
+          <span className="streaming-step-name">{step.name || step.domain}</span>
+          {step.status === "complete" && step.improvement_pct != null && (
+            <span className="streaming-step-improvement">
+              +{step.improvement_pct.toFixed(1)} bps
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlanPanel({ workflow }: { workflow: WorkflowState | null }) {
   const plan = workflow?.plan;
   const missingFields = plan?.missing_fields || [];
@@ -6241,10 +6898,148 @@ function WorkflowTimelinePanel({
   );
 }
 
+function DriftAlertBanner({
+  alerts,
+  autoResults,
+  onDismiss,
+  onReoptimize,
+}: {
+  alerts: Array<{
+    severity: "warning" | "critical"; message: string; reoptimize_domain: string;
+    threshold_name: string; domain: string;
+  }>;
+  autoResults: Record<string, { status: "running" | "done" | "error"; objective_value?: number; error?: string }>;
+  onDismiss: () => void;
+  onReoptimize: (domain: string) => void;
+}) {
+  const domains = [...new Set(alerts.map((a) => a.reoptimize_domain))];
+  const allDone = domains.length > 0 && domains.every((d) => autoResults[d]?.status === "done");
+  const anyRunning = domains.some((d) => autoResults[d]?.status === "running");
+
+  return (
+    <section className="drift-alert-banner">
+      <div className="drift-alert-header">
+        <span className="drift-alert-title">⚠️ Portfolio Drift Detected</span>
+        <button className="drift-dismiss-btn" onClick={onDismiss} title="Dismiss">✕</button>
+      </div>
+      <ul className="drift-alert-list">
+        {alerts.map((alert, i) => (
+          <li key={i} className={`drift-alert-item drift-${alert.severity}`}>
+            {alert.severity === "critical" ? "🔴" : "🟡"} {alert.message}
+          </li>
+        ))}
+      </ul>
+      {/* Auto-reoptimize status per domain */}
+      {domains.length > 0 && (
+        <div className="drift-auto-results">
+          {domains.map((domain) => {
+            const ar = autoResults[domain];
+            if (!ar) return null;
+            const label = domain.replace(/_/g, " ");
+            if (ar.status === "running") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-running">
+                  <span className="drift-auto-spinner">⟳</span> Auto-reoptimizing {label}…
+                </div>
+              );
+            }
+            if (ar.status === "done") {
+              return (
+                <div key={domain} className="drift-auto-result drift-auto-done">
+                  ✓ {label} reoptimized
+                  {ar.objective_value != null && (
+                    <span className="drift-auto-obj"> — new objective: {ar.objective_value.toFixed(4)}</span>
+                  )}
+                  <button
+                    className="drift-reoptimize-btn drift-reoptimize-btn--secondary"
+                    onClick={() => onReoptimize(domain)}
+                    title="Run full workflow for this domain"
+                  >
+                    Run full workflow
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div key={domain} className="drift-auto-result drift-auto-error">
+                ✗ Auto-reoptimize failed for {label}: {ar.error}
+                <button className="drift-reoptimize-btn" onClick={() => onReoptimize(domain)}>
+                  Retry (full workflow)
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Manual fallback buttons when auto-run hasn't started or all done */}
+      {!anyRunning && !allDone && (
+        <div className="drift-alert-actions">
+          {domains.map((domain) => (
+            <button
+              key={domain}
+              className="drift-reoptimize-btn"
+              onClick={() => onReoptimize(domain)}
+            >
+              Re-optimize {domain.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ApproverSelect({
+  value,
+  onChange,
+  registry,
+  requiredTier,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  registry: Array<{ id: string; name: string; role: string; max_tier: number }>;
+  requiredTier: number;
+  disabled?: boolean;
+}) {
+  if (!registry.length) {
+    // Fallback to plain text while registry loads
+    return (
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Approver ID"
+        disabled={disabled}
+        aria-label="Approver"
+      />
+    );
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      aria-label="Approver"
+      className="approver-select"
+    >
+      <option value="">— Select approver —</option>
+      {registry.map((a) => {
+        const eligible = a.max_tier >= requiredTier;
+        return (
+          <option key={a.id} value={a.id} disabled={!eligible}>
+            {a.name} ({a.role}){!eligible ? ` — insufficient authority (tier ${a.max_tier} < ${requiredTier})` : ""}
+          </option>
+        );
+      })}
+    </select>
+  );
+}
+
 function GovernanceReviewPanel({
   workflowRun,
   selectedWorkflow,
   inputValues,
+  approverRegistry,
   onDecision,
   onRerun,
   disabled,
@@ -6252,6 +7047,7 @@ function GovernanceReviewPanel({
   workflowRun: WorkflowRunResult | null;
   selectedWorkflow: WorkflowCatalogItem;
   inputValues: Record<string, string>;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
   onDecision: (
     approvalIds: string[],
     granted: boolean,
@@ -6261,9 +7057,13 @@ function GovernanceReviewPanel({
   onRerun: () => void;
   disabled: boolean;
 }) {
-  const [approver, setApprover] = useState("demo.approver");
+  const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("Reviewed materiality and controls.");
+  const [orchRouting, setOrchRouting] = useState<Record<string, unknown> | null>(null);
+  const [orchAdvancing, setOrchAdvancing] = useState(false);
+
   const governance = highestGovernanceRecord(workflowRun);
+  const requiredTier = governance?.tier ?? (inputValues["governance.production_constraint_change"] === "true" ? 5 : 0);
   const pendingRecords = pendingGovernanceRecords(workflowRun);
   const pendingApprovalIds = pendingRecords.flatMap((record) =>
     record.approval_id ? [record.approval_id] : [],
@@ -6273,6 +7073,35 @@ function GovernanceReviewPanel({
   const pnlImpact = inputValues["governance.estimated_pnl_impact"] || "";
   const productionChange = inputValues["governance.production_constraint_change"] === "true";
   const status = governance?.status || (productionChange ? "review" : "not_required");
+
+  useEffect(() => {
+    if (!workflowRun) { setOrchRouting(null); return; }
+    fetch("/api/governance/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: workflowRun }),
+    })
+      .then((res) => res.json())
+      .then((data) => setOrchRouting(data))
+      .catch(() => setOrchRouting(null));
+  }, [workflowRun]);
+
+  async function handleOrchAdvance(granted: boolean) {
+    const approvalId = String(orchRouting?.approval_id || "");
+    if (!approvalId || !approver.trim()) return;
+    setOrchAdvancing(true);
+    try {
+      const res = await fetch("/api/governance/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approval_id: approvalId, approver, granted, reason }),
+      });
+      const data = await res.json();
+      setOrchRouting((prev) => prev ? { ...prev, status: data.status, action_performed: data.action_performed } : prev);
+    } finally {
+      setOrchAdvancing(false);
+    }
+  }
 
   return (
     <section className="panel governance-review-panel">
@@ -6348,16 +7177,60 @@ function GovernanceReviewPanel({
         </ul>
       ) : null}
 
+      {orchRouting ? (
+        <div className="governance-orchestrator-card">
+          <div className="card-heading">
+            <strong>Auto-Routed Tier (Orchestrator)</strong>
+            <span className={orchRouting.status === "auto_allowed" ? "status-chip status-optimal" : orchRouting.status === "approved" ? "status-chip status-optimal" : orchRouting.status === "rejected" ? "status-chip status-block" : "status-chip status-warn"}>
+              {String(orchRouting.status).replaceAll("_", " ")}
+            </span>
+          </div>
+          <dl className="evidence-kv-list">
+            <StateRow label="Tier" value={String(orchRouting.tier ?? "—")} />
+            <StateRow label="Base tier" value={String(orchRouting.base_tier ?? "—")} />
+            <StateRow label="Action" value={String(orchRouting.action ?? "—")} />
+            <StateRow label="Escalated" value={orchRouting.escalated ? "Yes" : "No"} />
+            {orchRouting.escalation_reason ? <StateRow label="Escalation reason" value={String(orchRouting.escalation_reason)} /> : null}
+            {orchRouting.approval_id ? <StateRow label="Approval ID" value={String(orchRouting.approval_id)} /> : null}
+          </dl>
+          {orchRouting.required && orchRouting.status === "pending" ? (
+            <div className="approval-decision-box" style={{ marginTop: "0.75rem" }}>
+              <div className="approval-decision-fields">
+                <label>
+                  <span>Approver</span>
+                  <ApproverSelect
+                    value={approver}
+                    onChange={setApprover}
+                    registry={approverRegistry}
+                    requiredTier={Number(orchRouting.tier ?? requiredTier)}
+                    disabled={orchAdvancing}
+                  />
+                </label>
+                <label>
+                  <span>Reason</span>
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={orchAdvancing} aria-label="Approval reason" />
+                </label>
+              </div>
+              <div className="approval-actions">
+                <button className="primary-button" type="button" onClick={() => handleOrchAdvance(true)} disabled={orchAdvancing || !approver.trim()}>Approve</button>
+                <button className="secondary-button" type="button" onClick={() => handleOrchAdvance(false)} disabled={orchAdvancing || !approver.trim()}>Reject</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {governance?.required ? (
         <div className="approval-decision-box">
           <div className="approval-decision-fields">
             <label>
               <span>Approver</span>
-              <input
+              <ApproverSelect
                 value={approver}
-                onChange={(event) => setApprover(event.target.value)}
+                onChange={setApprover}
+                registry={approverRegistry}
+                requiredTier={requiredTier}
                 disabled={disabled || pendingApprovalIds.length === 0}
-                aria-label="Approver name"
               />
             </label>
             <label>
@@ -6398,6 +7271,356 @@ function GovernanceReviewPanel({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+// ── Collateral Schedule Panel ─────────────────────────────────────────────
+
+type Counterparty = { id: string; name: string; lei?: string; jurisdiction?: string; created_at: string };
+type MarginAgreement = {
+  id: string; counterparty_id: string; margin_type: string; agreement_ref?: string;
+  base_currency: string; threshold_amount: number; mta_amount: number;
+  governing_law?: string; effective_date?: string; created_at: string;
+};
+type CollateralEntry = {
+  id: string; asset_class: string; isin?: string; currency?: string;
+  rating_floor?: string; max_maturity_years?: number; haircut_pct: number;
+  concentration_limit_pct?: number; eligible: boolean; notes?: string;
+};
+type ScheduleSummary = {
+  total_entries: number; eligible_count: number;
+  min_haircut_pct?: number; max_haircut_pct?: number; avg_haircut_pct?: number;
+  eligible_asset_classes: string[];
+};
+
+const MARGIN_TYPES = ["IM", "VM", "REPO", "SBL", "CCP_IM", "HOUSE", "OTHER"];
+
+function CollateralSchedulePanel() {
+  const [counterparties, setCounterparties] = React.useState<Counterparty[]>([]);
+  const [agreements, setAgreements] = React.useState<MarginAgreement[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = React.useState<string | null>(null);
+  const [entries, setEntries] = React.useState<CollateralEntry[]>([]);
+  const [summary, setSummary] = React.useState<ScheduleSummary | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [ingestStatus, setIngestStatus] = React.useState<string | null>(null);
+  const [showCreateCp, setShowCreateCp] = React.useState(false);
+  const [showCreateAgr, setShowCreateAgr] = React.useState(false);
+
+  // Create counterparty form
+  const [cpName, setCpName] = React.useState("");
+  const [cpLei, setCpLei] = React.useState("");
+  const [cpJurisdiction, setCpJurisdiction] = React.useState("");
+
+  // Create agreement form
+  const [agrCpId, setAgrCpId] = React.useState("");
+  const [agrMarginType, setAgrMarginType] = React.useState("IM");
+  const [agrRef, setAgrRef] = React.useState("");
+  const [agrCurrency, setAgrCurrency] = React.useState("USD");
+  const [agrThreshold, setAgrThreshold] = React.useState("0");
+  const [agrMta, setAgrMta] = React.useState("0");
+  const [agrGoverningLaw, setAgrGoverningLaw] = React.useState("");
+  const [agrEffectiveDate, setAgrEffectiveDate] = React.useState("");
+
+  async function loadCounterparties() {
+    const res = await fetch(`${API_BASE}/api/collateral/counterparties`);
+    if (res.ok) {
+      const data = await res.json() as { counterparties: Counterparty[] };
+      setCounterparties(data.counterparties);
+    }
+  }
+
+  async function loadAgreements() {
+    const res = await fetch(`${API_BASE}/api/collateral/agreements`);
+    if (res.ok) {
+      const data = await res.json() as { agreements: MarginAgreement[] };
+      setAgreements(data.agreements);
+    }
+  }
+
+  async function loadSchedule(agreementId: string) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/collateral/agreements/${agreementId}/schedule`);
+      if (res.ok) {
+        const data = await res.json() as { entries: CollateralEntry[]; summary: ScheduleSummary };
+        setEntries(data.entries);
+        setSummary(data.summary);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadCounterparties();
+    void loadAgreements();
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedAgreementId) void loadSchedule(selectedAgreementId);
+    else { setEntries([]); setSummary(null); }
+  }, [selectedAgreementId]);
+
+  async function handleCreateCounterparty() {
+    if (!cpName.trim()) return;
+    const res = await fetch(`${API_BASE}/api/collateral/counterparties`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: cpName.trim(), lei: cpLei || undefined, jurisdiction: cpJurisdiction || undefined }),
+    });
+    if (res.ok) {
+      setCpName(""); setCpLei(""); setCpJurisdiction("");
+      setShowCreateCp(false);
+      await loadCounterparties();
+    }
+  }
+
+  async function handleCreateAgreement() {
+    if (!agrCpId || !agrMarginType) return;
+    const res = await fetch(`${API_BASE}/api/collateral/agreements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        counterparty_id: agrCpId,
+        margin_type: agrMarginType,
+        agreement_ref: agrRef || undefined,
+        base_currency: agrCurrency,
+        threshold_amount: parseFloat(agrThreshold) || 0,
+        mta_amount: parseFloat(agrMta) || 0,
+        governing_law: agrGoverningLaw || undefined,
+        effective_date: agrEffectiveDate || undefined,
+      }),
+    });
+    if (res.ok) {
+      setShowCreateAgr(false);
+      await loadAgreements();
+    }
+  }
+
+  async function handleFileIngest(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!selectedAgreementId || !e.target.files?.length) return;
+    const file = e.target.files[0];
+    setIngestStatus("Parsing…");
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const name = file.name.toLowerCase();
+      let body: Record<string, unknown>;
+      if (name.endsWith(".csv") || file.type.includes("csv") || file.type.includes("text")) {
+        const text = new TextDecoder().decode(bytes);
+        body = { csv_content: text, filename: file.name, replace: true };
+      } else {
+        const b64 = btoa(String.fromCharCode(...bytes));
+        if (name.endsWith(".pdf")) {
+          body = { pdf_base64: b64, filename: file.name, replace: true };
+        } else {
+          body = { xlsx_base64: b64, filename: file.name, replace: true };
+        }
+      }
+      const res = await fetch(`${API_BASE}/api/collateral/agreements/${selectedAgreementId}/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json() as { entries_inserted: number };
+        setIngestStatus(`✓ Ingested ${data.entries_inserted} entries`);
+        await loadSchedule(selectedAgreementId);
+      } else {
+        const err = await res.json() as { detail?: string };
+        setIngestStatus(`✗ ${err.detail ?? "Parse error"}`);
+      }
+    } catch (err) {
+      setIngestStatus(`✗ ${String(err)}`);
+    }
+    e.target.value = "";
+  }
+
+  const selectedAgreement = agreements.find((a) => a.id === selectedAgreementId);
+  const cpForAgreement = counterparties.find((c) => c.id === selectedAgreement?.counterparty_id);
+
+  return (
+    <section className="panel collateral-schedule-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Collateral Management</span>
+          <h2>Eligible collateral schedules</h2>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button className="secondary-button" onClick={() => setShowCreateCp(!showCreateCp)}>
+            + Counterparty
+          </button>
+          <button className="secondary-button" onClick={() => setShowCreateAgr(!showCreateAgr)}>
+            + Agreement
+          </button>
+        </div>
+      </div>
+
+      {/* Create counterparty form */}
+      {showCreateCp && (
+        <div className="collateral-form-card">
+          <strong>New counterparty</strong>
+          <div className="collateral-form-row">
+            <input placeholder="Name *" value={cpName} onChange={(e) => setCpName(e.target.value)} />
+            <input placeholder="LEI" value={cpLei} onChange={(e) => setCpLei(e.target.value)} />
+            <input placeholder="Jurisdiction" value={cpJurisdiction} onChange={(e) => setCpJurisdiction(e.target.value)} />
+            <button className="primary-button" onClick={() => void handleCreateCounterparty()} disabled={!cpName.trim()}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create agreement form */}
+      {showCreateAgr && (
+        <div className="collateral-form-card">
+          <strong>New margin agreement</strong>
+          <div className="collateral-form-row">
+            <select value={agrCpId} onChange={(e) => setAgrCpId(e.target.value)}>
+              <option value="">— Counterparty —</option>
+              {counterparties.map((cp) => (
+                <option key={cp.id} value={cp.id}>{cp.name}</option>
+              ))}
+            </select>
+            <select value={agrMarginType} onChange={(e) => setAgrMarginType(e.target.value)}>
+              {MARGIN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <input placeholder="Agreement ref" value={agrRef} onChange={(e) => setAgrRef(e.target.value)} />
+            <input placeholder="Currency" value={agrCurrency} onChange={(e) => setAgrCurrency(e.target.value)} style={{ width: "4rem" }} />
+          </div>
+          <div className="collateral-form-row">
+            <input placeholder="Threshold ($)" value={agrThreshold} onChange={(e) => setAgrThreshold(e.target.value)} style={{ width: "7rem" }} />
+            <input placeholder="MTA ($)" value={agrMta} onChange={(e) => setAgrMta(e.target.value)} style={{ width: "7rem" }} />
+            <input placeholder="Governing law" value={agrGoverningLaw} onChange={(e) => setAgrGoverningLaw(e.target.value)} />
+            <input type="date" value={agrEffectiveDate} onChange={(e) => setAgrEffectiveDate(e.target.value)} />
+            <button className="primary-button" onClick={() => void handleCreateAgreement()} disabled={!agrCpId || !agrMarginType}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="collateral-layout">
+        {/* Agreements sidebar */}
+        <div className="collateral-sidebar">
+          <div className="collateral-sidebar-header">Agreements ({agreements.length})</div>
+          {agreements.length === 0 && (
+            <p className="collateral-empty">No agreements yet. Create a counterparty and agreement above.</p>
+          )}
+          {agreements.map((agr) => {
+            const cp = counterparties.find((c) => c.id === agr.counterparty_id);
+            return (
+              <button
+                key={agr.id}
+                className={`collateral-agreement-item ${selectedAgreementId === agr.id ? "selected" : ""}`}
+                onClick={() => setSelectedAgreementId(agr.id === selectedAgreementId ? null : agr.id)}
+              >
+                <span className="collateral-margin-chip">{agr.margin_type}</span>
+                <span className="collateral-cp-name">{cp?.name ?? agr.counterparty_id}</span>
+                {agr.agreement_ref && <span className="collateral-agr-ref">{agr.agreement_ref}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Schedule detail */}
+        <div className="collateral-detail">
+          {!selectedAgreementId && (
+            <p className="collateral-empty">Select an agreement to view its collateral schedule.</p>
+          )}
+          {selectedAgreementId && (
+            <>
+              <div className="collateral-detail-header">
+                <div>
+                  <strong>{cpForAgreement?.name}</strong>
+                  <span className="collateral-margin-chip">{selectedAgreement?.margin_type}</span>
+                  {selectedAgreement?.agreement_ref && (
+                    <span className="collateral-agr-ref">{selectedAgreement.agreement_ref}</span>
+                  )}
+                </div>
+                <div className="collateral-ingest-row">
+                  <label className="collateral-upload-btn">
+                    Upload schedule (CSV / XLSX / PDF)
+                    <input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileIngest} style={{ display: "none" }} />
+                  </label>
+                  {ingestStatus && (
+                    <span className={`collateral-ingest-status ${ingestStatus.startsWith("✓") ? "ok" : ingestStatus.startsWith("✗") ? "err" : ""}`}>
+                      {ingestStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Agreement metadata */}
+              <dl className="collateral-meta-grid">
+                <div><dt>Base currency</dt><dd>{selectedAgreement?.base_currency}</dd></div>
+                <div><dt>Threshold</dt><dd>{selectedAgreement?.threshold_amount?.toLocaleString()} {selectedAgreement?.base_currency}</dd></div>
+                <div><dt>MTA</dt><dd>{selectedAgreement?.mta_amount?.toLocaleString()} {selectedAgreement?.base_currency}</dd></div>
+                {selectedAgreement?.governing_law && <div><dt>Governing law</dt><dd>{selectedAgreement.governing_law}</dd></div>}
+                {selectedAgreement?.effective_date && <div><dt>Effective date</dt><dd>{selectedAgreement.effective_date}</dd></div>}
+              </dl>
+
+              {/* Summary stats */}
+              {summary && summary.total_entries > 0 && (
+                <div className="collateral-summary-strip">
+                  <span>{summary.total_entries} entries</span>
+                  <span>{summary.eligible_count} eligible</span>
+                  {summary.avg_haircut_pct != null && (
+                    <span>avg haircut {summary.avg_haircut_pct.toFixed(1)}%</span>
+                  )}
+                  {summary.min_haircut_pct != null && (
+                    <span>range {summary.min_haircut_pct.toFixed(1)}%–{summary.max_haircut_pct?.toFixed(1)}%</span>
+                  )}
+                  <span>classes: {summary.eligible_asset_classes.join(", ")}</span>
+                </div>
+              )}
+
+              {/* Entry table */}
+              {loading && <p className="collateral-loading">Loading…</p>}
+              {!loading && entries.length === 0 && (
+                <p className="collateral-empty">No schedule entries yet. Upload a schedule file above.</p>
+              )}
+              {!loading && entries.length > 0 && (
+                <div className="collateral-table-wrap">
+                  <table className="collateral-table">
+                    <thead>
+                      <tr>
+                        <th>Asset class</th>
+                        <th>ISIN / ID</th>
+                        <th>Currency</th>
+                        <th>Rating floor</th>
+                        <th>Max maturity (yr)</th>
+                        <th>Haircut %</th>
+                        <th>Conc. limit %</th>
+                        <th>Eligible</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entries.map((e) => (
+                        <tr key={e.id} className={e.eligible ? "" : "collateral-row-ineligible"}>
+                          <td><span className="collateral-asset-chip">{e.asset_class}</span></td>
+                          <td className="collateral-mono">{e.isin ?? "—"}</td>
+                          <td>{e.currency ?? "—"}</td>
+                          <td>{e.rating_floor ?? "—"}</td>
+                          <td>{e.max_maturity_years != null ? e.max_maturity_years : "—"}</td>
+                          <td className="collateral-haircut">{e.haircut_pct.toFixed(1)}%</td>
+                          <td>{e.concentration_limit_pct != null ? `${e.concentration_limit_pct.toFixed(1)}%` : "—"}</td>
+                          <td className={e.eligible ? "collateral-eligible" : "collateral-ineligible"}>
+                            {e.eligible ? "✓" : "✗"}
+                          </td>
+                          <td className="collateral-notes">{e.notes ?? ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -7091,10 +8314,607 @@ function Metric({
   );
 }
 
+type ConstraintRelaxationProposal = {
+  parameter: string;
+  proposed_change: string;
+  estimated_impact: number;
+  estimated_impact_units: string;
+  governance_tier: number;
+  governance_reason: string;
+  rationale: string;
+  source: string;
+  confidence: number;
+};
+
+type ConstraintNegotiationResult = {
+  domain: string;
+  target_improvement: number;
+  target_units: string;
+  proposals: ConstraintRelaxationProposal[];
+  recommendation: string;
+  blockers: string[];
+};
+
+function tierClass(tier: number): string {
+  if (tier <= 2) return "status-optimal";
+  if (tier <= 3) return "status-ready";
+  if (tier === 4) return "status-warn";
+  return "status-block";
+}
+
+function tierLabel(tier: number): string {
+  const labels: Record<number, string> = {
+    0: "Tier 0 – Explain",
+    1: "Tier 1 – Scenario",
+    2: "Tier 2 – Recommend",
+    3: "Tier 3 – Stage",
+    4: "Tier 4 – Execute",
+    5: "Tier 5 – Policy Change",
+  };
+  return labels[tier] ?? `Tier ${tier}`;
+}
+
+// --------------------------------------------------------------------------- //
+// Cross-domain optimization view
+// --------------------------------------------------------------------------- //
+
+type DomainPnL = {
+  domain: string;
+  objectiveValue: number;
+  baselineValue: number;
+  improvement: number;
+  improvementPct: number;
+  unit: string;
+  improvementLabel: string;
+  bindingConstraints: string[];
+  topSensitivity: Sensitivity | null;
+};
+
+type CrossDomainOpportunity = {
+  domain: string;
+  parameter: string;
+  shadowPrice: number;
+  unit: string;
+  interpretation: string;
+  downstreamDomains: string[];
+};
+
+function buildCrossDomainData(workflowRun: WorkflowRunResult): {
+  pnl: DomainPnL[];
+  cascade: DependencyEffect[];
+  opportunities: CrossDomainOpportunity[];
+  aggregateImprovementSummary: string;
+} {
+  const steps = workflowRun.step_results;
+
+  // Unit and improvement labeling per domain
+  function domainMeta(domain: string, obj: number, baseline: number) {
+    const improvement = Math.abs(baseline - obj);
+    const improvementPct = baseline !== 0 ? (improvement / Math.abs(baseline)) * 100 : 0;
+    if (domain === "money_market" || domain === "asset_allocation") {
+      const bpsImp = (obj - baseline) * 100;
+      return { unit: "%", improvementLabel: `+${bpsImp.toFixed(1)} bps`, improvement, improvementPct };
+    }
+    const sign = obj < baseline ? "–" : "+";
+    const fmt = improvement >= 1e6 ? `${sign}$${(improvement / 1e6).toFixed(2)}M` : `${sign}$${improvement.toFixed(0)}`;
+    return { unit: "USD", improvementLabel: fmt, improvement, improvementPct };
+  }
+
+  const pnl: DomainPnL[] = steps.map((step) => {
+    const r = step.result;
+    const obj = r.objective_value ?? 0;
+    const baseline = r.baseline_value ?? 0;
+    const meta = domainMeta(step.domain, obj, baseline);
+    const sensitivities = r.sensitivities ?? [];
+    const topSens = [...sensitivities].sort((a, b) => Math.abs(b.shadow_price) - Math.abs(a.shadow_price))[0] ?? null;
+    return {
+      domain: step.domain,
+      objectiveValue: obj,
+      baselineValue: baseline,
+      improvement: meta.improvement,
+      improvementPct: meta.improvementPct,
+      unit: meta.unit,
+      improvementLabel: meta.improvementLabel,
+      bindingConstraints: r.binding_constraints ?? [],
+      topSensitivity: topSens,
+    };
+  });
+
+  // All dependency effects across all steps
+  const cascade = steps.flatMap((s) => s.dependency_effects ?? []);
+
+  // Which domains are downstream of each source
+  const downstreamMap: Record<string, Set<string>> = {};
+  for (const effect of cascade) {
+    const src = effect.source_step_id.replace(/_\d+$/, "");
+    const tgt = effect.target_step_id.replace(/_\d+$/, "");
+    if (!downstreamMap[src]) downstreamMap[src] = new Set();
+    downstreamMap[src].add(tgt);
+  }
+
+  // Top opportunities: sensitivities with positive shadow price, deduped by parameter
+  const seen = new Set<string>();
+  const opportunities: CrossDomainOpportunity[] = [];
+  for (const step of steps) {
+    const sensitivities = step.result.sensitivities ?? [];
+    for (const sens of sensitivities) {
+      if (sens.shadow_price <= 0) continue;
+      const key = `${step.domain}:${sens.parameter}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const downstream = Array.from(downstreamMap[step.domain] ?? []);
+      const unit = step.domain === "money_market" ? "bps" : "USD";
+      opportunities.push({
+        domain: step.domain,
+        parameter: sens.parameter,
+        shadowPrice: sens.shadow_price,
+        unit,
+        interpretation: sens.interpretation,
+        downstreamDomains: downstream,
+      });
+    }
+  }
+  opportunities.sort((a, b) => b.shadowPrice - a.shadowPrice);
+
+  const improvingSides = pnl.filter((p) => p.improvementPct > 0);
+  const aggregateImprovementSummary = improvingSides.length > 0
+    ? `All ${improvingSides.length} domain${improvingSides.length > 1 ? "s" : ""} improved vs baseline: ${improvingSides.map((p) => `${titleCase(p.domain.replace("_", " "))} ${p.improvementLabel}`).join(", ")}.`
+    : "Run a multi-domain workflow to see cross-domain optimization impact.";
+
+  return { pnl, cascade, opportunities, aggregateImprovementSummary };
+}
+
+function CrossDomainOptimizationPanel({ workflowRun }: { workflowRun: WorkflowRunResult | null }) {
+  const steps = workflowRun?.step_results ?? [];
+  const multiDomain = steps.length >= 2;
+  if (!workflowRun || !multiDomain) return null;
+
+  const { pnl, cascade, opportunities, aggregateImprovementSummary } = buildCrossDomainData(workflowRun);
+
+  return (
+    <section className="panel cross-domain-panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Cross-Domain View</span>
+          <h2>Aggregate optimization impact</h2>
+        </div>
+        <span className="status-chip status-optimal">{steps.length} domains</span>
+      </div>
+
+      <p className="cross-domain-summary">{aggregateImprovementSummary}</p>
+
+      {/* Per-domain P&L row */}
+      <div className="cross-domain-pnl-row">
+        {pnl.map((d) => (
+          <div key={d.domain} className="cross-domain-pnl-card">
+            <span className="cross-domain-domain-label">{titleCase(d.domain.replace(/_/g, " "))}</span>
+            <span className="cross-domain-improvement">{d.improvementLabel}</span>
+            <span className="cross-domain-pct">{d.improvementPct.toFixed(1)}% vs baseline</span>
+            {d.bindingConstraints.length > 0 && (
+              <span className="cross-domain-binding">
+                {d.bindingConstraints.length} binding constraint{d.bindingConstraints.length > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Dependency cascade */}
+      {cascade.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Constraint cascade</span>
+          <div className="cascade-list">
+            {cascade.map((effect, i) => {
+              const src = titleCase(effect.source_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const tgt = titleCase(effect.target_step_id.replace(/_\d+$/, "").replace(/_/g, " "));
+              const key = effect.target_context_key.replace(/_/g, " ");
+              const sign = effect.delta >= 0 ? "+" : "";
+              const pct = (effect.delta * 100).toFixed(1);
+              return (
+                <div key={i} className="cascade-item">
+                  <span className="cascade-arrow">{src} → {tgt}</span>
+                  <span className="cascade-effect">
+                    {key} {sign}{pct}pp
+                  </span>
+                  <span className="cascade-reason">{effect.reason}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Top opportunities */}
+      {opportunities.length > 0 && (
+        <div className="cross-domain-section">
+          <span className="cross-domain-section-label">Highest-value relaxation opportunities</span>
+          <div className="opportunity-list">
+            {opportunities.slice(0, 4).map((opp, i) => (
+              <div key={i} className="opportunity-item">
+                <div className="opportunity-item-header">
+                  <strong>{opp.parameter.replace(/_/g, " ")}</strong>
+                  <span className="opportunity-domain-chip">{titleCase(opp.domain.replace(/_/g, " "))}</span>
+                  {opp.downstreamDomains.length > 0 && (
+                    <span className="opportunity-downstream">
+                      → affects {opp.downstreamDomains.map((d) => titleCase(d.replace(/_/g, " "))).join(", ")}
+                    </span>
+                  )}
+                </div>
+                <p className="opportunity-interpretation">{opp.interpretation}</p>
+                <span className="opportunity-shadow">
+                  Shadow price: {opp.shadowPrice.toFixed(2)} {opp.unit}/M
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type ConstraintApprovalState =
+  | { phase: "idle" }
+  | { phase: "submitting" }
+  | { phase: "pending"; approvalId: string; requiredRole: string; message: string }
+  | { phase: "approving" }
+  | { phase: "decided"; granted: boolean; approver: string }
+  | { phase: "error"; message: string };
+
+const TIER_APPROVER_ROLES: Record<number, string> = {
+  0: "No approval required",
+  1: "No approval required",
+  2: "No approval required",
+  3: "Domain Head or Risk Analyst",
+  4: "Senior Funding MD",
+  5: "CRO / CCO",
+};
+
+function ProposalCard({
+  proposal,
+  domain,
+  portfolioId,
+  approverRegistry,
+}: {
+  proposal: ConstraintRelaxationProposal;
+  domain: string;
+  portfolioId: string;
+  approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }>;
+}) {
+  const [approval, setApproval] = React.useState<ConstraintApprovalState>({ phase: "idle" });
+  const [approver, setApprover] = React.useState("");
+  const needsApproval = proposal.governance_tier >= 3;
+
+  async function initiateApproval() {
+    setApproval({ phase: "submitting" });
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain,
+          parameter: proposal.parameter,
+          proposed_change: proposal.proposed_change,
+          governance_tier: proposal.governance_tier,
+          governance_reason: proposal.governance_reason,
+          estimated_impact: proposal.estimated_impact,
+          estimated_impact_units: proposal.estimated_impact_units,
+          portfolio_id: portfolioId,
+          requestor: "demo.trader",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = (await res.json()) as {
+        approval_id: string;
+        required_approver_role: string;
+        message: string;
+      };
+      setApproval({
+        phase: "pending",
+        approvalId: data.approval_id,
+        requiredRole: data.required_approver_role,
+        message: data.message,
+      });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  async function submitDecision(granted: boolean) {
+    if (approval.phase !== "pending") return;
+    const { approvalId } = approval;
+    setApproval({ phase: "approving" });
+    try {
+      const res = await fetch(`${API_BASE}/api/approvals/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approval_id: approvalId,
+          approver,
+          granted,
+          reason: granted
+            ? `Approved: ${proposal.proposed_change}`
+            : "Rejected by approver.",
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setApproval({ phase: "decided", granted, approver });
+    } catch (e) {
+      setApproval({ phase: "error", message: String(e) });
+    }
+  }
+
+  return (
+    <div className={`proposal-card ${approval.phase === "decided" && approval.granted ? "proposal-card--approved" : approval.phase === "decided" ? "proposal-card--rejected" : ""}`}>
+      <div className="proposal-card-header">
+        <strong className="proposal-parameter">
+          {titleCase(proposal.parameter.replaceAll("_", " "))}
+        </strong>
+        <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+          {tierLabel(proposal.governance_tier)}
+        </span>
+      </div>
+      <p className="proposal-change">{proposal.proposed_change}</p>
+      <div className="proposal-meta">
+        <span className="proposal-impact">
+          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+        </span>
+        <span className="proposal-confidence">
+          {Math.round(proposal.confidence * 100)}% confidence
+        </span>
+      </div>
+      <p className="proposal-rationale">{proposal.rationale}</p>
+
+      {needsApproval && (
+        <div className="proposal-governance">
+          <div className="proposal-governance-header">
+            <span className="proposal-governance-role">
+              Required: {TIER_APPROVER_ROLES[proposal.governance_tier] ?? `Tier ${proposal.governance_tier} approver`}
+            </span>
+            {approval.phase === "idle" && (
+              <button className="secondary-button proposal-approve-btn" type="button" onClick={() => void initiateApproval()}>
+                Request approval
+              </button>
+            )}
+            {approval.phase === "decided" && (
+              <span className={`status-chip ${approval.granted ? "status-optimal" : "status-block"}`}>
+                {approval.granted ? `Approved by ${approval.approver}` : `Rejected by ${approval.approver}`}
+              </span>
+            )}
+          </div>
+          <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+
+          {approval.phase === "submitting" && (
+            <p className="proposal-approval-status">Registering approval request…</p>
+          )}
+          {approval.phase === "approving" && (
+            <p className="proposal-approval-status">Submitting decision…</p>
+          )}
+          {approval.phase === "error" && (
+            <p className="proposal-approval-error">Error: {approval.message}</p>
+          )}
+          {approval.phase === "pending" && (
+            <div className="proposal-approval-flow">
+              <div className="proposal-approval-id">
+                <span className="proposal-approval-id-label">Approval ID</span>
+                <code className="proposal-approval-id-value">{approval.approvalId}</code>
+              </div>
+              <p className="proposal-approval-role-note">
+                Required approver: <strong>{approval.requiredRole}</strong>
+              </p>
+              <div className="proposal-approval-actions">
+                <ApproverSelect
+                  value={approver}
+                  onChange={setApprover}
+                  registry={approverRegistry}
+                  requiredTier={proposal.governance_tier}
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void submitDecision(true)}
+                  disabled={!approver.trim()}
+                >
+                  Approve
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void submitDecision(false)}
+                  disabled={!approver.trim()}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!needsApproval && (
+        <p className="proposal-governance-reason proposal-no-gate">
+          {proposal.governance_reason} — no formal gate required at this tier.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorkflowConstraintNegotiationPanel({ workflowRun, approverRegistry }: { workflowRun: WorkflowRunResult | null; approverRegistry: Array<{ id: string; name: string; role: string; max_tier: number }> }) {
+  const [activeStep, setActiveStep] = React.useState<number | null>(null);
+  const [negotiations, setNegotiations] = React.useState<Record<number, ConstraintNegotiationResult>>({});
+  const [negotiating, setNegotiating] = React.useState<number | null>(null);
+  const [targetImprovement, setTargetImprovement] = React.useState("15");
+  const [targetUnits, setTargetUnits] = React.useState("bps");
+
+  const steps = workflowRun?.step_results ?? [];
+  const stepsWithConstraints = steps.filter(
+    (s) => s.result.binding_constraints && s.result.binding_constraints.length > 0
+  );
+
+  if (!workflowRun || stepsWithConstraints.length === 0) return null;
+
+  async function negotiate(stepIndex: number, stepResult: OptimizationResult) {
+    setNegotiating(stepIndex);
+    try {
+      const res = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: stepResult as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 15,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = (await res.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiations((prev) => ({ ...prev, [stepIndex]: data.negotiation }));
+      setActiveStep(stepIndex);
+    } catch {
+      /* silent — show nothing rather than blocking */
+    } finally {
+      setNegotiating(null);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-header tight">
+        <div>
+          <span className="eyebrow">Constraint Negotiation</span>
+          <h2>What would need to change?</h2>
+        </div>
+        <div className="negotiation-inputs" style={{ marginTop: 0 }}>
+          <label className="negotiation-label">
+            Target
+            <input
+              type="number"
+              className="negotiation-input"
+              value={targetImprovement}
+              onChange={(e) => setTargetImprovement(e.target.value)}
+              min={0}
+              step={1}
+            />
+          </label>
+          <label className="negotiation-label">
+            Units
+            <select
+              className="negotiation-select"
+              value={targetUnits}
+              onChange={(e) => setTargetUnits(e.target.value)}
+            >
+              <option value="bps">bps</option>
+              <option value="utility">utility</option>
+              <option value="cost_savings">cost savings</option>
+              <option value="objective">objective</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="wf-negotiate-steps">
+        {stepsWithConstraints.map((step, idx) => {
+          const stepIndex = steps.indexOf(step);
+          const neg = negotiations[stepIndex];
+          const isNegotiating = negotiating === stepIndex;
+          const isActive = activeStep === stepIndex;
+          const validProposals = neg?.proposals.filter((p) => p.estimated_impact > 0) ?? [];
+
+          return (
+            <div key={stepIndex} className="wf-negotiate-step">
+              <div className="wf-negotiate-step-header">
+                <div>
+                  <strong>{titleCase(step.domain)} optimizer</strong>
+                  <span className="wf-negotiate-constraints">
+                    {step.result.binding_constraints.slice(0, 3).join(" · ")}
+                    {step.result.binding_constraints.length > 3 ? ` +${step.result.binding_constraints.length - 3} more` : ""}
+                  </span>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    if (isActive && neg) {
+                      setActiveStep(null);
+                    } else {
+                      void negotiate(stepIndex, step.result);
+                    }
+                  }}
+                  disabled={isNegotiating}
+                >
+                  {isNegotiating ? "Analyzing…" : isActive ? "Hide" : "Analyze"}
+                </button>
+              </div>
+
+              {isActive && neg && (
+                <div className="negotiation-results">
+                  <p className="negotiation-recommendation">{neg.recommendation}</p>
+                  {neg.blockers.length > 0 && (
+                    <div className="negotiation-blockers">
+                      {neg.blockers.map((b, i) => <p key={i} className="negotiation-blocker">{b}</p>)}
+                    </div>
+                  )}
+                  {validProposals.length > 0 ? (
+                    <div className="proposal-stack">
+                      {validProposals.map((proposal, i) => (
+                        <ProposalCard
+                          key={`${proposal.parameter}-${i}`}
+                          proposal={proposal}
+                          domain={step.domain}
+                          portfolioId="PORT_001"
+                          approverRegistry={approverRegistry}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="negotiation-blocker">No proposals with estimated improvement available for this target.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ConstraintPanel({ result }: { result: OptimizationResult }) {
   const constraints = result.binding_constraints.length
     ? result.binding_constraints
     : ["prime_concentration", "single_fund_limit"];
+
+  const [negotiation, setNegotiation] = useState<ConstraintNegotiationResult | null>(null);
+  const [negotiating, setNegotiating] = useState(false);
+  const [negotiationError, setNegotiationError] = useState<string | null>(null);
+  const [targetImprovement, setTargetImprovement] = useState<string>("");
+  const [targetUnits, setTargetUnits] = useState<string>("bps");
+  const [showNegotiate, setShowNegotiate] = useState(false);
+
+  async function runNegotiation() {
+    setNegotiating(true);
+    setNegotiationError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/constraints/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result: result as unknown as Record<string, unknown>,
+          target_improvement: parseFloat(targetImprovement) || 0,
+          target_units: targetUnits,
+          max_proposals: 5,
+        }),
+      });
+      if (!response.ok) throw new Error(`API error ${response.status}`);
+      const data = (await response.json()) as { negotiation: ConstraintNegotiationResult };
+      setNegotiation(data.negotiation);
+    } catch (err) {
+      setNegotiationError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setNegotiating(false);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="section-header tight">
@@ -7102,7 +8922,19 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           <span className="eyebrow">Constraints</span>
           <h2>Binding checks</h2>
         </div>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setShowNegotiate((v) => !v);
+            setNegotiation(null);
+            setNegotiationError(null);
+          }}
+        >
+          What would need to change?
+        </button>
       </div>
+
       <div className="constraint-stack">
         {constraints.map((constraint) => (
           <div className="constraint-item" key={constraint}>
@@ -7111,6 +8943,105 @@ function ConstraintPanel({ result }: { result: OptimizationResult }) {
           </div>
         ))}
       </div>
+
+      {showNegotiate && (
+        <div className="negotiation-panel">
+          <div className="negotiation-header">
+            <span className="eyebrow">Constraint Negotiation</span>
+            <p className="negotiation-subtitle">
+              Rank constraint relaxations by estimated impact and governance tier required.
+            </p>
+          </div>
+
+          <div className="negotiation-inputs">
+            <label className="negotiation-label">
+              Target improvement
+              <input
+                type="number"
+                className="negotiation-input"
+                placeholder="e.g. 15"
+                value={targetImprovement}
+                onChange={(e) => setTargetImprovement(e.target.value)}
+                min={0}
+                step={1}
+              />
+            </label>
+            <label className="negotiation-label">
+              Units
+              <select
+                className="negotiation-select"
+                value={targetUnits}
+                onChange={(e) => setTargetUnits(e.target.value)}
+              >
+                <option value="bps">bps</option>
+                <option value="utility">utility</option>
+                <option value="cost_savings">cost savings</option>
+                <option value="objective">objective</option>
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={runNegotiation}
+              disabled={negotiating}
+            >
+              {negotiating ? "Analyzing…" : "Analyze"}
+            </button>
+          </div>
+
+          {negotiationError && (
+            <p className="negotiation-error">{negotiationError}</p>
+          )}
+
+          {negotiation && (
+            <div className="negotiation-results">
+              <p className="negotiation-recommendation">{negotiation.recommendation}</p>
+
+              {negotiation.blockers.length > 0 && (
+                <div className="negotiation-blockers">
+                  {negotiation.blockers.map((b, i) => (
+                    <p key={i} className="negotiation-blocker">{b}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="proposal-stack">
+                {negotiation.proposals.map((proposal, i) => (
+                  <div className="proposal-card" key={`${proposal.parameter}-${i}`}>
+                    <div className="proposal-card-header">
+                      <strong className="proposal-parameter">
+                        {titleCase(proposal.parameter.replaceAll("_", " "))}
+                      </strong>
+                      <span className={`status-chip ${tierClass(proposal.governance_tier)}`}>
+                        {tierLabel(proposal.governance_tier)}
+                      </span>
+                    </div>
+
+                    <p className="proposal-change">{proposal.proposed_change}</p>
+
+                    <div className="proposal-meta">
+                      {proposal.estimated_impact > 0 && (
+                        <span className="proposal-impact">
+                          ~{proposal.estimated_impact.toFixed(2)} {proposal.estimated_impact_units} estimated
+                        </span>
+                      )}
+                      <span className="proposal-confidence">
+                        {Math.round(proposal.confidence * 100)}% confidence
+                      </span>
+                      <span className="proposal-source">
+                        {proposal.source === "sensitivity" ? "sensitivity analysis" : "binding constraint"}
+                      </span>
+                    </div>
+
+                    <p className="proposal-rationale">{proposal.rationale}</p>
+                    <p className="proposal-governance-reason">{proposal.governance_reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
