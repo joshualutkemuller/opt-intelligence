@@ -1,0 +1,11 @@
+{
+  "doc": "Example6_synthetic-triparty-eligibility-profile.txt",
+  "description": "Synthetic triparty acceptable-collateral profile (4 rows). Hand-labelled; ratings in canonical S&P scale.",
+  "match": { "haircut_tolerance_pct": 0.25 },
+  "entries": [
+    { "asset_class": "GOVT", "haircut_pct": 1.5, "max_maturity_years": 30.0, "rating_floor": "A-", "concentration_limit_pct": 40.0, "label": "EU Government Bonds" },
+    { "asset_class": "AGENCY", "haircut_pct": 2.0, "max_maturity_years": 15.0, "rating_floor": "AA-", "concentration_limit_pct": 25.0, "label": "Supranational and Agency" },
+    { "asset_class": "COVERED", "haircut_pct": 3.5, "max_maturity_years": 10.0, "rating_floor": "AAA", "concentration_limit_pct": 15.0, "label": "Covered Bonds" },
+    { "asset_class": "EQUITY", "haircut_pct": 8.0, "max_maturity_years": null, "rating_floor": null, "concentration_limit_pct": 10.0, "label": "Main-Index Equities" }
+  ]
+}

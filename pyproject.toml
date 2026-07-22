@@ -35,6 +35,7 @@ dev = [
 ingest = [
     "pypdf>=4.0",
     "reportlab>=4.0",
+    "pdfplumber>=0.11",  # table-aware extraction for collateral_schedule.llm_parser
 ]
 llm-anthropic = ["anthropic>=0.40"]
 llm-openai = ["openai>=1.40"]

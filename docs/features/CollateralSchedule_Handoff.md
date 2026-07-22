@@ -182,16 +182,31 @@ and `extract(schema, *, instruction, system, pdf_path, text)` works.
 
 - **Native-PDF providers** (Anthropic/Claude): the raw PDF bytes are sent
   directly, preserving table layout.
-- **Text providers** (OpenAI-compatible / local **Ollama** / vLLM): the PDF
-  text is extracted locally via `pypdf` and truncated to `max_text_chars`
-  (default 24 000) to keep local models tractable.
+- **Text providers** (OpenAI-compatible / local **Ollama** / vLLM): input is
+  pre-extracted **table-aware** with `pdfplumber` — ruled tables are rendered
+  as pipe-delimited rows, other pages use layout-preserving text — falling
+  back to flat `pypdf` text. Long documents are **chunked** across up to
+  `max_chunks` calls of `max_text_chars` each (default 6 × 24 000) and the
+  results merged, instead of being silently truncated.
+
+**Accuracy design** (added by the accuracy bundle):
+
+- `asset_class` is **enum-constrained** in the schema; a lenient
+  before-validator coerces free-text labels via `normalize_asset_class()` so
+  weak models never hard-fail validation. The document's own label is kept in
+  `asset_class_label` (folded into `notes` when the class resolves to OTHER).
+- Maturity-banded haircuts are modelled as explicit `tiers`
+  (`min/max_maturity_years` + `haircut_pct`) and expanded to **one canonical
+  entry per band** (GSD/DTC-style schedules).
+- Ratings are normalised to the S&P scale via `normalize_rating()` in
+  `models.py` (`"Baa3"→"BBB-"`, `"P-1"→"A-1"`, `"F1+"→"A-1+"` …).
+- Numeric fields tolerate model-emitted strings (`"7%"`) via lenient
+  validators; exact duplicate rows are de-duplicated.
 
 The model returns a validated `LLMCollateralSchedule` (a `pydantic` schema of
 `entries: list[LLMCollateralEntry]` plus optional `base_currency` /
-`detected_margin_type` context). Each entry's free-text `asset_class` and
-`eligible` are then run through the same `normalize_asset_class()` /
-`normalize_eligible()` used by the CSV path, so downstream
-`insert_entries` is identical regardless of source.
+`detected_margin_type` context), mapped onto the same canonical entry dicts as
+the CSV path, so downstream `insert_entries` is identical regardless of source.
 
 Run it over the bundled examples with:
 
@@ -425,14 +440,24 @@ _Real structured documents (LLM path — exercise `parse_pdf_with_llm`):_
 - `fed-discount-window-collateral-valuation.pdf` — Fed discount-window
   collateral margins table
 
-**Reference run** (local Ollama `llama3.2`, text path, 24 k-char cap):
-`scripts/run_collateral_llm.py` extracted **83 entries across the 6 PDFs**.
-This is a functional baseline, **not** an accuracy target — see limitation #1
-for the levers (native-PDF provider, table extraction, constrained schema).
+**Gold sets & eval harness** (`examples/collateral/gold/` +
+`scripts/eval_collateral_llm.py`): hand-labelled ground truth for
+`Example3` (33 tiered GSD rows) and `Example6` (4 triparty rows). The harness
+greedy-matches predictions to gold on (asset class, haircut ± tolerance) and
+reports precision / recall / F1, haircut MAE, maturity accuracy, and rating
+accuracy. `--mode baseline` reproduces the pre-bundle input path (flat pypdf
+text, single truncated call) for A/B comparison.
+
+**Measured result** (local Ollama `llama3.2` 3B, 2026-07-22): the accuracy
+bundle (table-aware input + chunking + constrained schema + tier expansion)
+lifted mean F1 **25.0% → 41.8%** and recall **23.1% → 51.1%** with the same
+model. The remaining gap is model capability — a native-PDF provider (Claude)
+is the next lever; re-run the eval with `ANTHROPIC_API_KEY` set to quantify.
 
 Run against the API with `curl -X POST /api/collateral/agreements/{id}/ingest`
-using the CSV samples, or run the LLM path end-to-end with
-`python scripts/run_collateral_llm.py`.
+using the CSV samples, run the LLM path end-to-end with
+`python scripts/run_collateral_llm.py`, or score it with
+`python scripts/eval_collateral_llm.py [--mode baseline|improved]`.
 
 ---
 
@@ -440,10 +465,10 @@ using the CSV samples, or run the LLM path end-to-end with
 
 | # | Limitation | Suggested fix |
 |---|---|---|
-| 1 | ~~PDF parser uses text-heuristic extraction; structured PDFs parse poorly~~ **Partly addressed:** LLM path (§5.1) added. Accuracy on flattened-text providers (Ollama) is still limited; native-PDF (Claude) and table-aware pre-extraction remain the next levers | Use a native-PDF provider; add `pdfplumber` **table** extraction to feed clean input; constrain `asset_class` to the enum; model maturity tiers; build an eval harness with a labelled gold set |
+| 1 | ~~PDF parser uses text-heuristic extraction; structured PDFs parse poorly~~ **Largely addressed:** LLM path (§5.1) with table-aware input, chunking, enum-constrained schema, tier expansion, and a measured eval (F1 25%→42% on local 3B model). Remaining gap is model capability | Run with a native-PDF provider (Claude) and re-score via `eval_collateral_llm.py`; add gold sets for the rating-conditional docs (DTC, Fed); consider OCR for image-only PDFs (Example1) |
 | 2 | No version history for schedule entries | Add `version` integer to `margin_agreements`; keep old entries with a `superseded_at` timestamp |
 | 3 | No ISIN validation | Integrate `isin` PyPI package or checksum validator in `parser.py` |
-| 4 | No rating normalisation (S&P vs Moody's vs Fitch) | Add `normalize_rating(raw)` in `models.py` mapping `"Aaa"→"AAA"`, `"Baa3"→"BBB-"` etc. |
+| 4 | ~~No rating normalisation (S&P vs Moody's vs Fitch)~~ **Done:** `normalize_rating()` in `models.py` — Moody's long-term, all three agencies' short-term scales, placeholder handling; applied in the LLM path | Apply it in the CSV/XLSX path too if sources carry Moody's ratings |
 | 5 | Collateral optimizer still reads from CSV fixtures | Thread `agreement_id` through `OptimizationRequest.context`; update `CollateralOptimizer` to call `_COLLATERAL_DB.list_entries` |
 | 6 | Single-file SQLite can't scale to thousands of counterparties | Add Postgres adapter in `database.py` (schema is ANSI SQL) |
 | 7 | No UI for editing individual entries post-ingest | Add inline edit / delete row to `CollateralSchedulePanel` in the frontend |
