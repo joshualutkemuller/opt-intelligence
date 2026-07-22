@@ -19,6 +19,7 @@ DEFAULT_MODEL = "claude-opus-4-8"
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
     supports_native_pdf = True
+    supports_vision = True
 
     def __init__(self, model: str | None = None, *, api_key: str | None = None) -> None:
         super().__init__(model or os.environ.get("DI_LLM_MODEL") or DEFAULT_MODEL)
@@ -62,6 +63,40 @@ class AnthropicProvider(LLMProvider):
             body = self._resolve_text(pdf_path, text)
             content = [{"type": "text", "text": f"{instruction}\n\n---\n{body}"}]
 
+        message = self._client().messages.parse(
+            model=self.model,
+            max_tokens=4096,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+            output_format=schema,
+        )
+        parsed = message.parsed_output
+        if parsed is None:
+            raise LLMError("Anthropic returned no structured extraction.")
+        return parsed
+
+    def extract_with_images(
+        self,
+        schema: type[T],
+        *,
+        instruction: str,
+        system: str | None = None,
+        text: str | None = None,
+        images: list[bytes] | None = None,
+    ) -> T:
+        content: list[dict] = []
+        if text:
+            content.append({"type": "text", "text": text})
+        for img_bytes in (images or []):
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.standard_b64encode(img_bytes).decode("ascii"),
+                },
+            })
+        content.append({"type": "text", "text": instruction})
         message = self._client().messages.parse(
             model=self.model,
             max_tokens=4096,

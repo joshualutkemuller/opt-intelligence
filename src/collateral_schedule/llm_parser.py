@@ -55,6 +55,7 @@ def _lenient_number(v: Any) -> Any:
 @runtime_checkable
 class _ExtractionProvider(Protocol):
     supports_native_pdf: bool
+    supports_vision: bool
 
     def extract(
         self,
@@ -66,18 +67,41 @@ class _ExtractionProvider(Protocol):
         text: str | None = ...,
     ) -> BaseModel: ...
 
+    def extract_with_images(
+        self,
+        schema: type[BaseModel],
+        *,
+        instruction: str,
+        system: str | None = ...,
+        text: str | None = ...,
+        images: list[bytes] | None = ...,
+    ) -> BaseModel: ...
+
 
 # --------------------------------------------------------------------------- #
 # Extraction schema (what the model must return)
 # --------------------------------------------------------------------------- #
 class MaturityTier(BaseModel):
-    """One maturity band of a tiered haircut (e.g. '1–2 years: 3.0%')."""
+    """One cell of a maturity × rating haircut grid (e.g. '1–5 years / A-rated: 3.0%').
+
+    Most schedules use only maturity bands (leave *rating_floor* null).  DTC-
+    and Fed-style grids also vary by credit rating — capture that here so each
+    grid cell becomes one canonical entry.
+    """
 
     min_maturity_years: float | None = Field(
         default=None, description="Lower bound of the maturity band in years (null if open)."
     )
     max_maturity_years: float | None = Field(
         default=None, description="Upper bound of the maturity band in years (null if open)."
+    )
+    rating_floor: str | None = Field(
+        default=None,
+        description=(
+            "Minimum credit rating for this tier cell, e.g. 'AAA', 'A-', 'BBB'. "
+            "Only fill when the document shows different haircuts per rating band. "
+            "Leave null when one haircut applies across all ratings for this asset class."
+        ),
     )
     haircut_pct: float | None = Field(
         default=None, description="Haircut for this band as a percentage number (no '%')."
@@ -130,8 +154,11 @@ class LLMCollateralEntry(BaseModel):
     tiers: list[MaturityTier] = Field(
         default_factory=list,
         description=(
-            "For maturity-banded haircuts ('0-1y: 2%, 1-5y: 3%…'): one tier per band. "
-            "Leave empty when a single haircut applies."
+            "For maturity-banded or rating×maturity-grid haircuts: one tier per cell. "
+            "Example — maturity only: [{max_maturity_years:1, haircut_pct:2}, ...]. "
+            "Example — rating+maturity grid: [{rating_floor:'AAA', max_maturity_years:5, haircut_pct:2}, "
+            "{rating_floor:'A-', max_maturity_years:5, haircut_pct:4}, ...]. "
+            "Leave empty when a single haircut applies to all maturities and ratings."
         ),
     )
     concentration_limit_pct: float | None = Field(
@@ -192,19 +219,29 @@ class LLMCollateralSchedule(BaseModel):
 _SYSTEM_PROMPT = (
     "You are a collateral-management analyst. You read a document describing an "
     "eligible-collateral or haircut schedule and extract every eligible-collateral "
-    "line item into a structured schema. Percentages are numbers without a '%' sign. "
-    "Maturities are in years. If a value is not stated, leave it null rather than "
-    "guessing — never infer ratings or limits. When a haircut varies by maturity "
-    "band, fill the 'tiers' list with one tier per band instead of a single "
-    "haircut_pct. Mark eligible=false ONLY for rows the document explicitly "
-    "excludes; everything listed as acceptable collateral is eligible=true."
+    "line item into a structured schema.\n\n"
+    "Rules:\n"
+    "- Percentages are plain numbers without a '%' sign (2.5%, not '2.5%').\n"
+    "- Maturities are in YEARS as plain numbers (1 year → 1.0, '1–5 years' → min=1, max=5).\n"
+    "- If a value is not stated, leave it null — never infer or guess.\n"
+    "- When a haircut varies by MATURITY BAND, fill the 'tiers' list with one tier per band "
+    "instead of a single haircut_pct.\n"
+    "- When a haircut varies by BOTH maturity and CREDIT RATING (a grid), create one tier "
+    "per (rating, maturity-band) cell. Set tier.rating_floor to the minimum rating for that "
+    "column (e.g. 'AAA', 'AA', 'A', 'BBB'). If the document shows a margin table with "
+    "rating columns and duration columns, capture every cell.\n"
+    "- Mark eligible=false ONLY for rows the document explicitly marks as ineligible or "
+    "excluded; everything listed as acceptable collateral is eligible=true.\n"
+    "- Margins expressed as '% of market value' (e.g. 99%) represent (100 − margin)% "
+    "haircut, so a 99% margin = 1% haircut, 95% margin = 5% haircut. Convert accordingly."
 )
 
 _INSTRUCTION = (
-    "Extract the eligible-collateral schedule from this document into the structured "
-    "schema. Return one entry per distinct asset class (use 'tiers' for "
-    "maturity-banded haircuts). Copy the document's own label into "
-    "asset_class_label."
+    "Extract the eligible-collateral schedule from this document into the structured schema. "
+    "Return one entry per distinct asset class / sub-type. "
+    "Use 'tiers' for maturity-banded haircuts; use 'tiers' with rating_floor set for "
+    "rating×maturity grids (one tier per grid cell). "
+    "Copy the document's own label into asset_class_label."
 )
 
 
@@ -250,6 +287,7 @@ def parse_pdf_with_llm(
 
     if is_pdf and getattr(provider, "supports_native_pdf", False):
         # Native path: hand the raw PDF to the provider via a temp file.
+        # Claude handles embedded images / scanned pages internally.
         with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
             tmp.write(raw)
             tmp.flush()
@@ -262,14 +300,27 @@ def parse_pdf_with_llm(
                 )
             )
     else:
-        # Text path: table-aware extraction, then chunked LLM calls.
+        # Text path: PyMuPDF table-aware extraction → chunked LLM calls.
         if is_pdf:
-            text = _pdf_tables_to_text(raw) or _pdf_bytes_to_text(raw)
+            text, image_pages = _pdf_to_text_mupdf(raw)
+            if not text.strip():
+                text = _pdf_bytes_to_text(raw)
+                image_pages = []
         else:
             text = raw.decode("utf-8", errors="replace")
-        schedule = _extract_text_chunked(
-            provider, text, max_text_chars=max_text_chars, max_chunks=max_chunks
-        )
+            image_pages = []
+
+        # If image-heavy pages were found and the provider supports vision,
+        # send text + rendered page images together in one call per chunk.
+        if image_pages and getattr(provider, "supports_vision", False):
+            schedule = _extract_with_vision(
+                provider, text, image_pages,
+                max_text_chars=max_text_chars, max_chunks=max_chunks,
+            )
+        else:
+            schedule = _extract_text_chunked(
+                provider, text, max_text_chars=max_text_chars, max_chunks=max_chunks
+            )
 
     entries = _entries_from_schedule(schedule)
     if return_schedule:
@@ -363,6 +414,10 @@ def _entries_from_schedule(schedule: LLMCollateralSchedule) -> list[dict[str, An
                     max_mat = _parse_float(row.max_maturity_years)
                 if max_mat is not None:
                     entry["max_maturity_years"] = max_mat
+                # Tier-level rating overrides the row-level rating when set.
+                tier_rating = normalize_rating(tier.rating_floor) if tier.rating_floor else None
+                if tier_rating:
+                    entry["rating_floor"] = tier_rating
                 band = _band_label(tier)
                 entry_notes = " ".join(x for x in (band, notes) if x)
                 if entry_notes:
@@ -404,14 +459,18 @@ def _canonical_class(row: LLMCollateralEntry) -> str:
 
 
 def _band_label(tier: MaturityTier) -> str:
+    parts: list[str] = []
     lo, hi = tier.min_maturity_years, tier.max_maturity_years
-    if lo is None and hi is None:
-        return ""
-    if lo is None:
-        return f"maturity ≤{hi:g}y."
-    if hi is None:
-        return f"maturity >{lo:g}y."
-    return f"maturity {lo:g}–{hi:g}y."
+    if lo is not None or hi is not None:
+        if lo is None:
+            parts.append(f"maturity ≤{hi:g}y")
+        elif hi is None:
+            parts.append(f"maturity >{lo:g}y")
+        else:
+            parts.append(f"maturity {lo:g}–{hi:g}y")
+    if tier.rating_floor:
+        parts.append(f"min rating {tier.rating_floor}")
+    return (", ".join(parts) + ".") if parts else ""
 
 
 def _dedupe(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -476,57 +535,150 @@ def _coerce_bytes(pdf: bytes | str | Path) -> bytes:
     return Path(pdf).read_bytes()
 
 
-def _pdf_tables_to_text(pdf_bytes: bytes) -> str | None:
-    """Table-aware text extraction via pdfplumber.
+def _pdf_to_text_mupdf(pdf_bytes: bytes) -> tuple[str, list[bytes]]:
+    """Table-aware PDF text extraction via PyMuPDF (fitz).
 
-    Per page: ruled tables (detected from line graphics) are rendered as
-    pipe-delimited rows; pages without ruled tables use layout-preserving text
-    (``extract_text(layout=True)``), which keeps whitespace-aligned columns
-    readable. Returns None when pdfplumber is unavailable or yields nothing, so
-    the caller can fall back to flat ``pypdf`` text. Keeping rows/columns
-    aligned is the single biggest input-quality lever for text-only providers
-    on schedule-style documents.
+    Returns ``(text, image_page_pngs)`` where *text* is a multi-page string
+    with pipe-delimited tables where detected, and *image_page_pngs* is a list
+    of rendered PNG bytes for pages where text extraction yielded fewer than
+    ``_IMAGE_PAGE_TEXT_THRESHOLD`` meaningful characters (likely scanned/image
+    pages).  Callers can pass *image_page_pngs* to a vision-capable provider.
+
+    Falls back gracefully when PyMuPDF is not installed: returns ``("", [])``.
     """
     try:
-        import pdfplumber  # type: ignore[import-untyped]
+        import fitz  # PyMuPDF
     except ImportError:
-        return None
-    import io
+        return "", []
+
+    import io as _io
+
+    _IMAGE_PAGE_TEXT_THRESHOLD = 200  # chars below which we treat a page as image-heavy
 
     parts: list[str] = []
+    image_pngs: list[bytes] = []
+
     try:
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as doc:
-            for page_no, page in enumerate(doc.pages, start=1):
-                tables = page.extract_tables() or []
-                rendered: list[str] = []
-                for t_no, table in enumerate(tables, start=1):
-                    rows = [
-                        " | ".join((cell or "").replace("\n", " ").strip() for cell in row)
-                        for row in table
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for page_no, page in enumerate(doc, start=1):
+            page_parts: list[str] = []
+
+            # Try PyMuPDF table detection first.
+            try:
+                tabs = page.find_tables()
+                for t_no, tab in enumerate(tabs.tables, start=1):
+                    rows = tab.extract() or []
+                    rendered = [
+                        " | ".join(
+                            (cell or "").replace("\n", " ").strip()
+                            for cell in row
+                        )
+                        for row in rows
                         if any(cell for cell in row)
                     ]
-                    if rows:
-                        rendered.append(f"[page {page_no} table {t_no}]\n" + "\n".join(rows))
-                if rendered:
-                    parts.extend(rendered)
-                else:
-                    layout = (page.extract_text(layout=True) or "").rstrip()
-                    if layout.strip():
-                        parts.append(f"[page {page_no}]\n{layout}")
-    except Exception:  # noqa: BLE001 - malformed PDFs fall back to flat text
-        return None
-    return "\n\n".join(parts) if parts else None
+                    if rendered:
+                        page_parts.append(
+                            f"[page {page_no} table {t_no}]\n" + "\n".join(rendered)
+                        )
+            except Exception:  # noqa: BLE001
+                pass
+
+            # Layout-preserving plain text for non-table content.
+            plain = (page.get_text("text", sort=True) or "").strip()
+            if plain and not page_parts:
+                # No tables found — use plain text.
+                page_parts.append(f"[page {page_no}]\n{plain}")
+            elif plain and page_parts:
+                # Tables found — append any non-table text as context.
+                # De-duplicate text already captured in table cells by checking length.
+                if len(plain) > 100:
+                    page_parts.append(f"[page {page_no} text]\n{plain}")
+
+            if page_parts:
+                parts.extend(page_parts)
+            elif len(plain) < _IMAGE_PAGE_TEXT_THRESHOLD:
+                # Sparse text → likely a scanned / image-only page.
+                parts.append(f"[page {page_no}: image-only — no extractable text]")
+                try:
+                    pix = page.get_pixmap(dpi=150)
+                    image_pngs.append(pix.tobytes("png"))
+                except Exception:  # noqa: BLE001
+                    pass
+
+        doc.close()
+    except Exception:  # noqa: BLE001 — malformed PDFs: caller uses pypdf fallback
+        return "", []
+
+    return "\n\n".join(parts), image_pngs
+
+
+def _extract_with_vision(
+    provider: _ExtractionProvider,
+    text: str,
+    image_pages: list[bytes],
+    *,
+    max_text_chars: int,
+    max_chunks: int,
+) -> LLMCollateralSchedule:
+    """Run structured extraction over text + rendered page images.
+
+    The full set of image pages is included in the first call (alongside the
+    first text chunk); subsequent text chunks (if any) are sent without images
+    to stay within context limits.
+    """
+    chunks = _split_chunks(text, max_text_chars, max_chunks)
+    merged: LLMCollateralSchedule | None = None
+    errors: list[Exception] = []
+
+    for i, chunk in enumerate(chunks):
+        imgs = image_pages if i == 0 else None
+        try:
+            raw = provider.extract_with_images(
+                LLMCollateralSchedule,
+                instruction=_INSTRUCTION,
+                system=_SYSTEM_PROMPT,
+                text=chunk or None,
+                images=imgs,
+            )
+            part = _validated(raw)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+            continue
+        if merged is None:
+            merged = part
+        else:
+            merged.entries.extend(part.entries)
+            merged.base_currency = merged.base_currency or part.base_currency
+            merged.detected_margin_type = (
+                merged.detected_margin_type or part.detected_margin_type
+            )
+            merged.source_description = merged.source_description or part.source_description
+
+    if merged is None:
+        if errors:
+            raise errors[0]
+        return LLMCollateralSchedule()
+    return merged
 
 
 def _pdf_bytes_to_text(pdf_bytes: bytes) -> str:
+    """Flat text fallback — tries PyMuPDF first, then pypdf."""
+    try:
+        import fitz
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = "\n".join(page.get_text("text", sort=True) or "" for page in doc)
+        doc.close()
+        if text.strip():
+            return text
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "Extracting PDF text for a non-native-PDF provider needs 'pypdf' "
-            "(pip install pypdf)."
+            "Extracting PDF text needs 'pymupdf' or 'pypdf' "
+            "(pip install pymupdf)."
         ) from exc
     import io
-
     reader = PdfReader(io.BytesIO(pdf_bytes))
     return "\n".join(page.extract_text() or "" for page in reader.pages)

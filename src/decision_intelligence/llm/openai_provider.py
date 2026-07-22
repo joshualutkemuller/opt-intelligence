@@ -31,6 +31,7 @@ DEFAULT_MODEL = "gpt-4o"
 class OpenAIProvider(LLMProvider):
     name = "openai"
     supports_native_pdf = False  # send extracted text
+    supports_vision = True  # gpt-4o and compatible vision endpoints accept images
 
     def __init__(
         self,
@@ -132,6 +133,48 @@ class OpenAIProvider(LLMProvider):
             return schema.model_validate_json(_strip_code_fence(content))
         except ValidationError as exc:
             raise LLMError(f"OpenAI JSON did not match schema: {exc}") from exc
+
+    def extract_with_images(
+        self,
+        schema: type[T],
+        *,
+        instruction: str,
+        system: str | None = None,
+        text: str | None = None,
+        images: list[bytes] | None = None,
+    ) -> T:
+        import base64 as _b64
+
+        content: list[dict] = []
+        if text:
+            content.append({"type": "text", "text": text})
+        for img_bytes in (images or []):
+            data_uri = "data:image/png;base64," + _b64.standard_b64encode(img_bytes).decode("ascii")
+            content.append({"type": "image_url", "image_url": {"url": data_uri}})
+        content.append({"type": "text", "text": instruction})
+
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": content})
+
+        client = self._client()
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=self.model,
+                messages=messages,
+                response_format=schema,
+            )
+            parsed = completion.choices[0].message.parsed
+            if parsed is not None:
+                return parsed
+        except (AttributeError, NotImplementedError):
+            pass
+        except Exception as exc:
+            if not _is_capability_error(exc):
+                raise LLMError(f"OpenAI vision extraction failed: {exc}") from exc
+
+        return self._extract_json_fallback(client, schema, messages)
 
     def generate(self, prompt: str, *, system: str | None = None, max_tokens: int = 1024) -> str:
         messages = []
