@@ -1,0 +1,247 @@
+{
+  "doc": "Example4_DTC-Haircut-Schedule.pdf",
+  "description": "DTC Schedule of Haircuts for Eligible Collateral Securities, effective July 28 2025. Hand-labelled from the document tables (pages 2-4). Ineligible entries (100% haircut) are omitted; equity price-tier rows are omitted. rating_floor is the minimum acceptable credit rating for the tier.",
+  "match": {
+    "haircut_tolerance_pct": 0.5
+  },
+  "entries": [
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 2.0,
+      "max_maturity_years": 2.0,
+      "rating_floor": null,
+      "label": "US Treasury interest-bearing 0-2y"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 3.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": null,
+      "label": "US Treasury interest-bearing 2-5y"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 4.0,
+      "max_maturity_years": 10.0,
+      "rating_floor": null,
+      "label": "US Treasury interest-bearing 5-10y"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 6.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "US Treasury interest-bearing 10y+"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 2.0,
+      "max_maturity_years": 2.0,
+      "rating_floor": null,
+      "label": "US Treasury zero coupon 0-2y"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 5.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": null,
+      "label": "US Treasury zero coupon 2-5y"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 12.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "US Treasury zero coupon 5y+"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "MBS issued by Agency/GSE under US Govt conservatorship"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": null,
+      "rating_floor": "AA",
+      "label": "MBS issued by other GSE not under conservatorship, AAA-AA"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 5.0,
+      "max_maturity_years": 10.0,
+      "rating_floor": null,
+      "label": "Agency unsecured notes GNMA/FNMA/FHLMC 0-10y"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": 10.0,
+      "rating_floor": "AA",
+      "label": "Agency unsecured notes other GSE AAA-AA 0-10y"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "Agency unsecured notes GNMA/FNMA/FHLMC 10y+"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 10.0,
+      "max_maturity_years": null,
+      "rating_floor": "AA",
+      "label": "Agency unsecured notes other GSE AAA-AA 10y+"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": null,
+      "label": "Zero coupon agency GNMA/FNMA/FHLMC 0-5y"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 7.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": "AA",
+      "label": "Zero coupon agency other GSE AAA-AA 0-5y"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 12.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "Zero coupon agency GNMA/FNMA/FHLMC 5y+"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 18.0,
+      "max_maturity_years": null,
+      "rating_floor": "AA",
+      "label": "Zero coupon agency other GSE AAA-AA 5y+"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 4.0,
+      "max_maturity_years": 10.0,
+      "rating_floor": "AAA",
+      "label": "Canada Government fixed rate 0-10y, AAA"
+    },
+    {
+      "asset_class": "GOVT",
+      "haircut_pct": 8.0,
+      "max_maturity_years": null,
+      "rating_floor": "AAA",
+      "label": "Canada Government fixed rate 10y+, AAA"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 20.0,
+      "max_maturity_years": null,
+      "rating_floor": null,
+      "label": "Agency CMOs supported by US Govt conservatorship"
+    },
+    {
+      "asset_class": "AGENCY",
+      "haircut_pct": 20.0,
+      "max_maturity_years": null,
+      "rating_floor": "AA",
+      "label": "Agency CMOs other GSE not under conservatorship, AAA-AA"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 20.0,
+      "max_maturity_years": null,
+      "rating_floor": "AA",
+      "label": "Corporate Notes/Bonds issued by supranational, AAA-AA"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 20.0,
+      "max_maturity_years": null,
+      "rating_floor": "A-",
+      "label": "Corporate Notes/Bonds (non-supranational), AAA to A-"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 30.0,
+      "max_maturity_years": null,
+      "rating_floor": "BBB-",
+      "label": "Corporate Notes/Bonds, BBB+ to BBB-"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 40.0,
+      "max_maturity_years": null,
+      "rating_floor": "BB-",
+      "label": "Corporate Notes/Bonds, BB+ to BB-"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 70.0,
+      "max_maturity_years": null,
+      "rating_floor": "B-",
+      "label": "Corporate Notes/Bonds, B+ to B-"
+    },
+    {
+      "asset_class": "MUNI",
+      "haircut_pct": 25.0,
+      "max_maturity_years": null,
+      "rating_floor": "A-",
+      "label": "Municipal Bonds, AAA to A-"
+    },
+    {
+      "asset_class": "MUNI",
+      "haircut_pct": 30.0,
+      "max_maturity_years": null,
+      "rating_floor": "BBB-",
+      "label": "Municipal Bonds, BBB+ to BBB-"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 6.0,
+      "max_maturity_years": 1.0,
+      "rating_floor": "A-1",
+      "label": "Corporate Commercial Paper A-1+ to A-1"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 30.0,
+      "max_maturity_years": 1.0,
+      "rating_floor": "A-2",
+      "label": "Corporate Commercial Paper A-2 / P-2"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 6.0,
+      "max_maturity_years": 1.0,
+      "rating_floor": "A-1",
+      "label": "Institutional Negotiable CD (original maturity ≤270d), A-1+ to A-1"
+    },
+    {
+      "asset_class": "MUNI",
+      "haircut_pct": 10.0,
+      "max_maturity_years": 1.0,
+      "rating_floor": "SP-1+",
+      "label": "Municipal Commercial Paper SP-1+ to SP-1"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 10.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": "A-",
+      "label": "Institutional Negotiable CD (original maturity >270d, maturity ≤5y), AAA to A-"
+    },
+    {
+      "asset_class": "CORP",
+      "haircut_pct": 25.0,
+      "max_maturity_years": 5.0,
+      "rating_floor": "BBB-",
+      "label": "Institutional Negotiable CD (original maturity >270d, maturity ≤5y), BBB+ to BBB-"
+    }
+  ]
+}

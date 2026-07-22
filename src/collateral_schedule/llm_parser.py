@@ -729,6 +729,61 @@ def _coerce_bytes(pdf: bytes | str | Path) -> bytes:
     return Path(pdf).read_bytes()
 
 
+def _strip_repeated_table_headers(text: str) -> str:
+    """Remove duplicate column-header rows from consecutive table blocks.
+
+    When a multi-page table is extracted page-by-page, each page's table
+    block starts with the same column-header row (e.g. the CME collateral
+    schedule repeats "Asset Class | Description | Haircut Schedule | ..." on
+    every page). This function detects and removes those repeated rows so the
+    model sees them only once, reducing noise and token cost.
+
+    A "column-header row" is the first pipe-delimited line of a table block
+    (the line immediately after the ``[page N table M]`` tag). If the same
+    normalised header line appears at the top of ≥ 2 consecutive table blocks,
+    it is stripped from all blocks except the first one that carried it.
+    """
+    paragraphs = text.split("\n\n")
+    last_col_header: str = ""
+    result: list[str] = []
+
+    for para in paragraphs:
+        if not _is_table_block(para):
+            last_col_header = ""
+            result.append(para)
+            continue
+
+        lines = para.splitlines()
+        # Find index of first pipe-delimited data line after the section tag.
+        tag_idx = next(
+            (i for i, l in enumerate(lines) if _TABLE_HEADER_RE.match(l.strip())),
+            None,
+        )
+        if tag_idx is None:
+            result.append(para)
+            continue
+
+        data_lines = lines[tag_idx + 1 :]
+        col_line = data_lines[0].strip() if data_lines else ""
+        normalised = " | ".join(p.strip() for p in col_line.split("|") if p.strip())
+
+        if normalised and normalised == last_col_header:
+            # Strip the duplicate header line (and any blank lines just below it).
+            skip = 0
+            for dl in data_lines:
+                if dl.strip() == "" or dl.strip() == col_line.strip():
+                    skip += 1
+                else:
+                    break
+            kept = lines[: tag_idx + 1] + data_lines[skip:]
+            result.append("\n".join(kept))
+        else:
+            last_col_header = normalised
+            result.append(para)
+
+    return "\n\n".join(result)
+
+
 def _pdf_to_text_mupdf(pdf_bytes: bytes) -> tuple[str, list[bytes]]:
     """Table-aware PDF text extraction via PyMuPDF (fitz).
 
@@ -803,7 +858,8 @@ def _pdf_to_text_mupdf(pdf_bytes: bytes) -> tuple[str, list[bytes]]:
     except Exception:  # noqa: BLE001 — malformed PDFs: caller uses pypdf fallback
         return "", []
 
-    return "\n\n".join(parts), image_pngs
+    text = _strip_repeated_table_headers("\n\n".join(parts))
+    return text, image_pngs
 
 
 def _extract_with_vision(

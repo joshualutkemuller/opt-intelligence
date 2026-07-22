@@ -1,0 +1,23 @@
+# LLM provider configuration for opt-intelligence.
+#
+# Environment variables override every value here, so you can keep secrets out
+# of this file by setting DI_LLM_API_KEY (or ANTHROPIC_API_KEY / OPENAI_API_KEY)
+# in your shell or .env file.
+#
+# provider: anthropic | openai
+#   anthropic — Claude models; reads PDFs natively (best for collateral schedules)
+#   openai    — OpenAI or any OpenAI-compatible endpoint (Ollama, vLLM, Azure)
+#
+# Uncomment and fill in the values you want to change.
+
+provider: anthropic
+
+# model: claude-sonnet-5          # latest fast Claude
+# model: claude-opus-4-8          # most capable Claude (default)
+# model: gpt-4o                   # OpenAI default
+# model: llama3.2                 # local Ollama example
+
+# api_key: sk-...                 # set here OR via ANTHROPIC_API_KEY / OPENAI_API_KEY / DI_LLM_API_KEY
+                                  # WARNING: do not commit real keys to version control
+
+# base_url: http://localhost:11434/v1   # OpenAI-compatible local server (Ollama, vLLM)
