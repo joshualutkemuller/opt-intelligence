@@ -353,6 +353,7 @@ class CollateralScheduleIngestRequest(BaseModel):
     pdf_base64: str | None = None
     filename: str | None = None
     replace: bool = True
+    use_llm: bool = True  # for pdf_base64: use LLM extraction path (default) vs text-heuristic
 
 
 class CollateralScheduleIngestResponse(BaseModel):

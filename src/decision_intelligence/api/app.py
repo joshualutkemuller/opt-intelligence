@@ -12,7 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
 from decision_intelligence.agents import negotiate_constraints
-from collateral_schedule import CollateralDatabase, parse_schedule
+from collateral_schedule import CollateralDatabase, parse_pdf_with_llm, parse_schedule
 from decision_intelligence.chat import ChatSession
 from decision_intelligence.chat.workflows import SCENARIO_PRESETS, WORKFLOWS
 from decision_intelligence.contracts import Objective, OptimizationRequest, Scenario
@@ -579,7 +579,29 @@ def ingest_collateral_schedule(
         xlsx_bytes = _b64.b64decode(payload.xlsx_base64)
         entries = parse_schedule(xlsx_bytes, filename=payload.filename or "schedule.xlsx")
     elif payload.pdf_base64:
-        entries = parse_schedule(b"", pdf_base64=payload.pdf_base64, filename=payload.filename)
+        import base64 as _b64
+        pdf_bytes = _b64.b64decode(payload.pdf_base64)
+        if payload.use_llm:
+            try:
+                provider = resolve_provider()
+            except LLMConfigError as exc:
+                raise HTTPException(status_code=502, detail=f"LLM provider error: {exc}") from exc
+            if provider is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "No LLM provider is configured. Set provider and api_key in "
+                        "config/llm.yaml, or set DI_LLM_API_KEY / ANTHROPIC_API_KEY / "
+                        "OPENAI_API_KEY. Pass use_llm=false to fall back to text-heuristic "
+                        "parsing (CSV/XLSX-style PDFs only)."
+                    ),
+                )
+            try:
+                entries = parse_pdf_with_llm(pdf_bytes, provider)
+            except LLMError as exc:
+                raise HTTPException(status_code=502, detail=f"LLM extraction failed: {exc}") from exc
+        else:
+            entries = parse_schedule(pdf_bytes, filename=payload.filename or "schedule.pdf")
     else:
         raise HTTPException(
             status_code=400,
@@ -587,14 +609,17 @@ def ingest_collateral_schedule(
         )
 
     if not entries:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "No collateral entries could be parsed from the provided file. "
-                "Ensure headers include: asset_class, haircut_pct (or synonyms). "
+        hint = (
+            "No collateral entries could be parsed from the provided file. "
+            + (
+                "The LLM returned no structured entries — check that the PDF contains "
+                "a collateral eligibility or haircut schedule table."
+                if payload.pdf_base64 and payload.use_llm
+                else "Ensure headers include: asset_class, haircut_pct (or synonyms). "
                 "See GET /api/collateral/schema for accepted column names."
-            ),
+            )
         )
+        raise HTTPException(status_code=422, detail=hint)
 
     isin_warnings = [
         {"source_row": e.get("source_row"), "isin": e["isin"], "reason": e["isin_invalid"]}

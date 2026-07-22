@@ -1,12 +1,15 @@
 """
 Configuration-driven LLM provider selection.
 
-The provider is chosen — not coded — via arguments or environment:
-
-    DI_LLM_PROVIDER   anthropic | openai | <registered name>   (explicit choice)
-    DI_LLM_MODEL      model id (provider-specific default otherwise)
-    DI_LLM_BASE_URL   OpenAI-compatible endpoint (local models: Ollama/vLLM/…)
-    DI_LLM_API_KEY    generic key (falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY)
+Priority order (highest wins):
+  1. Arguments passed directly to :func:`resolve_provider`.
+  2. Environment variables:
+       DI_LLM_PROVIDER   anthropic | openai | <registered name>
+       DI_LLM_MODEL      model id
+       DI_LLM_BASE_URL   OpenAI-compatible endpoint (Ollama / vLLM / Azure)
+       DI_LLM_API_KEY    generic key (also ANTHROPIC_API_KEY / OPENAI_API_KEY)
+  3. ``config/llm.yaml`` in the repository root — edit this file to set a
+     default provider, model, and (optionally) API key without touching env vars.
 
 When no provider is named, one is auto-detected from available credentials:
 Anthropic if ``ANTHROPIC_API_KEY`` is set, else an OpenAI-compatible endpoint if
@@ -20,10 +23,36 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 from .anthropic_provider import AnthropicProvider
 from .base import LLMProvider
 from .openai_provider import OpenAIProvider
+
+# ---------------------------------------------------------------------------
+# config/llm.yaml loader — read once at import time, never raises
+# ---------------------------------------------------------------------------
+
+def _load_yaml_config() -> dict:
+    """Return the parsed config/llm.yaml, or {} if absent / unreadable."""
+    try:
+        import yaml  # PyYAML — optional; stdlib tomllib is 3.11+ only
+    except ImportError:
+        return {}
+    # Walk up from this file to find the repo root (contains pyproject.toml).
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        candidate = parent / "config" / "llm.yaml"
+        if candidate.exists():
+            try:
+                data = yaml.safe_load(candidate.read_text()) or {}
+                return data if isinstance(data, dict) else {}
+            except Exception:  # noqa: BLE001
+                return {}
+    return {}
+
+
+_YAML_CFG: dict = _load_yaml_config()
 
 
 class LLMConfigError(ValueError):
@@ -73,13 +102,32 @@ def _safe(check: Callable[[], bool]) -> bool:
         return False
 
 
+def _yaml(key: str) -> str | None:
+    """Return a non-empty string value from the YAML config, or None."""
+    v = _YAML_CFG.get(key)
+    return str(v).strip() or None if v else None
+
+
 def _auto_detect() -> str | None:
+    # 1. explicit env var
     explicit = os.environ.get("DI_LLM_PROVIDER")
     if explicit:
         return explicit.strip().lower()
+    # 2. credentials already set → pick matching provider
     for name in ("anthropic", "openai"):
         if name in _AVAILABILITY and _safe(_AVAILABILITY[name]):
             return name
+    # 3. config/llm.yaml provider + inject its api_key into env so is_available() passes
+    yaml_provider = _yaml("provider")
+    if yaml_provider:
+        yaml_key = _yaml("api_key")
+        if yaml_key and not os.environ.get("DI_LLM_API_KEY"):
+            os.environ["DI_LLM_API_KEY"] = yaml_key
+        if yaml_provider in _AVAILABILITY and _safe(_AVAILABILITY[yaml_provider]):
+            return yaml_provider.lower()
+        # Provider named in YAML but no key anywhere — still return it so the
+        # caller gets a clear LLMConfigError rather than silent None.
+        return yaml_provider.lower()
     return None
 
 
@@ -92,9 +140,10 @@ def resolve_provider(
 ) -> LLMProvider | None:
     """Resolve a provider by name/config, or ``None`` if none is configured.
 
+    Resolution order: explicit args → env vars → config/llm.yaml → None.
     An explicitly requested provider that is unknown raises :class:`LLMConfigError`.
     """
-    chosen = (name or _auto_detect())
+    chosen = name or _auto_detect()
     if chosen is None:
         return None
     chosen = chosen.strip().lower()
@@ -102,8 +151,18 @@ def resolve_provider(
         raise LLMConfigError(
             f"Unknown LLM provider '{chosen}'. Registered: {sorted(_REGISTRY)}"
         )
+    # Fill gaps from YAML when the caller didn't supply them.
+    resolved_model = model or os.environ.get("DI_LLM_MODEL") or _yaml("model")
+    resolved_url = base_url or os.environ.get("DI_LLM_BASE_URL") or _yaml("base_url")
+    resolved_key = (
+        api_key
+        or os.environ.get("DI_LLM_API_KEY")
+        or _yaml("api_key")
+    )
     try:
-        return _REGISTRY[chosen](model=model, base_url=base_url, api_key=api_key)
+        return _REGISTRY[chosen](
+            model=resolved_model, base_url=resolved_url, api_key=resolved_key
+        )
     except Exception as exc:  # noqa: BLE001
         raise LLMConfigError(f"Could not construct provider '{chosen}': {exc}") from exc
 
