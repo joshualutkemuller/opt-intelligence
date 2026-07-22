@@ -1276,6 +1276,8 @@ def initiate_constraint_approval(
 def _build_direct_request(payload: DirectOptimizationRequest) -> OptimizationRequest:
     spec = WORKFLOWS[payload.domain]
     context = {**spec.base_context, **payload.context}
+    if payload.agreement_id:
+        context.setdefault("agreement_id", payload.agreement_id)
     if payload.optimizer_runtime != "phase1":
         context["optimizer_runtime"] = payload.optimizer_runtime
     if payload.production_optimizer_id:
