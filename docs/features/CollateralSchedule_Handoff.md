@@ -33,14 +33,23 @@ and can be used independently by any consumer (CLI, API, notebook, etc.).
 ```
 src/collateral_schedule/
 ├── __init__.py          Public API: CollateralDatabase, AssetClass,
-│                        MarginType, parse_schedule
+│                        MarginType, parse_schedule, parse_pdf_with_llm,
+│                        LLMCollateralSchedule
 ├── models.py            Enums, COLUMN_ALIASES, ASSET_CLASS_ALIASES,
 │                        normalisers
 ├── database.py          CollateralDatabase — SQLite CRUD + schema init
 ├── parser.py            parse_csv / parse_xlsx / parse_pdf_text /
-│                        parse_schedule dispatcher
+│                        parse_schedule dispatcher (optional LLM provider)
+├── llm_parser.py        parse_pdf_with_llm — provider-agnostic LLM PDF path;
+│                        LLMCollateralSchedule extraction schema
 └── handoff_generator.py This generator (LLM + deterministic paths)
 ```
+
+**Consumer scripts (not part of the library):**
+
+- `scripts/run_collateral_llm.py` — wires an LLM provider (local Ollama by
+  default, or any configured provider) and runs `parse_pdf_with_llm` over
+  every document in `examples/collateral/`.
 
 **Consumed by (not part of this package):**
 - `src/decision_intelligence/api/app.py` — REST endpoints
@@ -134,10 +143,13 @@ flowchart TD
 A[Caller: CSV / XLSX / PDF bytes] --> B{parse_schedule dispatcher}
 B -->|.csv or text| C[parse_csv]
 B -->|.xlsx or base64| D[parse_xlsx]
-B -->|pdf_base64| E[parse_pdf_text]
+B -->|pdf_base64 + provider| P[parse_pdf_with_llm]
+B -->|pdf_base64, no provider| E[parse_pdf_text]
+P -->|LLM fails / empty| E
 C --> F[_rows_to_entries]
 D --> F
 E --> F
+P --> K
 F --> G[_resolve_header — map column names]
 G --> H[normalize_asset_class]
 G --> I[_parse_float — haircut / maturity / concentration]
@@ -155,6 +167,41 @@ L -->|replace=False| N[APPEND new entries]
 4. For each data row, apply type-specific converters: float parsing strips `%`, `,`, and whitespace; eligibility accepts `0/1`, `true/false`, `yes/no`, `eligible/ineligible`.
 5. Rows where no field resolved are skipped.
 6. `asset_class` is mapped via `normalize_asset_class()` which tries exact match then prefix match against `ASSET_CLASS_ALIASES`; unrecognised values become `OTHER`.
+
+### 5.1 LLM PDF path (`parse_pdf_with_llm`)
+
+For structured PDFs where the text heuristic parses poorly, pass an LLM
+`provider` to `parse_schedule(..., provider=...)` (or call `parse_pdf_with_llm`
+directly). The path is **LLM-first with heuristic fallback**: if the model
+errors or returns no rows, `parse_pdf_text` runs.
+
+**Provider-agnostic by dependency injection** — the caller constructs the
+provider and passes it in, so `collateral_schedule` keeps **zero imports from
+`decision_intelligence`** (§10). Any object with `supports_native_pdf: bool`
+and `extract(schema, *, instruction, system, pdf_path, text)` works.
+
+- **Native-PDF providers** (Anthropic/Claude): the raw PDF bytes are sent
+  directly, preserving table layout.
+- **Text providers** (OpenAI-compatible / local **Ollama** / vLLM): the PDF
+  text is extracted locally via `pypdf` and truncated to `max_text_chars`
+  (default 24 000) to keep local models tractable.
+
+The model returns a validated `LLMCollateralSchedule` (a `pydantic` schema of
+`entries: list[LLMCollateralEntry]` plus optional `base_currency` /
+`detected_margin_type` context). Each entry's free-text `asset_class` and
+`eligible` are then run through the same `normalize_asset_class()` /
+`normalize_eligible()` used by the CSV path, so downstream
+`insert_entries` is identical regardless of source.
+
+Run it over the bundled examples with:
+
+```
+python scripts/run_collateral_llm.py --dir examples/collateral --glob '*.pdf'
+```
+
+The script auto-selects a provider: any configured one
+(`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `DI_LLM_*`), else a local Ollama
+server (`http://localhost:11434`) by default.
 
 ---
 
@@ -335,7 +382,7 @@ once counterparty context is threaded through the `OptimizationRequest`.
 | New margin type | Add to `MarginType` enum in `models.py` |
 | New column alias | Add to `COLUMN_ALIASES` dict in `models.py` |
 | New asset class | Add to `AssetClass` enum + `ASSET_CLASS_ALIASES` in `models.py` |
-| LLM-assisted PDF parsing | Add `parse_pdf_with_llm(pdf_bytes, provider)` in `parser.py`; call before `parse_pdf_text` fallback |
+| LLM-assisted PDF parsing | ✅ **Implemented** — `parse_pdf_with_llm(pdf, provider)` in `llm_parser.py`; pass `provider=` to `parse_schedule` (LLM-first, heuristic fallback). See §5.1 |
 | New file format (XML, JSON) | Add `parse_xml` / `parse_json` in `parser.py`; extend dispatcher in `parse_schedule` |
 | Multi-tenant DB | Pass a tenant-specific `path` to `CollateralDatabase(path=...)` |
 | Postgres | Replace `sqlite3` with `psycopg2`/`asyncpg` in `database.py`; SQL is ANSI-compatible |
@@ -356,11 +403,36 @@ once counterparty context is threaded through the `OptimizationRequest`.
 - Filter `eligible_only=True` returns only rows where `eligible=1`
 
 **Sample files** (in `examples/collateral/`):
+
+_CSV fixtures (deterministic path):_
+
 - `sample_vm_schedule.csv` — 12 rows, VM, mixed eligible/ineligible
 - `sample_repo_schedule.csv` — 11 rows, REPO, GC + haircut tiers
 
+_Real structured documents (LLM path — exercise `parse_pdf_with_llm`):_
+
+- `Example1_ex99-k2i.pdf` — SEC exhibit; text-sparse (image-heavy) — good
+  negative/OCR test case
+- `Example2_acceptable-collateral-futures-options-select-forwards.pdf` — CME
+  acceptable-collateral schedule (cash, LCs, gold warrants, IEF2 funds)
+- `Example3_GSD-Haircut-Schedule-Current.pdf` — FICC/GSD haircut schedule with
+  maturity-band tiers (UST, agency, MBS)
+- `Example4_DTC-Haircut-Schedule.pdf` — DTC collateral haircut schedule
+  (rating- and maturity-tiered)
+- `Example5_EX-10.03.pdf` — ISDA/CSA agreement excerpt (cash-collateral terms)
+- `Example6_synthetic-triparty-eligibility-profile.txt` — small synthetic
+  triparty eligibility profile (fast round-trip smoke test)
+- `fed-discount-window-collateral-valuation.pdf` — Fed discount-window
+  collateral margins table
+
+**Reference run** (local Ollama `llama3.2`, text path, 24 k-char cap):
+`scripts/run_collateral_llm.py` extracted **83 entries across the 6 PDFs**.
+This is a functional baseline, **not** an accuracy target — see limitation #1
+for the levers (native-PDF provider, table extraction, constrained schema).
+
 Run against the API with `curl -X POST /api/collateral/agreements/{id}/ingest`
-using the sample files to verify end-to-end.
+using the CSV samples, or run the LLM path end-to-end with
+`python scripts/run_collateral_llm.py`.
 
 ---
 
@@ -368,7 +440,7 @@ using the sample files to verify end-to-end.
 
 | # | Limitation | Suggested fix |
 |---|---|---|
-| 1 | PDF parser uses text-heuristic extraction; structured PDFs with embedded tables parse poorly | Integrate pdfplumber table extraction or LLM-assisted parsing |
+| 1 | ~~PDF parser uses text-heuristic extraction; structured PDFs parse poorly~~ **Partly addressed:** LLM path (§5.1) added. Accuracy on flattened-text providers (Ollama) is still limited; native-PDF (Claude) and table-aware pre-extraction remain the next levers | Use a native-PDF provider; add `pdfplumber` **table** extraction to feed clean input; constrain `asset_class` to the enum; model maturity tiers; build an eval harness with a labelled gold set |
 | 2 | No version history for schedule entries | Add `version` integer to `margin_agreements`; keep old entries with a `superseded_at` timestamp |
 | 3 | No ISIN validation | Integrate `isin` PyPI package or checksum validator in `parser.py` |
 | 4 | No rating normalisation (S&P vs Moody's vs Fitch) | Add `normalize_rating(raw)` in `models.py` mapping `"Aaa"→"AAA"`, `"Baa3"→"BBB-"` etc. |
