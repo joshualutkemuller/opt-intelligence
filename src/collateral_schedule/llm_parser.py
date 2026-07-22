@@ -436,9 +436,99 @@ def _entries_from_schedule(schedule: LLMCollateralSchedule) -> list[dict[str, An
             entries.append(entry)
 
     deduped = _dedupe(entries)
-    for i, entry in enumerate(deduped):
+    validated = _post_validate(deduped)
+    for i, entry in enumerate(validated):
         entry["source_row"] = i + 1
-    return deduped
+    return validated
+
+
+# --------------------------------------------------------------------------- #
+# Post-extraction validation / auto-correction
+# --------------------------------------------------------------------------- #
+# Haircuts above this threshold on an eligible entry almost certainly mean the
+# model emitted a "% of market value" margin figure instead of a haircut.
+_MARGIN_TO_HAIRCUT_THRESHOLD = 50.0
+# Maturities above this (years) are almost certainly model hallucinations.
+_MAX_PLAUSIBLE_MATURITY = 100.0
+
+
+def _post_validate(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply deterministic sanity checks and auto-corrections to LLM-extracted entries.
+
+    Corrections applied (annotated in ``notes`` for transparency):
+
+    1. **Margin % → haircut conversion**: ``haircut_pct > 50`` on an eligible
+       entry almost always means the model emitted a "% of market value" figure
+       (e.g. 99 for 99% margin = 1% haircut).  Converted as ``100 − value``.
+
+    2. **Impossible maturity**: ``max_maturity_years > 100`` → cleared to None.
+       Models occasionally emit a calendar year (e.g. 2030) instead of a
+       remaining-maturity number.
+
+    3. **OTHER asset class with a resolvable label**: when the model assigned
+       ``OTHER`` but a note carries the original label, re-run
+       :func:`normalize_asset_class` for a second-chance resolution.
+
+    4. **Duplicate (asset_class, rating_floor, max_maturity_years) key**: when
+       multiple entries share the same key, keep the one with the *lowest*
+       haircut (most favourable rule) and drop the rest.  This handles models
+       that emit the same row twice with slightly different haircuts.
+    """
+    out: list[dict[str, Any]] = []
+
+    for entry in entries:
+        e = dict(entry)
+
+        # --- 1. Margin % → haircut -------------------------------------------
+        hc = e.get("haircut_pct")
+        if hc is not None and hc > _MARGIN_TO_HAIRCUT_THRESHOLD and e.get("eligible", True):
+            corrected = round(100.0 - hc, 6)
+            note_tag = f"[auto-corrected: margin {hc}% → haircut {corrected}%]"
+            e["haircut_pct"] = corrected
+            e["notes"] = (e.get("notes") or "") + (" " if e.get("notes") else "") + note_tag
+
+        # --- 2. Impossible maturity ------------------------------------------
+        mat = e.get("max_maturity_years")
+        if mat is not None and mat > _MAX_PLAUSIBLE_MATURITY:
+            note_tag = f"[auto-corrected: implausible max_maturity_years={mat} cleared]"
+            e.pop("max_maturity_years", None)
+            e["notes"] = (e.get("notes") or "") + (" " if e.get("notes") else "") + note_tag
+
+        # --- 3. Second-chance asset class resolution -------------------------
+        if e.get("asset_class") == AssetClass.OTHER.value:
+            notes_text = e.get("notes", "")
+            if notes_text:
+                resolved = normalize_asset_class(notes_text.split(".")[0])
+                if resolved != AssetClass.OTHER.value:
+                    e["asset_class"] = resolved
+
+        out.append(e)
+
+    # --- 4. Duplicate key → keep lowest haircut ------------------------------
+    seen: dict[tuple, int] = {}  # key → index in out
+    final: list[dict[str, Any]] = []
+    for e in out:
+        key = (
+            e.get("asset_class"),
+            e.get("rating_floor"),
+            e.get("max_maturity_years"),
+            e.get("isin"),
+        )
+        if key in seen:
+            existing = final[seen[key]]
+            e_hc = e.get("haircut_pct") or float("inf")
+            ex_hc = existing.get("haircut_pct") or float("inf")
+            if e_hc < ex_hc:
+                final[seen[key]] = e  # replace with lower haircut
+        else:
+            seen[key] = len(final)
+            final.append(e)
+
+    return final
+
+
+#: Public alias — callers can run the same validation pass on CSV/XLSX entries.
+validate_llm_entries = _post_validate
 
 
 # --------------------------------------------------------------------------- #
