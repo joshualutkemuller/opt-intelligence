@@ -30,6 +30,8 @@ Current scaffold:
   subprocess, and REST-style JSON POST examples are implemented.
 - `evidence.py` defines an opt-in local evidence store that persists production
   run JSON, CSV, XLSX, and manifest artifacts.
+- `governance.py` defines model-risk approval records, config-promotion status,
+  approved execution modes, and fail-closed model/config checks before solve.
 - `registry.py` defines a registry for production adapters.
 
 This scaffold does not replace the current POC optimizers. It gives production
@@ -72,3 +74,8 @@ To provide explicit production-style local sources during a run, include:
 
 Required sources declared this way fail closed when missing or malformed. The
 existing `data_source` CSV convention remains supported for POC compatibility.
+
+Production adapters also evaluate model/config governance before data preflight
+or solve. The local POC registry treats each `ModelLineageSpec` as the promotion
+source of truth: requested execution modes must appear in `approved_for`, and
+the resulting model-risk record is attached to production evidence.

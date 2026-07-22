@@ -4,7 +4,12 @@ from typing import Any
 
 import pytest
 
-from decision_intelligence.contracts import Objective, ObjectiveDirection, OptimizationRequest
+from decision_intelligence.contracts import (
+    ExecutionMode,
+    Objective,
+    ObjectiveDirection,
+    OptimizationRequest,
+)
 from decision_intelligence.production_optimizers import (
     AssetAllocationMVOProductionAdapter,
     CashMovementProductionAdapter,
@@ -233,6 +238,35 @@ def test_asset_allocation_mvo_production_adapter_runs_native_optimizer() -> None
     assert result.evidence.data_snapshot_id == "SNAP_MVO_001"
     assert result.evidence.artifacts["model_config"]["optimizer_id"] == (
         "production.asset_allocation.mvo"
+    )
+    assert result.evidence.approvals[0]["status"] == "approved"
+    assert result.evidence.artifacts["model_governance"]["passed"] is True
+
+
+def test_production_adapter_blocks_unapproved_execution_mode_before_solve() -> None:
+    request = OptimizationRequest(
+        domain="asset_allocation",
+        portfolio_id="PORT_MVO_EXECUTE_BLOCK",
+        objective=Objective(
+            name="mvo_rebalance",
+            direction=ObjectiveDirection.MAXIMIZE,
+            metric="risk_adjusted_return",
+        ),
+        execution_mode=ExecutionMode.EXECUTE,
+        context={
+            "seed": 42,
+            "portfolio_notional": 250_000_000,
+            "target_return": 0.05,
+        },
+    )
+
+    result = AssetAllocationMVOProductionAdapter().run(request)
+
+    assert result.status == "blocked"
+    assert result.evidence is not None
+    assert result.evidence.artifacts["model_governance"]["passed"] is False
+    assert "not approved for execution mode 'execute'" in (
+        result.diagnostics["model_governance"]["blocking_issues"][0]
     )
 
 

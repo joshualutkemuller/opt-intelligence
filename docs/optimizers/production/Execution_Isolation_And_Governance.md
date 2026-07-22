@@ -166,6 +166,37 @@ Approval thresholds should consider:
 Tier 5 governance changes should require explicit evidence that the model,
 config, data, and approving user are all valid for production use.
 
+## Model-Risk And Config Promotion
+
+Production runtime now includes a local-first model/config governance scaffold
+in:
+
+`src/decision_intelligence/production_optimizers/governance.py`
+
+The scaffold defines:
+
+- `ModelRiskApprovalRecord`: optimizer ID, model version, config version,
+  promotion status, approved execution modes, approver, approval time, change
+  ticket, and notes;
+- `ProductionModelGovernanceRegistry`: in-memory registry for model/config
+  approval records;
+- `evaluate_model_governance(...)`: adapter lifecycle check that runs before
+  data preflight, problem build, or solve.
+
+Behavior:
+
+- approved recommendation/scenario/explain runs proceed and attach the
+  model-risk approval record to production evidence;
+- requests for execution modes outside `ModelLineageSpec.approved_for` fail
+  closed with `status = blocked`;
+- blocked model/config runs do not call the native optimizer;
+- the evidence packet includes `artifacts.model_governance` and an approval
+  record under `ProductionOptimizerEvidence.approvals`.
+
+This is intentionally a POC governance registry. Production integration should
+replace or back it with firm model inventory, SSO identities, role/authority
+policies, durable approval records, and formal config promotion workflow.
+
 ## Audit Evidence Package
 
 Minimum contents:

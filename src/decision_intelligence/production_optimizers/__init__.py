@@ -35,6 +35,12 @@ from .execution import (
     backend_for_spec,
     execute_isolated,
 )
+from .governance import (
+    ModelGovernanceDecision,
+    ModelRiskApprovalRecord,
+    ProductionModelGovernanceRegistry,
+    evaluate_model_governance,
+)
 from .registry import ProductionOptimizerRegistry, build_default_production_registry
 
 __all__ = [
@@ -53,7 +59,9 @@ __all__ = [
     "LimitSourceSpec",
     "LocalProductionEvidenceStore",
     "ModelConfigSpec",
+    "ModelGovernanceDecision",
     "ModelLineageSpec",
+    "ModelRiskApprovalRecord",
     "MarginCallWorkflowProductionAdapter",
     "MoneyMarketProductionAdapter",
     "NormalizedOptimizerResult",
@@ -62,6 +70,7 @@ __all__ = [
     "PreflightReport",
     "ProductionOptimizerAdapter",
     "ProductionOptimizerEvidence",
+    "ProductionModelGovernanceRegistry",
     "ProductionOptimizerRegistry",
     "RestExecutionBackend",
     "ScenarioKnobSpec",
@@ -70,6 +79,7 @@ __all__ = [
     "backend_for_spec",
     "build_default_production_registry",
     "build_data_preflight_report",
+    "evaluate_model_governance",
     "execute_isolated",
 ]
 

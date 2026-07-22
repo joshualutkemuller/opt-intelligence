@@ -13,6 +13,7 @@ from .contracts import (
     PreflightReport,
     ProductionOptimizerEvidence,
 )
+from .governance import evaluate_model_governance
 
 
 class ProductionOptimizerAdapter(ABC):
@@ -56,6 +57,34 @@ class ProductionOptimizerAdapter(ABC):
     def run(self, request: OptimizationRequest) -> NormalizedOptimizerResult:
         """Canonical adapter lifecycle used by future production orchestrators."""
 
+        model_governance = evaluate_model_governance(request, self.model_config)
+        if model_governance.blocking_issues:
+            return NormalizedOptimizerResult(
+                optimizer_id=self.optimizer_id,
+                domain=self.domain,
+                status="blocked",
+                objective_value=0.0,
+                baseline_value=0.0,
+                allocations=[],
+                diagnostics={
+                    "model_governance": model_governance.model_dump(mode="json"),
+                    "preflight": {
+                        "blocking_issues": model_governance.blocking_issues,
+                        "warnings": model_governance.warnings,
+                    },
+                },
+                evidence=ProductionOptimizerEvidence(
+                    optimizer_id=self.optimizer_id,
+                    model_version=self.model_config.lineage.model_version,
+                    config_version=self.model_config.lineage.config_version,
+                    data_snapshot_id=None,
+                    approvals=[model_governance.record.model_dump(mode="json")],
+                    artifacts={
+                        "model_governance": model_governance.model_dump(mode="json"),
+                    },
+                ),
+            )
+
         preflight = self.validate_inputs(request)
         if preflight.blocking_issues:
             return NormalizedOptimizerResult(
@@ -72,6 +101,7 @@ class ProductionOptimizerAdapter(ABC):
                     config_version=self.model_config.lineage.config_version,
                     data_snapshot_id=preflight.data_snapshot_id,
                     reproducibility_fingerprint=preflight.reproducibility_fingerprint,
+                    approvals=[model_governance.record.model_dump(mode="json")],
                     artifacts={},
                 ),
             )
@@ -80,4 +110,16 @@ class ProductionOptimizerAdapter(ABC):
         native_solution = self.solve(problem)
         normalized = self.explain_outputs(request, problem, native_solution)
         evidence = self.serialize_evidence(request, problem, native_solution, normalized)
+        evidence = evidence.model_copy(
+            update={
+                "approvals": [
+                    *evidence.approvals,
+                    model_governance.record.model_dump(mode="json"),
+                ],
+                "artifacts": {
+                    **evidence.artifacts,
+                    "model_governance": model_governance.model_dump(mode="json"),
+                },
+            }
+        )
         return normalized.model_copy(update={"evidence": evidence})

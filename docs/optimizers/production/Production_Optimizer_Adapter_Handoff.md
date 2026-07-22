@@ -210,6 +210,10 @@ Implemented:
 - All current production adapters now attach data-source reports to
   preflight/evidence and fail closed when explicitly configured production
   sources are missing or malformed.
+- Production model-governance layer under
+  `src/decision_intelligence/production_optimizers/governance.py`, including
+  model-risk approval records, config-promotion status, approved execution
+  modes, and fail-closed adapter checks before solve.
 - Production workflow templates and demo presets for asset allocation,
   collateral, money market, treasury cash movement, and margin-call workflow.
 - Focused tests for successful runs, blocked preflight, evidence attachment,
@@ -246,6 +250,8 @@ For tonight's closeout, the adapter handoff should be considered complete when:
   artifacts through an opt-in runtime context flag.
 - ✅ Production data-source contracts can inspect local CSV/JSON/document
   sources and attach snapshot/freshness/quality evidence to optimizer runs.
+- ✅ Production model/config governance checks attach model-risk approval
+  records to evidence and block modes not approved by the model lineage.
 - ✅ Documentation identifies the remaining firm-integration work separately
   from the POC-ready platform contract.
 
@@ -263,7 +269,8 @@ the next credible path from demo to firm integration:
   containerized optimizer runtimes.
 - Move local evidence artifacts into controlled storage with immutable run IDs,
   retention policy, and access controls.
-- Add model-risk approval metadata, config promotion workflow, and versioned
-  data-snapshot lineage.
+- Connect the local model-risk/config-promotion scaffold to firm approval
+  systems, SSO identities, model inventory, and production config promotion
+  workflows.
 - Expand duals, shadow prices, infeasibility diagnostics, and scenario grids
   where the native optimizer emits those dense outputs.
