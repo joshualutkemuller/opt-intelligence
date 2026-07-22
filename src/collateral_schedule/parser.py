@@ -167,12 +167,32 @@ def parse_schedule(
     filename: str | None = None,
     content_type: str | None = None,
     pdf_base64: str | None = None,
+    provider: Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Dispatch to the appropriate parser based on file type."""
+    """Dispatch to the appropriate parser based on file type.
+
+    When *provider* is supplied and the input is a PDF, the LLM path
+    (:func:`collateral_schedule.llm_parser.parse_pdf_with_llm`) is tried first;
+    on any failure it falls back to the text-heuristic ``parse_pdf_text``. The
+    *provider* is an injected LLM provider object (see ``llm_parser``); this
+    library never imports ``decision_intelligence``.
+    """
 
     if pdf_base64:
-        # PDF provided as base64 — use pdfplumber if available, else text heuristic
         pdf_bytes = base64.b64decode(pdf_base64)
+
+        # LLM-first path (extension point #11): try the model, fall back to heuristic.
+        if provider is not None:
+            try:
+                from .llm_parser import parse_pdf_with_llm
+
+                entries = parse_pdf_with_llm(pdf_bytes, provider)
+                if entries:
+                    return entries
+            except Exception as exc:  # noqa: BLE001 - never let LLM errors break ingest
+                print(f"[collateral_schedule] LLM PDF parse failed ({exc}); using heuristic.")
+
+        # Heuristic path — use pdfplumber if available, else text fallback.
         try:
             import pdfplumber  # type: ignore[import-untyped]
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
