@@ -142,12 +142,21 @@ def load_dataclass_csv(path: str | Path, dc_type: type[T]) -> list[T]:
 # Source resolution
 # --------------------------------------------------------------------------- #
 def _source(request: OptimizationRequest) -> dict[str, Any]:
-    src = request.context.get("data_source") or {"type": "simulated"}
+    src = request.context.get("data_source")
+    # Auto-select collateral_db when an agreement_id is present but no explicit data_source
+    if not src and request.context.get("agreement_id"):
+        return {"type": "collateral_db", "agreement_id": request.context["agreement_id"]}
+    src = src or {"type": "simulated"}
     if not isinstance(src, dict) or "type" not in src:
         raise DataSourceError(
             "context['data_source'] must be a dict with a 'type' key "
             "('simulated' or 'csv')."
         )
+    # Also support agreement_id at data_source level falling back to top-level context
+    if src.get("type") == "collateral_db" and "agreement_id" not in src:
+        agreement_id = request.context.get("agreement_id")
+        if agreement_id:
+            src = {**src, "agreement_id": agreement_id}
     return src
 
 

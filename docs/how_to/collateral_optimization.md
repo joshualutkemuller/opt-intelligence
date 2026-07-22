@@ -206,18 +206,13 @@ solves the LP.
 ### Via the API
 
 ```bash
-curl -s -X POST http://localhost:8000/api/optimize \
+curl -s -X POST http://localhost:8000/api/optimizations/run \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "collateral",
     "portfolio_id": "PORT_001",
-    "objective": {"metric": "funding_cost"},
-    "context": {
-      "data_source": {
-        "type": "collateral_db",
-        "agreement_id": "agr_xyz"
-      }
-    }
+    "objective_metric": "funding_cost",
+    "agreement_id": "agr_xyz"
   }' | jq .
 ```
 

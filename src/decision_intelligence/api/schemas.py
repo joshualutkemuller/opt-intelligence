@@ -75,6 +75,7 @@ class DirectOptimizationRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     scenarios: list[str] = Field(default_factory=list)
     execution_mode: str = "recommendation"
+    agreement_id: str | None = None
 
 
 class OptimizationResponse(BaseModel):
